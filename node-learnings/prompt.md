@@ -72,8 +72,13 @@ Topics to eventually cover (but do not dump all at once):
 * Event loop phases (Node vs browser differences)
 * Microtasks vs macrotasks (Promises, process.nextTick)
 * Timers, I/O, and scheduling guarantees (and non-guarantees)
+* fs module internals (sync vs async APIs, libuv thread pool usage, OS syscalls, performance trade-offs)
 * libuv thread pool (what uses it, starvation, tuning)
 * Streams and backpressure (HTTP, TCP, file streams)
+* TCP and socket internals (net module, buffering, slow clients, backpressure, FIN/RST behavior)
+* DNS resolution internals (dns.lookup vs dns.resolve, OS resolver vs libuv, caching, performance impact)
+* Time and clocks (timers, drift, monotonic vs wall-clock time)
+* OS and container limits (file descriptors, memory limits, ulimit, cgroups)
 * Buffers and memory layout
 * Garbage collection behavior and performance implications
 * Module system internals (CommonJS vs ESM, resolution, caching)
