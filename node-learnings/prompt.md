@@ -82,6 +82,7 @@ Topics to eventually cover (but do not dump all at once):
 * Buffers and memory layout
 * Garbage collection behavior and performance implications
 * Module system internals (CommonJS vs ESM, resolution, caching)
+* Startup and cold-start performance (module loading, initialization costs, serverless behavior)
 * Async context tracking (async hooks, AsyncLocalStorage)
 * Worker threads vs clustering (CPU vs I/O scaling)
 * Child processes and IPC
@@ -89,7 +90,9 @@ Topics to eventually cover (but do not dump all at once):
 * Error propagation across async boundaries
 * Memory leaks that are not obvious
 * Process lifecycle, signals, and graceful shutdown
+* Runtime debugging tools (inspect, tracing, heap snapshots, CPU profiling)
 * Performance analysis and observability (`perf_hooks`, tracing costs)
+* Undefined and version-dependent behavior in Node.js
 
 Important:
 
