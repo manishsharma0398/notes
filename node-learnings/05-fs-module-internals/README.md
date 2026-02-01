@@ -40,6 +40,7 @@ Think of file operations as **three layers** with different performance characte
 ```
 
 **Key Insight**: **All file operations are blocking at the OS level**. The difference between sync and async is **where** the blocking happens:
+
 - **Sync**: Blocks the V8 main thread (event loop stops)
 - **Async**: Blocks a libuv worker thread (event loop continues)
 
@@ -52,6 +53,7 @@ Think of file operations as **three layers** with different performance characte
 **Problem**: File operations **must** block at the OS level (kernel syscalls are synchronous). But blocking the main thread stops the entire Node.js process.
 
 **Solution**: Two APIs with different trade-offs:
+
 - **Sync APIs**: Simple, predictable, but block the event loop
 - **Async APIs**: Non-blocking, but use thread pool (limited parallelism)
 
@@ -68,6 +70,7 @@ When you call `fs.readFileSync()`:
 5. **Returns** data to JavaScript
 
 **Execution flow**:
+
 ```
 Call Stack:
 fs.readFileSync()
@@ -81,6 +84,7 @@ fs.readFileSync()
 ```
 
 **Performance characteristics**:
+
 - **Latency**: Direct (no thread pool overhead)
 - **Throughput**: Limited by single-threaded execution
 - **Event loop**: **Completely blocked** during operation
@@ -99,6 +103,7 @@ When you call `fs.readFile()`:
 7. **Callback executed** in next event loop iteration
 
 **Execution flow**:
+
 ```
 Main Thread (V8):
 fs.readFile()
@@ -118,6 +123,7 @@ Worker Thread (libuv):
 ```
 
 **Performance characteristics**:
+
 - **Latency**: Higher (thread pool overhead + context switching)
 - **Throughput**: Better (parallel operations via thread pool)
 - **Event loop**: **Not blocked** (other operations continue)
@@ -126,6 +132,7 @@ Worker Thread (libuv):
 ### Thread Pool Usage
 
 **Which operations use the thread pool?**
+
 - `fs.readFile()` / `fs.writeFile()` - **YES** (uses thread pool)
 - `fs.readdir()` - **YES** (uses thread pool)
 - `fs.stat()` - **YES** (uses thread pool)
@@ -134,6 +141,7 @@ Worker Thread (libuv):
 - `fs.promises.readFile()` - **YES** (same as async, uses thread pool)
 
 **Thread pool limits**:
+
 - Default: 4 worker threads
 - Configurable: `process.env.UV_THREADPOOL_SIZE` (max 1024)
 - Shared with: DNS lookups (`dns.lookup()`), crypto operations, some zlib operations
@@ -159,11 +167,13 @@ Worker Thread (libuv):
    - File descriptor available for reuse
 
 **Why it's blocking**:
+
 - Disk I/O is **inherently slow** (milliseconds vs nanoseconds for CPU)
 - OS must wait for hardware (disk controller, storage device)
 - No way to make disk I/O truly asynchronous at the OS level
 
 **Exception**: Some OS features can help:
+
 - **Page cache**: OS caches frequently accessed files in RAM
 - **Direct I/O**: Bypasses page cache (faster for large sequential reads)
 - **AIO (Linux)**: Limited support, not used by Node.js
@@ -186,7 +196,8 @@ Worker Thread (libuv):
 
 **What actually happens**: Sync APIs have **lower latency** (no thread pool overhead) but **block the event loop**. For single operations, sync can be faster. For concurrent operations, async is better.
 
-**Trade-off**: 
+**Trade-off**:
+
 - **Sync**: Lower latency, blocks event loop
 - **Async**: Higher latency, doesn't block event loop
 
@@ -215,6 +226,7 @@ Worker Thread (libuv):
 ### 3. Cannot Guarantee File Operation Order
 
 **Why**: Thread pool executes operations in parallel. Completion order depends on:
+
 - File size (smaller files finish first)
 - Disk location (sequential vs random access)
 - OS scheduling
@@ -232,6 +244,7 @@ Worker Thread (libuv):
 **Root cause**: Too many concurrent file operations saturate the thread pool (default: 4 threads). Operations queue up waiting for available threads.
 
 **Example**:
+
 ```javascript
 // BAD: 100 concurrent file reads with 4 thread pool threads
 for (let i = 0; i < 100; i++) {
@@ -241,7 +254,8 @@ for (let i = 0; i < 100; i++) {
 }
 ```
 
-**Fix**: 
+**Fix**:
+
 - Increase thread pool: `process.env.UV_THREADPOOL_SIZE = 16`
 - Limit concurrency (use p-limit, p-queue)
 - Use streams for large files (doesn't use thread pool for reads)
@@ -253,10 +267,11 @@ for (let i = 0; i < 100; i++) {
 **Root cause**: Sync file operations block the event loop, preventing other operations from running.
 
 **Example**:
+
 ```javascript
 // BAD: Blocks event loop
-app.get('/data', (req, res) => {
-  const data = fs.readFileSync('large-file.json'); // BLOCKS
+app.get("/data", (req, res) => {
+  const data = fs.readFileSync("large-file.json"); // BLOCKS
   res.json(JSON.parse(data));
 });
 ```
@@ -270,6 +285,7 @@ app.get('/data', (req, res) => {
 **Root cause**: Underlying disk I/O is slow (network storage, slow disk, high disk utilization).
 
 **Debugging**:
+
 - Check disk I/O wait time (`iostat` on Linux)
 - Monitor file system performance
 - Consider using faster storage (SSD vs HDD)
@@ -283,12 +299,14 @@ app.get('/data', (req, res) => {
 ### Sync vs Async: When to Use What
 
 **Use Sync APIs when**:
+
 - Startup/initialization code (runs once)
 - CLI tools (single operation, no concurrency)
 - Error handling (must complete before continuing)
 - Small files (overhead of async > benefit)
 
 **Use Async APIs when**:
+
 - Web servers (must not block event loop)
 - Concurrent operations (multiple files)
 - Large files (parallelism helps)
@@ -299,11 +317,13 @@ app.get('/data', (req, res) => {
 **Default**: 4 threads
 
 **When to increase**:
+
 - Many concurrent file operations
 - File operations + DNS lookups + crypto
 - High-latency storage (network drives)
 
 **How to increase**:
+
 ```javascript
 process.env.UV_THREADPOOL_SIZE = 16; // Must be set before any async operation
 ```
@@ -313,12 +333,14 @@ process.env.UV_THREADPOOL_SIZE = 16; // Must be set before any async operation
 ### Streams vs readFile/writeFile
 
 **readFile/writeFile**:
+
 - Loads entire file into memory
 - Uses thread pool
 - Simple API
 - **Problem**: Large files consume too much memory
 
 **Streams**:
+
 - Processes data in chunks
 - Doesn't use thread pool for reads (uses libuv async I/O)
 - Memory efficient
@@ -428,9 +450,66 @@ Main Thread:              Worker Thread:
 ## Next Steps
 
 In the examples, we'll explore:
+
 - Sync vs async performance comparison
 - Thread pool starvation scenarios
 - Concurrent file operations
 - Streams vs readFile performance
 - OS syscall behavior
 - Real-world file I/O patterns
+
+---
+
+## Practice Exercises
+
+### Exercise 1: Thread Pool Starvation (Interview Favorite)
+
+Create a script that demonstrates thread pool starvation:
+
+- Start with default 4 threads
+- Queue 20 concurrent `fs.readFile()` operations
+- Measure when each operation completes
+- Observe the "batching" effect (4 at a time complete)
+- Increase `UV_THREADPOOL_SIZE` to 16 and compare
+- Explain why this matters in production servers
+
+**Interview question this tests**: "What happens when you have 100 concurrent file reads with a default Node.js setup?"
+
+### Exercise 2: Sync vs Async Performance Analysis
+
+Create a benchmark comparing sync and async file operations:
+
+- Read the same file 10 times using `fs.readFileSync()`
+- Read the same file 10 times using `fs.readFile()` concurrently
+- Measure total execution time for both approaches
+- Try with small files (1KB) and large files (10MB)
+- Explain when sync is actually faster and why
+- Predict the event loop behavior in both cases
+
+**Interview question this tests**: "When would you use `fs.readFileSync()` in a web server?"
+
+### Exercise 3: Streams vs readFile Memory Profiling
+
+Create a script that compares memory usage:
+
+- Read a 100MB file using `fs.readFile()` - observe memory spike
+- Read the same file using streams - observe constant memory
+- Use `process.memoryUsage()` to measure heap usage before/during/after
+- Process the file (e.g., count lines) in both approaches
+- Explain why streams use less memory
+- Identify the trade-off (complexity vs memory efficiency)
+
+**Interview question this tests**: "How would you handle reading a 5GB log file in Node.js without running out of memory?"
+
+### Exercise 4: File Operation Ordering
+
+Create a script that demonstrates non-deterministic I/O ordering:
+
+- Create 3 files: `file1.txt` (10 bytes), `file2.txt` (1MB), `file3.txt` (100 bytes)
+- Read all 3 concurrently with `fs.readFile()`
+- Log completion order across multiple runs
+- Explain why the order varies
+- Implement a solution using `fs.promises` and `Promise.all()` to guarantee order
+- Discuss the performance trade-off of guaranteed ordering
+
+**Interview question this tests**: "Can you rely on file I/O callback execution order in Node.js?"

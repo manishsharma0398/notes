@@ -41,6 +41,7 @@ Think of Node.js processes as operating within **system-imposed limits**:
 ### Why Limits Exist
 
 **Problem**: Without limits, processes could:
+
 - Open unlimited file descriptors (exhaust system resources)
 - Allocate unlimited memory (crash system)
 - Spawn unlimited processes (exhaust PIDs)
@@ -56,13 +57,15 @@ Think of Node.js processes as operating within **system-imposed limits**:
 **Why they matter**: Every TCP connection, file operation, pipe uses a file descriptor.
 
 **Default limits**:
+
 - **Linux**: 1024 (soft), 4096 (hard) - often too low for servers
 - **macOS**: 256 (soft), unlimited (hard)
 - **Containers**: Varies by configuration
 
 **Common limit**: `ulimit -n` shows current limit.
 
-**Node.js impact**: 
+**Node.js impact**:
+
 - Each TCP connection = 1 file descriptor
 - Each open file = 1 file descriptor
 - Each pipe = 2 file descriptors (read + write)
@@ -72,11 +75,13 @@ Think of Node.js processes as operating within **system-imposed limits**:
 ### Memory Limits
 
 **Types of memory limits**:
+
 1. **Process RSS limit** (ulimit -m): Maximum resident set size
 2. **Container memory limit** (cgroups): Hard limit enforced by container
 3. **V8 heap limit** (--max-old-space-size): JavaScript heap size
 
 **Default limits**:
+
 - **Linux**: Unlimited (often)
 - **Containers**: Set by orchestration (Docker, Kubernetes)
 - **V8 heap**: ~1.4 GB (32-bit) or ~2 GB (64-bit) on 32-bit, larger on 64-bit
@@ -86,6 +91,7 @@ Think of Node.js processes as operating within **system-imposed limits**:
 ### CPU Limits
 
 **Types of CPU limits**:
+
 1. **Process priority** (nice value): Affects scheduling
 2. **Container CPU limit** (cgroups): Hard limit on CPU usage
 3. **CPU affinity**: Which CPUs process can use
@@ -117,6 +123,7 @@ Think of Node.js processes as operating within **system-imposed limits**:
 **What developers think**: Only V8 heap matters for memory.
 
 **What actually happens**: Total memory includes:
+
 - V8 heap (JavaScript objects)
 - External memory (Buffers, native addons)
 - C++ allocations
@@ -157,11 +164,13 @@ Think of Node.js processes as operating within **system-imposed limits**:
 **Root cause**: Process exceeded file descriptor limit.
 
 **Debugging**:
+
 1. Check current limit: `ulimit -n`
 2. Count open file descriptors: `lsof -p <pid> | wc -l`
 3. Check for file descriptor leaks
 
 **Fix**:
+
 - Increase limit: `ulimit -n 65536`
 - Fix leaks: Close files/sockets properly
 - Use connection pooling
@@ -173,11 +182,13 @@ Think of Node.js processes as operating within **system-imposed limits**:
 **Root cause**: Process exceeded memory limit.
 
 **Debugging**:
+
 1. Check memory usage: `process.memoryUsage()`
 2. Check container limits: `docker stats` or cgroups
 3. Check for memory leaks
 
 **Fix**:
+
 - Increase memory limit (container/system)
 - Fix memory leaks
 - Reduce memory usage
@@ -189,6 +200,7 @@ Think of Node.js processes as operating within **system-imposed limits**:
 **Root cause**: Container has different limits (memory, CPU, file descriptors).
 
 **Debugging**:
+
 1. Check container limits: `docker inspect` or cgroups
 2. Compare with local limits
 3. Monitor resource usage
@@ -240,7 +252,54 @@ Think of Node.js processes as operating within **system-imposed limits**:
 ## Next Steps
 
 In the examples, we'll explore:
+
 - Checking system limits
 - File descriptor usage
 - Memory limit monitoring
 - Container limit behavior
+
+---
+
+## Practice Exercises
+
+### Exercise 1: File Descriptor Limit Testing
+
+Create a script that tests file descriptor limits:
+
+- Open TCP connections in a loop until hitting the limit
+- Catch and log `EMFILE` errors
+- Use `lsof` or `ls /proc/<pid>/fd` to count open file descriptors
+- Demonstrate the limit with default `ulimit -n`
+- Increase limit and observe difference
+- Implement proper connection cleanup to avoid leaks
+- Explain why the default limit (1024) is insufficient for web servers
+
+**Interview question this tests**: "What does EMFILE mean and how do you handle it in production?"
+
+### Exercise 2: Container Memory Limit Detection
+
+Create a script that detects memory limits in containers:
+
+- Check `/sys/fs/cgroup/memory/memory.limit_in_bytes` (cgroups v1)
+- Check `/sys/fs/cgroup/memory.max` (cgroups v2)
+- Compare with `process.memoryUsage()`
+- Allocate memory until approaching the limit
+- Implement memory usage monitoring
+- Demonstrate OOM killer behavior (trigger intentionally in safe environment)
+- Explain the difference between heap, RSS, and external memory
+
+**Interview question this tests**: "How do you detect if your Node.js app is running in a memory-constrained container?"
+
+### Exercise 3: CPU Throttling Observation
+
+Create a script that demonstrates CPU throttling effects:
+
+- Run a CPU-intensive task (crypto hashing, fibonacci)
+- Measure execution time in unconstrained environment
+- Run in Docker container with CPU limit (`--cpus=0.5`)
+- Observe increased execution time
+- Monitor event loop lag during CPU throttling
+- Explain how CPU limits affect event loop performance
+- Discuss strategies for CPU-bound operations in Node.js
+
+**Interview question this tests**: "How do container CPU limits affect Node.js event loop performance?"

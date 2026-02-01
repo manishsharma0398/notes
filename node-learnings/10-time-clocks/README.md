@@ -41,6 +41,7 @@ Think of time in Node.js as having **multiple clocks** with different properties
 ### Why Multiple Clocks Exist
 
 **Problem**: System clock (wall-clock time) can be adjusted:
+
 - NTP (Network Time Protocol) corrections
 - Timezone changes
 - Manual clock adjustments
@@ -57,12 +58,14 @@ Think of time in Node.js as having **multiple clocks** with different properties
 **What it is**: System clock time, can be adjusted.
 
 **Characteristics**:
+
 - Can jump forward or backward
 - Affected by NTP, timezone changes
 - Low precision (milliseconds)
 - Use for: Display, logging, timestamps
 
 **Example**:
+
 ```javascript
 const start = Date.now();
 // ... some time passes, NTP adjusts clock backward ...
@@ -77,12 +80,14 @@ const duration = end - start; // Could be negative!
 **What it is**: Steady clock that never goes backward.
 
 **Characteristics**:
+
 - Never goes backward (monotonic)
 - Not affected by system clock changes
 - High precision (nanoseconds)
 - Use for: Measurements, durations, performance
 
 **Example**:
+
 ```javascript
 const start = process.hrtime.bigint();
 // ... some time passes, NTP adjusts clock ...
@@ -95,11 +100,13 @@ const duration = end - start; // Always positive, accurate
 ### Timer System: setTimeout/setInterval
 
 **How it works**:
+
 - Internally uses **monotonic time** (libuv)
 - But callbacks receive **wall-clock time** (Date.now())
 - Can drift due to event loop delays
 
 **Execution flow**:
+
 ```
 setTimeout(callback, 1000)
   → libuv timer (monotonic time)
@@ -111,6 +118,7 @@ setTimeout(callback, 1000)
 ```
 
 **Drift**: Timer may fire later than expected due to:
+
 - Event loop blocking
 - High CPU load
 - Many pending operations
@@ -142,6 +150,7 @@ setTimeout(callback, 1000)
 **What developers think**: All time functions use the same time source.
 
 **What actually happens**: Different APIs use different clocks:
+
 - `Date.now()`: Wall-clock time
 - `process.hrtime()`: Monotonic time
 - `setTimeout`: Monotonic internally, wall-clock in callbacks
@@ -179,6 +188,7 @@ setTimeout(callback, 1000)
 **Root cause**: Event loop delays, high CPU load, many pending operations.
 
 **Example**:
+
 ```javascript
 // BAD: Assumes precise timing
 setInterval(() => {
@@ -196,6 +206,7 @@ setInterval(() => {
 **Root cause**: Using `Date.now()` for measurements, system clock adjusted backward (NTP).
 
 **Example**:
+
 ```javascript
 // BAD: Can get negative duration
 const start = Date.now();
@@ -223,6 +234,7 @@ const duration = end - start; // Negative!
 **Minimum delay**: ~1ms (browser/Node.js limitation)
 
 **Actual delay**: Can be longer due to:
+
 - Event loop blocking
 - High CPU load
 - Many pending timers
@@ -234,6 +246,7 @@ const duration = end - start; // Negative!
 **process.hrtime()**: Nanosecond precision, monotonic
 
 **Use for**:
+
 - Performance measurements
 - Duration calculations
 - Benchmarking
@@ -263,7 +276,54 @@ const duration = end - start; // Negative!
 ## Next Steps
 
 In the examples, we'll explore:
+
 - Timer drift demonstration
 - Wall-clock vs monotonic time
 - High-resolution time measurements
 - Real-world timing patterns
+
+---
+
+## Practice Exercises
+
+### Exercise 1: Timer Drift Detection and Measurement
+
+Create a script that demonstrates timer drift:
+
+- Use `setInterval()` with 100ms delay
+- Inside the callback, use `process.hrtime()` to measure actual elapsed time
+- Track the drift accumulation over 100 iterations
+- Add blocking code (e.g., busy loop for 10ms) to exacerbate drift
+- Compare actual vs expected timing
+- Explain why `setInterval` drifts and how to compensate
+- Implement a drift-correcting timer using `setTimeout`
+
+**Interview question this tests**: "Why does `setInterval` drift over time and how would you fix it?"
+
+### Exercise 2: Date.now() vs performance.now() Accuracy
+
+Create benchmarks comparing different time APIs:
+
+- Measure a short operation (1ms) using `Date.now()`
+- Measure the same operation using `performance.now()`
+- Measure using `process.hrtime.bigint()`
+- Simulate NTP clock adjustment (manually change system time mid-test)
+- Observe which measurements become incorrect
+- Explain why monotonic time is essential for performance measurements
+- Discuss precision differences (ms vs ns)
+
+**Interview question this tests**: "Why should you use `process.hrtime()` instead of `Date.now()` for performance measurements?"
+
+### Exercise 3: Clock Skew in Distributed Systems
+
+Create a script simulating distributed system timing issues:
+
+- Create two "servers" (separate processes) with slightly different system times
+- Exchange timestamps between them
+- Demonstrate ordering problems when using wall-clock time
+- Implement a hybrid logical clock (HLC) or vector clock solution
+- Show how monotonic time helps within a single process
+- Explain why NTP synchronization is critical
+- Discuss trade-offs of different time synchronization strategies
+
+**Interview question this tests**: "How do you handle time synchronization in a distributed Node.js system?"

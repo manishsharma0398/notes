@@ -25,6 +25,7 @@ Think of async context as **thread-local storage** for asynchronous code. In tra
 ```
 
 **Key Insight**: Async context allows you to **attach data to async operations** and **retrieve it later** without passing it explicitly through every function call. This is essential for:
+
 - Request tracking (correlate logs across async operations)
 - User context (user ID, permissions)
 - Transaction IDs (distributed tracing)
@@ -49,16 +50,18 @@ setTimeout(() => {
 ```
 
 **Root Cause**: When async operations are scheduled:
+
 1. Current execution context (call stack, variables) is **saved**
 2. Event loop schedules callback for later
 3. When callback executes, **original context is gone**
 4. No way to know where callback came from
 
 **Example**:
+
 ```javascript
 function handleRequest(userId) {
   console.log(`Handling request for user ${userId}`);
-  
+
   setTimeout(() => {
     // userId is lost! We can't access it here
     console.log(`Processing...`); // Who is this for?
@@ -69,6 +72,7 @@ function handleRequest(userId) {
 ### Traditional Solutions (and Their Problems)
 
 **Solution 1: Pass context explicitly**
+
 ```javascript
 function handleRequest(userId) {
   setTimeout(() => {
@@ -76,9 +80,11 @@ function handleRequest(userId) {
   }, 1000);
 }
 ```
+
 **Problem**: Must pass context through every function call. Tedious and error-prone.
 
 **Solution 2: Closure**
+
 ```javascript
 function handleRequest(userId) {
   setTimeout(() => {
@@ -87,9 +93,11 @@ function handleRequest(userId) {
   }, 1000);
 }
 ```
+
 **Problem**: Works for simple cases, but doesn't scale. Context doesn't propagate to nested async operations.
 
 **Solution 3: Global variables**
+
 ```javascript
 let currentUserId; // Global
 
@@ -100,6 +108,7 @@ function handleRequest(userId) {
   }, 1000);
 }
 ```
+
 **Problem**: **Race conditions**. Multiple requests overwrite each other's context.
 
 ---
@@ -132,14 +141,16 @@ function handleRequest(userId) {
 ```
 
 **How It Works**:
+
 1. **Hook registration**: Register callbacks for async resource lifecycle
 2. **Resource tracking**: Node.js calls hooks when async resources are created/executed
 3. **Context storage**: Store context data keyed by `asyncId`
 4. **Context retrieval**: Retrieve context when callbacks execute
 
 **Example**:
+
 ```javascript
-const async_hooks = require('async_hooks');
+const async_hooks = require("async_hooks");
 
 const context = new Map();
 
@@ -152,7 +163,7 @@ const hook = async_hooks.createHook({
   },
   destroy(asyncId) {
     context.delete(asyncId);
-  }
+  },
 });
 
 hook.enable();
@@ -193,21 +204,23 @@ hook.enable();
 ```
 
 **How It Works**:
+
 1. **Storage creation**: Create `AsyncLocalStorage` instance
 2. **Context setting**: Call `storage.run(contextData, callback)`
 3. **Automatic propagation**: Context automatically propagates to all async operations
 4. **Context retrieval**: Call `storage.getStore()` anywhere in async chain
 
 **Example**:
+
 ```javascript
-const { AsyncLocalStorage } = require('async_hooks');
+const { AsyncLocalStorage } = require("async_hooks");
 
 const storage = new AsyncLocalStorage();
 
 function handleRequest(userId) {
   storage.run({ userId }, () => {
     console.log(`Handling request for user ${storage.getStore().userId}`);
-    
+
     setTimeout(() => {
       // Context automatically available!
       console.log(`Processing for user ${storage.getStore().userId}`);
@@ -227,11 +240,13 @@ function handleRequest(userId) {
 **What developers think**: AsyncLocalStorage is just a fancy global variable.
 
 **What actually happens**: AsyncLocalStorage provides **isolated context per async chain**:
+
 - Each request has its own context
 - Contexts don't interfere with each other
 - No race conditions (unlike globals)
 
 **Example**:
+
 ```javascript
 // Request 1
 storage.run({ userId: 123 }, () => {
@@ -253,11 +268,13 @@ storage.run({ userId: 456 }, () => {
 **What developers think**: Context automatically propagates everywhere.
 
 **What actually happens**: Context propagates to **async operations created within the context**, but **not** to:
+
 - Operations created before `storage.run()`
 - Operations in different processes/threads
 - Native addons that don't use async hooks
 
 **Example**:
+
 ```javascript
 // This won't have context!
 setTimeout(() => {
@@ -272,6 +289,7 @@ setTimeout(() => {
 **What developers think**: Async Hooks are free.
 
 **What actually happens**: Async Hooks have **performance overhead**:
+
 - Every async operation triggers hooks
 - Context storage/retrieval adds overhead
 - Can impact high-throughput applications
@@ -295,6 +313,7 @@ setTimeout(() => {
 **Why**: Context only exists within the async chain started by `storage.run()`.
 
 **Example**:
+
 ```javascript
 storage.run({ userId: 123 }, () => {
   // Context available
@@ -355,8 +374,8 @@ storage.run({ userId: 123 }, () => {
 const hook = async_hooks.createHook({
   init(asyncId) {
     // Expensive operation in hook
-    fs.readFileSync('large-file.txt'); // Blocks!
-  }
+    fs.readFileSync("large-file.txt"); // Blocks!
+  },
 });
 ```
 
@@ -408,6 +427,7 @@ const storage2 = new AsyncLocalStorage();
 **With hooks** (complex): ~800 async operations/ms (~20% overhead)
 
 **Optimization**:
+
 - Keep hook callbacks lightweight
 - Avoid blocking operations in hooks
 - Use AsyncLocalStorage (optimized) instead of raw hooks
@@ -488,9 +508,53 @@ storage.run({ userId: 456 }, () => {
 ## Next Steps
 
 In the examples, we'll explore:
+
 - Basic AsyncLocalStorage usage
 - Context propagation across async operations
 - Request tracking with async context
 - Performance implications
 - Common pitfalls and solutions
 - Real-world scenarios: logging, tracing, user context
+
+---
+
+## Practice Exercises
+
+### Exercise 1: AsyncLocalStorage for Request Tracking
+
+Build a request tracking system:
+
+- Create AsyncLocalStorage for request context
+- Store request ID, user ID, timestamp
+- Access context in nested async operations (DB queries, API calls)
+- Implement context-aware logging (auto-include request ID)
+- Test with concurrent requests - verify isolation
+- Explain how context propagates automatically
+
+**Interview question this tests**: "How do you implement request tracking across async operations in Node.js?"
+
+### Exercise 2: Context Loss Scenarios and Debugging
+
+Demonstrate when context is lost:
+
+- Create scenarios where context doesn't propagate
+- Native addons without async hooks support
+- Worker threads (separate contexts)
+- Operations created before `storage.run()`
+- Debug using console.log and async_hooks
+- Implement workarounds for each scenario
+
+**Interview question this tests**: "When does async context fail to propagate and how do you fix it?"
+
+### Exercise 3: AsyncLocalStorage Performance Overhead Measurement
+
+Benchmark async context performance:
+
+- Baseline: async operations without AsyncLocalStorage
+- With AsyncLocalStorage: measure overhead
+- High-frequency scenario: millions of async ops/second
+- Compare with manual context passing (closures)
+- Measure memory overhead of context storage
+- Determine when overhead becomes significant
+
+**Interview question this tests**: "What is the performance cost of AsyncLocalStorage and when does it matter?"
