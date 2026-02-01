@@ -120,6 +120,41 @@ DROP TABLE high_value_customers;
 
 ## 5. Inline vs Materialized CTEs
 
+### What Does "Materialize" Mean?
+
+**Materialize** = The database **physically computes and stores** the CTE result in memory (or disk) before using it.
+
+Think of it like this:
+
+- **Materialized**: The CTE runs first, its results are saved to a temporary location, then the main query reads from that saved result
+- **Inline**: The CTE is "copy-pasted" into the main query like a macro—no intermediate storage
+
+**Example:**
+
+```sql
+WITH expensive_products AS (
+    SELECT * FROM products WHERE price > 1000
+)
+SELECT * FROM expensive_products WHERE category = 'Electronics';
+```
+
+**Materialized Execution (2 steps):**
+
+1. **Step 1**: Run `SELECT * FROM products WHERE price > 1000` → Store result in temp memory
+2. **Step 2**: Filter that temp result with `WHERE category = 'Electronics'`
+
+**Inline Execution (1 step):**
+
+The database rewrites it as:
+
+```sql
+SELECT * FROM products 
+WHERE price > 1000 AND category = 'Electronics';
+-- Single scan with both conditions applied at once (more efficient!)
+```
+
+---
+
 ### The Big Question: Does the database inline or materialize the CTE?
 
 **Inline:** The CTE is "copy-pasted" into the query (like a macro).
