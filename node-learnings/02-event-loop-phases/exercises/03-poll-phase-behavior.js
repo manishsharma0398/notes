@@ -12,6 +12,9 @@ const server = http.createServer((req, res) => {
   });
 });
 
+// when server.listen is called, node.js internally calls process.nextTick(() => {
+//   server.emit("listening");
+// });
 server.listen(3000, () => {
   console.log("Server is running on port 3000");
 });
