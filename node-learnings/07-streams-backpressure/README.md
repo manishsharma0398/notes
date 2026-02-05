@@ -38,11 +38,13 @@ Think of streams as **pipes** that can transfer data, but with **flow control** 
 ### Why Streams Exist
 
 **Problem**: Loading entire files into memory doesn't scale:
+
 - Large files consume too much memory
 - Network responses can be huge
 - Can't process data until fully loaded
 
 **Solution**: Streams process data **in chunks** as it arrives:
+
 - Memory efficient (process chunk, discard, process next)
 - Can start processing before all data arrives
 - Handles backpressure (slow consumer, fast producer)
@@ -58,34 +60,37 @@ Think of streams as **pipes** that can transfer data, but with **flow control** 
 **What they do**: Produce data that can be consumed.
 
 **Examples**:
+
 - `fs.createReadStream()` - File reading
 - `http.IncomingMessage` - HTTP request body
 - `process.stdin` - Standard input
 
 **Key methods**:
+
 - `.read()` - Read data chunk
 - `.on('data', ...)` - Event-driven reading
 - `.pipe()` - Pipe to writable stream
 
 ```javascript
 // examples/example-34-readable-stream.js
-const fs = require('fs');
+const fs = require("fs");
 
-const stream = fs.createReadStream('large-file.txt');
+const stream = fs.createReadStream("large-file.txt");
 
-stream.on('data', (chunk) => {
+stream.on("data", (chunk) => {
   console.log(`Received chunk: ${chunk.length} bytes`);
   // Process chunk, don't wait for entire file
 });
 
-stream.on('end', () => {
-  console.log('Stream ended');
+stream.on("end", () => {
+  console.log("Stream ended");
 });
 ```
 
 **What developers think**: "Streams are just a different way to read files."
 
 **What actually happens**:
+
 - File read in chunks (default 64KB)
 - Each chunk processed immediately
 - Memory usage stays constant (doesn't load entire file)
@@ -98,11 +103,13 @@ stream.on('end', () => {
 **What they do**: Consume data that can be written.
 
 **Examples**:
+
 - `fs.createWriteStream()` - File writing
 - `http.ServerResponse` - HTTP response body
 - `process.stdout` - Standard output
 
 **Key methods**:
+
 - `.write(chunk)` - Write data chunk
 - `.end()` - Signal end of writing
 - `.on('drain', ...)` - Backpressure event
@@ -111,9 +118,9 @@ stream.on('end', () => {
 
 ```javascript
 // examples/example-35-writable-stream.js
-const fs = require('fs');
+const fs = require("fs");
 
-const stream = fs.createWriteStream('output.txt');
+const stream = fs.createWriteStream("output.txt");
 
 let i = 0;
 function write() {
@@ -124,7 +131,7 @@ function write() {
 
   if (i < 1000) {
     // Buffer full, wait for drain
-    stream.once('drain', write);
+    stream.once("drain", write);
   } else {
     stream.end();
   }
@@ -136,6 +143,7 @@ write();
 **What developers think**: "`.write()` always succeeds."
 
 **What actually happens**:
+
 - `.write()` returns `false` when buffer is full
 - Must wait for `'drain'` event before writing more
 - Ignoring backpressure causes memory issues
@@ -147,6 +155,7 @@ write();
 **What they do**: Both readable and writable (bidirectional).
 
 **Examples**:
+
 - `net.Socket` - TCP socket
 - `tls.TLSSocket` - TLS socket
 
@@ -154,15 +163,15 @@ write();
 
 ```javascript
 // examples/example-36-duplex-stream.js
-const net = require('net');
+const net = require("net");
 
-const socket = net.createConnection(3000, 'localhost');
+const socket = net.createConnection(3000, "localhost");
 
 // Writable side
-socket.write('Hello server\n');
+socket.write("Hello server\n");
 
 // Readable side
-socket.on('data', (chunk) => {
+socket.on("data", (chunk) => {
   console.log(`Received: ${chunk.toString()}`);
 });
 ```
@@ -174,6 +183,7 @@ socket.on('data', (chunk) => {
 **What they do**: Duplex stream that transforms data as it flows through.
 
 **Examples**:
+
 - `zlib.createGzip()` - Compression
 - `crypto.createCipher()` - Encryption
 - Custom transform streams
@@ -182,13 +192,13 @@ socket.on('data', (chunk) => {
 
 ```javascript
 // examples/example-37-transform-stream.js
-const fs = require('fs');
-const zlib = require('zlib');
+const fs = require("fs");
+const zlib = require("zlib");
 
 // Transform: file → gzip → output
-fs.createReadStream('input.txt')
+fs.createReadStream("input.txt")
   .pipe(zlib.createGzip())
-  .pipe(fs.createWriteStream('output.txt.gz'));
+  .pipe(fs.createWriteStream("output.txt.gz"));
 ```
 
 ---
@@ -200,6 +210,7 @@ fs.createReadStream('input.txt')
 **Backpressure**: When a **writable stream** (consumer) is slower than a **readable stream** (producer), data backs up. The writable stream signals "slow down" to prevent memory overflow.
 
 **Flow**:
+
 ```
 Fast Producer → [Buffer fills] → Slow Consumer
                 ↑
@@ -214,17 +225,19 @@ Fast Producer → [Buffer fills] → Slow Consumer
 ### How Backpressure Works
 
 **Internal Buffer**:
+
 - Each writable stream has an internal buffer (default: ~16KB)
 - When buffer fills, `.write()` returns `false`
 - Producer should stop writing until `'drain'` event
 - When buffer drains, `'drain'` event fires
 
 **Without Backpressure Handling**:
+
 ```javascript
 // examples/example-38-backpressure-bad.js
-const fs = require('fs');
+const fs = require("fs");
 
-const writable = fs.createWriteStream('output.txt');
+const writable = fs.createWriteStream("output.txt");
 
 // BAD: Ignoring backpressure
 for (let i = 0; i < 1000000; i++) {
@@ -234,17 +247,19 @@ for (let i = 0; i < 1000000; i++) {
 ```
 
 **What breaks**:
+
 - Internal buffer fills up
 - More data queued in memory
 - Memory usage grows unbounded
 - Can cause out-of-memory errors
 
 **With Backpressure Handling**:
+
 ```javascript
 // examples/example-39-backpressure-good.js
-const fs = require('fs');
+const fs = require("fs");
 
-const writable = fs.createWriteStream('output.txt');
+const writable = fs.createWriteStream("output.txt");
 
 let i = 0;
 function write() {
@@ -255,7 +270,7 @@ function write() {
 
   if (i < 1000000) {
     // Buffer full, wait for drain
-    writable.once('drain', write);
+    writable.once("drain", write);
   } else {
     writable.end();
   }
@@ -265,11 +280,53 @@ write();
 ```
 
 **What works**:
+
 - Checks `.write()` return value
 - Stops writing when buffer full (`ok === false`)
 - Waits for `'drain'` event
 - Resumes writing when buffer drains
 - Memory usage stays bounded
+
+---
+
+### Deep Dive: The highWaterMark
+
+**What Is It**: The configuration option that controls the size of the stream's internal buffer. It defines the specific threshold that triggers backpressure.
+
+**Values**:
+
+- **Binary Streams** (default): `16KB` (16,384 bytes)
+- **Object Mode Streams** (default): `16` objects
+
+**Mental Model**: Think of the highWaterMark as a **warning line**, not a lid.
+
+- **Below Line**: Stream accepts data eagerly.
+- **Above Line**: Stream indicates "full" (backpressure), but can physically hold more.
+
+**Critical Detail**: `highWaterMark` is a **soft threshold**, not a **hard limit**.
+
+- **Limit**: Rejection of data beyond a point.
+- **Threshold**: Indication to pause (`.write()` returns `false`), but data is still accepted.
+
+**What developers think**: "If I exceed the highWaterMark, the stream will throw an error or block."
+
+**What actually happens**:
+
+- The stream keeps buffering data indefinitely.
+- Memory usage spikes.
+- The process eventually crashes with Out of Memory (OOM) if the producer doesn't respect the `false` signal.
+
+**When to customize**:
+
+- **Increase (e.g., 64KB)**: For high-throughput internal processing (file copy) to reduce CPU overhead from frequent pauses.
+- **Decrease**: For high-concurrency servers to keep per-connection memory footprint low.
+
+```javascript
+// Example: Adjusting buffer for high-throughput
+const stream = fs.createReadStream("large-video.mp4", {
+  highWaterMark: 64 * 1024, // 64KB chunks (default is 16KB)
+});
+```
 
 ---
 
@@ -279,14 +336,14 @@ write();
 
 ```javascript
 // examples/example-40-pipe-backpressure.js
-const fs = require('fs');
+const fs = require("fs");
 
 // Automatic backpressure handling
-fs.createReadStream('input.txt')
-  .pipe(fs.createWriteStream('output.txt'));
+fs.createReadStream("input.txt").pipe(fs.createWriteStream("output.txt"));
 ```
 
 **What `.pipe()` does**:
+
 1. Reads chunk from readable
 2. Writes to writable
 3. If writable buffer full, pauses readable
@@ -305,20 +362,20 @@ fs.createReadStream('input.txt')
 
 ```javascript
 // examples/example-41-http-request-stream.js
-const http = require('http');
+const http = require("http");
 
 const server = http.createServer((req, res) => {
   // req is readable stream
-  let data = '';
+  let data = "";
 
-  req.on('data', (chunk) => {
+  req.on("data", (chunk) => {
     data += chunk.toString();
     // Process chunk as it arrives
   });
 
-  req.on('end', () => {
-    console.log('Request body complete');
-    res.end('OK');
+  req.on("end", () => {
+    console.log("Request body complete");
+    res.end("OK");
   });
 });
 
@@ -328,6 +385,7 @@ server.listen(3000);
 **What developers think**: "Request body is just data."
 
 **What actually happens**:
+
 - Request body arrives in chunks
 - Can process chunks as they arrive
 - Don't need to wait for entire body
@@ -341,14 +399,13 @@ server.listen(3000);
 
 ```javascript
 // examples/example-42-http-response-stream.js
-const http = require('http');
-const fs = require('fs');
+const http = require("http");
+const fs = require("fs");
 
 const server = http.createServer((req, res) => {
   // res is writable stream
   // Stream file directly to response
-  fs.createReadStream('large-file.txt')
-    .pipe(res);
+  fs.createReadStream("large-file.txt").pipe(res);
 });
 
 server.listen(3000);
@@ -357,6 +414,7 @@ server.listen(3000);
 **What developers think**: "Need to load file into memory first."
 
 **What actually happens**:
+
 - File streamed directly to response
 - No intermediate memory buffer
 - Handles backpressure automatically (via `.pipe()`)
@@ -370,12 +428,12 @@ server.listen(3000);
 
 ```javascript
 // examples/example-43-http-backpressure.js
-const http = require('http');
-const fs = require('fs');
+const http = require("http");
+const fs = require("fs");
 
 const server = http.createServer((req, res) => {
   // Stream large file
-  const fileStream = fs.createReadStream('large-file.txt');
+  const fileStream = fs.createReadStream("large-file.txt");
 
   fileStream.pipe(res);
 
@@ -391,6 +449,7 @@ server.listen(3000);
 ```
 
 **What happens**:
+
 1. Server reads file chunks quickly
 2. Client receives chunks slowly (slow network)
 3. Response buffer fills up
@@ -410,22 +469,22 @@ server.listen(3000);
 
 ```javascript
 // examples/example-44-tcp-stream.js
-const net = require('net');
+const net = require("net");
 
 const server = net.createServer((socket) => {
   // socket is duplex stream
 
   // Readable side
-  socket.on('data', (chunk) => {
+  socket.on("data", (chunk) => {
     console.log(`Received: ${chunk.toString()}`);
   });
 
   // Writable side
-  socket.write('Hello client\n');
+  socket.write("Hello client\n");
 
   // Handle backpressure
-  socket.on('drain', () => {
-    console.log('Socket drained, can write more');
+  socket.on("drain", () => {
+    console.log("Socket drained, can write more");
   });
 });
 
@@ -433,6 +492,7 @@ server.listen(3000);
 ```
 
 **Key characteristics**:
+
 - Bidirectional (read and write)
 - Two independent buffers
 - Backpressure on write side
@@ -446,9 +506,9 @@ server.listen(3000);
 
 ```javascript
 // examples/example-45-tcp-backpressure.js
-const net = require('net');
+const net = require("net");
 
-const socket = net.createConnection(3000, 'localhost');
+const socket = net.createConnection(3000, "localhost");
 
 let i = 0;
 function write() {
@@ -459,7 +519,7 @@ function write() {
 
   if (i < 10000) {
     // Buffer full, wait for drain
-    socket.once('drain', write);
+    socket.once("drain", write);
   } else {
     socket.end();
   }
@@ -469,6 +529,7 @@ write();
 ```
 
 **What happens**:
+
 - Sender writes messages quickly
 - Receiver processes slowly
 - Socket write buffer fills
@@ -489,18 +550,19 @@ write();
 
 ```javascript
 // BAD: Loads entire file
-const data = fs.readFileSync('large-file.txt');
+const data = fs.readFileSync("large-file.txt");
 // Memory usage: entire file size
 
 // GOOD: Stream file
-const stream = fs.createReadStream('large-file.txt');
-stream.on('data', (chunk) => {
+const stream = fs.createReadStream("large-file.txt");
+stream.on("data", (chunk) => {
   // Process chunk
 });
 // Memory usage: chunk size (~64KB)
 ```
 
 **Memory comparison**:
+
 - `readFileSync`: Entire file in memory
 - `createReadStream`: Constant memory (chunk size)
 
@@ -512,9 +574,9 @@ stream.on('data', (chunk) => {
 
 ```javascript
 // examples/example-46-file-stream-write.js
-const fs = require('fs');
+const fs = require("fs");
 
-const writable = fs.createWriteStream('output.txt');
+const writable = fs.createWriteStream("output.txt");
 
 // Handle backpressure
 let i = 0;
@@ -525,7 +587,7 @@ function write() {
   } while (i < 1000000 && ok);
 
   if (i < 1000000) {
-    writable.once('drain', write);
+    writable.once("drain", write);
   } else {
     writable.end();
   }
@@ -535,6 +597,7 @@ write();
 ```
 
 **What works**:
+
 - Checks `.write()` return value
 - Handles backpressure
 - Memory usage stays bounded
@@ -544,18 +607,23 @@ write();
 ## Common Misconceptions
 
 ### ❌ Misconception 1: "Streams are just convenience APIs"
+
 **Reality**: Streams are **essential** for handling large data efficiently. They prevent memory overflow and enable flow control.
 
 ### ❌ Misconception 2: ".write() always succeeds"
+
 **Reality**: `.write()` returns `false` when buffer is full. Must handle backpressure or risk memory issues.
 
 ### ❌ Misconception 3: ".pipe() is just syntactic sugar"
+
 **Reality**: `.pipe()` handles backpressure automatically. Manual `.write()` requires manual backpressure handling.
 
 ### ❌ Misconception 4: "Backpressure only matters for large data"
+
 **Reality**: Backpressure matters whenever producer is faster than consumer, regardless of data size.
 
 ### ❌ Misconception 5: "HTTP responses don't need backpressure"
+
 **Reality**: HTTP responses are writable streams. Slow clients cause backpressure. Must handle it.
 
 ---
@@ -563,6 +631,7 @@ write();
 ## Production Failure Modes
 
 ### Failure Mode 1: Ignoring Backpressure
+
 **What breaks**: Memory usage grows unbounded, can cause out-of-memory errors.
 
 **How to detect**: Memory usage grows, application crashes with OOM errors.
@@ -570,6 +639,7 @@ write();
 **How to fix**: Handle `.write()` return value, wait for `'drain'` event.
 
 ### Failure Mode 2: Not Using Streams for Large Data
+
 **What breaks**: Loading entire files/responses into memory causes memory issues.
 
 **How to detect**: High memory usage, crashes on large files.
@@ -577,6 +647,7 @@ write();
 **How to fix**: Use streams instead of `readFileSync` / `readFile`.
 
 ### Failure Mode 3: Assuming .pipe() Handles Everything
+
 **What breaks**: Custom stream implementations might not handle backpressure correctly.
 
 **How to detect**: Memory issues, streams not pausing correctly.
@@ -588,16 +659,19 @@ write();
 ## What Cannot Be Done (And Why)
 
 ### Cannot: Ignore Backpressure
+
 **Why**: Buffer fills up, memory usage grows unbounded, can cause crashes.
 
 **Workaround**: Always handle `.write()` return value and `'drain'` event.
 
 ### Cannot: Guarantee Exact Chunk Sizes
+
 **Why**: Chunk sizes depend on underlying implementation, OS, network conditions.
 
 **Workaround**: Process chunks as they arrive, don't assume sizes.
 
 ### Cannot: Skip Backpressure with .pipe()
+
 **Why**: `.pipe()` handles backpressure automatically, but only if streams are implemented correctly.
 
 **Workaround**: Use `.pipe()` for automatic handling, or handle manually with `.write()`.
@@ -609,21 +683,24 @@ write();
 ### How to Identify Backpressure Issues
 
 **Method 1: Monitor .write() return value**
+
 ```javascript
 const ok = stream.write(data);
 if (!ok) {
-  console.log('Backpressure: buffer full');
+  console.log("Backpressure: buffer full");
 }
 ```
 
 **Method 2: Monitor 'drain' events**
+
 ```javascript
-stream.on('drain', () => {
-  console.log('Backpressure relieved: buffer drained');
+stream.on("drain", () => {
+  console.log("Backpressure relieved: buffer drained");
 });
 ```
 
 **Method 3: Monitor memory usage**
+
 ```javascript
 // If memory grows unbounded, might be backpressure issue
 ```
@@ -683,6 +760,7 @@ stream.on('drain', () => {
 ## Next Steps
 
 Before moving to the next concept, confirm:
+
 1. You understand what backpressure is and why it matters
 2. You know how `.pipe()` handles backpressure automatically
 3. You can handle backpressure manually with `.write()` and `'drain'`
@@ -696,21 +774,27 @@ Before moving to the next concept, confirm:
 ## Practice Exercises
 
 ### Exercise 1: Backpressure Handling
+
 Create a script that:
+
 - Writes large amounts of data to a file
 - Handles backpressure correctly
 - Monitors memory usage
 - Demonstrates the difference between handling and ignoring backpressure
 
 ### Exercise 2: HTTP Streaming
+
 Create an HTTP server that:
+
 - Streams large files to clients
 - Handles slow clients (backpressure)
 - Monitors memory usage
 - Demonstrates efficient file serving
 
 ### Exercise 3: Custom Transform Stream
+
 Create a custom transform stream that:
+
 - Transforms data as it flows
 - Handles backpressure correctly
 - Can be piped between readable and writable streams
