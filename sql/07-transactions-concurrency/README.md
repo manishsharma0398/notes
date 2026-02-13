@@ -15,12 +15,14 @@ Every isolation level is a **trade-off**. Perfect isolation kills performance. P
 Alice transfers $100 to Bob.
 
 **Without Transactions (The Disaster):**
+
 1.  Read Alice's balance: $500
 2.  **CRASH** (Power outage)
 3.  Bob never gets the money. Alice's balance is still $500.
 4.  **Lost Money in Transit**.
 
 **With Transactions (The Safety Net):**
+
 ```sql
 BEGIN;
 UPDATE accounts SET balance = balance - 100 WHERE name = 'Alice';
@@ -34,62 +36,84 @@ If the system crashes between the two UPDATEs, **BOTH are rolled back**. Money i
 
 ## 3. ACID Properties
 
+Think of ACID like baking a cake:
+
+Atomicity → You either bake the full cake or nothing, no half-baked cake.
+
+Consistency → The ingredients must follow the recipe rules (no salt in a cake).
+
+Isolation → Multiple bakers in the kitchen don’t mix their cakes.
+
+Durability → Once the cake is baked and put in the box, it stays there safely.
+
 ### A = Atomicity
+
 **Definition:** All or nothing. Either the entire transaction succeeds, or none of it happens.
 
 **Mechanism:** The database uses a **Transaction Log** (WAL - Write-Ahead Log).
--   Before changing data pages, write the change to the log.
--   On COMMIT, mark the transaction as "Complete" in the log.
--   On ROLLBACK (or crash), scan the log and undo incomplete transactions.
+
+- Before changing data pages, write the change to the log.
+- On COMMIT, mark the transaction as "Complete" in the log.
+- On ROLLBACK (or crash), scan the log and undo incomplete transactions.
 
 ### C = Consistency
+
 **Definition:** The database moves from one valid state to another. Constraints are enforced.
 
 **Example:**
--   Constraint: `balance >= 0`.
--   If Alice has $50, and you try to deduct $100, the DB rejects it.
--   **Consistency preserved.**
+
+- Constraint: `balance >= 0`.
+- If Alice has $50, and you try to deduct $100, the DB rejects it.
+- **Consistency preserved.**
 
 ### I = Isolation
+
 **Definition:** Concurrent transactions don't interfere with each other (in theory).
 
 **The Problem:** Strict isolation (SERIALIZABLE) is slow. Most DBs use weaker isolation by default.
 
 **Levels (Weakest to Strongest):**
+
 1.  **Read Uncommitted** (Dirty Reads allowed)
 2.  **Read Committed** (Default in Postgres, Oracle)
 3.  **Repeatable Read** (Default in MySQL)
 4.  **Serializable** (Strongest, slowest)
 
 ### D = Durability
+
 **Definition:** Once a transaction commits, it survives crashes.
 
 **Mechanism:** The commit is written to the **WAL** (disk), not just memory.
--   Even if the DB crashes 1ms after COMMIT, the log survives.
--   On restart, the DB replays the log and restores the committed state.
+
+- Even if the DB crashes 1ms after COMMIT, the log survives.
+- On restart, the DB replays the log and restores the committed state.
 
 ---
 
 ## 4. Isolation Levels & Read Anomalies
 
 ### A. Read Uncommitted (Almost Never Used)
+
 **Allows:** Dirty Reads (reading uncommitted changes from other transactions).
 
 **Example:**
--   Transaction A: `UPDATE accounts SET balance = 1000 WHERE id = 1;` (Not committed)
--   Transaction B: `SELECT balance FROM accounts WHERE id = 1;` → Sees 1000.
--   Transaction A: `ROLLBACK;`
--   **Result:** Transaction B read data that never existed.
+
+- Transaction A: `UPDATE accounts SET balance = 1000 WHERE id = 1;` (Not committed)
+- Transaction B: `SELECT balance FROM accounts WHERE id = 1;` → Sees 1000.
+- Transaction A: `ROLLBACK;`
+- **Result:** Transaction B read data that never existed.
 
 **Use Case:** Analytics on non-critical data where speed > correctness.
 
 ---
 
 ### B. Read Committed (Default in Postgres)
+
 **Prevents:** Dirty Reads.
 **Allows:** Non-Repeatable Reads, Phantom Reads.
 
 **Non-Repeatable Read Example:**
+
 ```
 Time | Transaction A              | Transaction B
 -----|----------------------------|------------------
@@ -106,10 +130,12 @@ T4   | SELECT balance WHERE id=1  |
 ---
 
 ### C. Repeatable Read (Default in MySQL)
+
 **Prevents:** Dirty Reads, Non-Repeatable Reads.
 **Allows:** Phantom Reads.
 
 **Phantom Read Example:**
+
 ```
 Time | Transaction A                       | Transaction B
 -----|-------------------------------------|------------------
@@ -126,16 +152,18 @@ T4   | SELECT COUNT(*) FROM accounts       |
 ---
 
 ### D. Serializable (Strongest)
+
 **Prevents:** All anomalies.
 **How:** The DB either uses locks or **Serializable Snapshot Isolation (SSI)**.
 
 **Cost:** Transactions may abort with "serialization failure" if conflicts are detected.
 
 **Example (Postgres SSI):**
--   Transaction A reads row X.
--   Transaction B updates row X and commits.
--   Transaction A tries to commit → **ERROR: could not serialize access**.
--   Transaction A must RETRY.
+
+- Transaction A reads row X.
+- Transaction B updates row X and commits.
+- Transaction A tries to commit → **ERROR: could not serialize access**.
+- Transaction A must RETRY.
 
 ---
 
@@ -152,34 +180,39 @@ Keep **multiple versions** of each row. Readers see old versions. Writers create
 ### How MVCC Works (Postgres Example)
 
 Each row has hidden metadata:
--   `xmin`: Transaction ID that created this row.
--   `xmax`: Transaction ID that deleted/updated this row (if any).
+
+- `xmin`: Transaction ID that created this row.
+- `xmax`: Transaction ID that deleted/updated this row (if any).
 
 **Example:**
+
 1.  Transaction 100 inserts row: `(id=1, balance=500, xmin=100, xmax=NULL)`.
 2.  Transaction 200 updates row: Creates NEW version `(id=1, balance=1000, xmin=200, xmax=NULL)`. Marks old version `xmax=200`.
 3.  Transaction 150 (started before 200) reads row → Sees old version (balance=500).
 4.  Transaction 250 (started after 200) reads row → Sees new version (balance=1000).
 
 **The Visibility Rule:**
--   A row is visible if `xmin <= your_transaction_id < xmax`.
+
+- A row is visible if `xmin <= your_transaction_id < xmax`.
 
 ### The Cost of MVCC
--   **Bloat:** Old row versions accumulate. Requires **VACUUM** to clean them up.
--   **Snapshot Isolation:** Not true Serializability (Postgres added SSI later to fix this).
+
+- **Bloat:** Old row versions accumulate. Requires **VACUUM** to clean them up.
+- **Snapshot Isolation:** Not true Serializability (Postgres added SSI later to fix this).
 
 ---
 
 ## 6. Locks vs. MVCC
 
-| Mechanism | Readers Block Writers? | Writers Block Readers? | Concurrency |
-| :--- | :--- | :--- | :--- |
-| **Locks (Pessimistic)** | Yes | Yes | Low |
-| **MVCC (Optimistic)** | No | No | High |
+| Mechanism               | Readers Block Writers? | Writers Block Readers? | Concurrency |
+| :---------------------- | :--------------------- | :--------------------- | :---------- |
+| **Locks (Pessimistic)** | Yes                    | Yes                    | Low         |
+| **MVCC (Optimistic)**   | No                     | No                     | High        |
 
 **When Locks Are Used Even in MVCC:**
--   `SELECT ... FOR UPDATE` (Explicit lock).
--   Writes still acquire row-level locks to prevent conflicting updates.
+
+- `SELECT ... FOR UPDATE` (Explicit lock).
+- Writes still acquire row-level locks to prevent conflicting updates.
 
 ---
 
@@ -188,6 +221,7 @@ Each row has hidden metadata:
 **Definition:** Two transactions waiting for each other.
 
 **Example:**
+
 ```
 Time | Transaction A                    | Transaction B
 -----|----------------------------------|------------------
@@ -202,6 +236,7 @@ T4   |                                  | UPDATE accounts SET ... WHERE id=1
 **Result:** Deadlock. The DB picks a **Victim** (one transaction) and aborts it.
 
 **Prevention:**
+
 1.  Always acquire locks in the same order (e.g., ORDER BY id).
 2.  Keep transactions short.
 3.  Minimize lock contention.
@@ -213,7 +248,8 @@ T4   |                                  | UPDATE accounts SET ... WHERE id=1
 **Q:** "Why does Postgres default to Read Committed instead of Serializable?"
 
 **Answer:**
--   **Performance:** Serializable has overhead (SSI checks, potential aborts).
--   **Most Apps Don't Need It:** For typical CRUD apps, Read Committed + careful design is sufficient.
--   **Backward Compatibility:** Changing the default would break existing apps that assume weaker isolation.
--   **Trade-off:** Read Committed prevents the most dangerous anomaly (Dirty Reads) while allowing high concurrency.
+
+- **Performance:** Serializable has overhead (SSI checks, potential aborts).
+- **Most Apps Don't Need It:** For typical CRUD apps, Read Committed + careful design is sufficient.
+- **Backward Compatibility:** Changing the default would break existing apps that assume weaker isolation.
+- **Trade-off:** Read Committed prevents the most dangerous anomaly (Dirty Reads) while allowing high concurrency.
