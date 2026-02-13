@@ -58,7 +58,7 @@ Depth calibration:
 
 Interview readiness:
 
-* Add 2–3 senior-level interview questions per topic.
+* Add 9–10 senior-level interview questions per topic.
 * Include at least one:
 
   * “Why does JavaScript behave this way?”
@@ -74,30 +74,30 @@ Progression:
 
 Topics to eventually cover (but do not dump all at once):
 
-* JavaScript execution model (parsing, compilation, execution)
-* Execution contexts and the call stack
-* Lexical scope and scope chain
-* Hoisting (what is actually hoisted and why)
-* `this` binding (all four rules, arrow functions, edge cases)
-* Closures (memory retention and lifecycle)
-* Primitive vs reference types
-* Value vs reference semantics
-* Type coercion and equality (`==` vs `===`)
-* Abstract operations (ToPrimitive, ToNumber, etc.)
-* Objects, property access, and prototype chain
-* `new`, constructors, and class syntax internals
-* Functions as objects
-* Iteration protocols (`Symbol.iterator`, generators)
-* Asynchronous JavaScript foundations (Promises as a language feature)
-* Microtasks vs macrotasks (language perspective)
-* Error handling semantics (`try/catch`, async errors)
-* Memory management and garbage collection (language-level view)
-* Immutability, freezing, and copying pitfalls
-* Numeric edge cases (`NaN`, `Infinity`, floating-point precision)
-* Modules (ESM semantics, loading, live bindings)
-* Strict mode and why it exists
-* Undefined, null, and missing properties
-* Undefined and surprising but spec-compliant behavior
+- [x] JavaScript execution model (parsing, compilation, execution) — **Chapter 1**
+- [x] Execution contexts and the call stack — **Chapter 2**
+- [x] Lexical scope and scope chain — **Chapter 3**
+- [x] Hoisting (what is actually hoisted and why) — **Chapter 4**
+- [x] `this` binding (all four rules, arrow functions, edge cases) — **Chapter 5**
+- [x] Closures (memory retention and lifecycle) — **Chapter 6**
+- [x] Primitive vs reference types — **Chapter 7**
+- [x] Functions as objects — **Chapter 8**
+- [x] Value vs reference semantics — **Chapter 9**
+- [x] Type coercion and equality (`==` vs `===`) — **Chapter 10**
+- [ ] Abstract operations (ToPrimitive, ToNumber, etc.) — *Covered in Chapter 10*
+- [ ] Objects, property access, and prototype chain
+- [ ] `new`, constructors, and class syntax internals
+- [ ] Iteration protocols (`Symbol.iterator`, generators)
+- [ ] Asynchronous JavaScript foundations (Promises as a language feature)
+- [ ] Microtasks vs macrotasks (language perspective)
+- [ ] Error handling semantics (`try/catch`, async errors)
+- [ ] Memory management and garbage collection (language-level view)
+- [ ] Immutability, freezing, and copying pitfalls
+- [ ] Numeric edge cases (`NaN`, `Infinity`, floating-point precision)
+- [ ] Modules (ESM semantics, loading, live bindings)
+- [ ] Strict mode and why it exists
+- [ ] Undefined, null, and missing properties
+- [ ] Undefined and surprising but spec-compliant behavior
 
 Important:
 

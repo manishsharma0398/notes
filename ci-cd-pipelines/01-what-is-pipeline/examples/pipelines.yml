@@ -1,0 +1,89 @@
+# GitHub Actions Example
+name: Failed State Example
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "hello" > file.txt
+  
+  test:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - run: cat file.txt  # FAILS: Different VM, no file
+
+---
+
+# GitLab CI Example  
+stages:
+  - build
+  - test
+
+build:
+  stage: build
+  script:
+    - echo "artifact" > output.txt
+    # File only exists in this container
+
+test:
+  stage: test
+  script:
+    - cat output.txt  # FAILS: Different container
+
+---
+
+# Correct: Using Artifacts
+# GitHub Actions
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: make build
+      - uses: actions/upload-artifact@v3
+        with:
+          name: dist
+          path: dist/
+  
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          name: dist
+      - run: npm test
+
+---
+
+# Execution Graph Example
+# Parallel jobs after build
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: make build
+  
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm test
+  
+  lint:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm run lint
+  
+  security:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm audit
+  
+  deploy:
+    needs: [test, lint, security]
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./deploy.sh
