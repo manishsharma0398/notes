@@ -604,6 +604,263 @@ write();
 
 ---
 
+## Chunks vs Buffers: The Confusion Clarified
+
+### What Is a Chunk?
+
+**Chunk** = A **unit of data** that is transmitted or processed at one time.
+
+- **Size**: Typically matches the stream's `highWaterMark` (default 64KB for readable, 16KB for writable)
+- **When it arrives**: Emitted in the `'data'` event as a chunk arrives
+- **Example**: Reading a 1MB file in 64KB chunks = 16 chunks
+
+```javascript
+const fs = require("fs");
+
+const stream = fs.createReadStream("large-file.txt", {
+  highWaterMark: 64 * 1024, // Chunks are ~64KB
+});
+
+stream.on("data", (chunk) => {
+  console.log(`Chunk received: ${chunk.length} bytes`);
+  // chunk is a Buffer object
+  // chunk.length = ~64KB in this case
+});
+```
+
+### What Is a Buffer?
+
+**Buffer** = A **container** that holds data in memory temporarily.
+
+- **Type**: A JavaScript Buffer object (fixed-size byte array)
+- **Purpose**: Stores data in memory while being processed
+- **Can hold multiple things**: Raw bytes, decoded strings, etc.
+
+```javascript
+const chunk = Buffer.from("Hello World");
+console.log(chunk); // <Buffer 48 65 6c 6c 6f 20 57 6f 72 6c 64>
+console.log(chunk.length); // 11 bytes
+```
+
+### Key Difference: The Mental Model
+
+**Chunk**:
+
+- ✅ A **logical unit** of data flowing through a stream
+- ✅ The data emitted in each `'data'` event
+- ✅ Subject to `highWaterMark` size settings
+- ✅ How we **think about** data transfer
+
+**Buffer**:
+
+- ✅ A **physical container** holding bytes in memory
+- ✅ The actual JavaScript object type (`Buffer`)
+- ✅ Every chunk IS a Buffer object
+- ✅ How data is **stored** in memory
+
+### The Relationship
+
+```
+┌─────────────────────────────────────────┐
+│  Stream Processing                      │
+├─────────────────────────────────────────┤
+│                                         │
+│  Chunk 1 (Buffer)  ───────┐            │
+│  [64KB of bytes]          │            │
+│                           ▼ (processes)│
+│  Chunk 2 (Buffer)  ──── Process ─────> │
+│  [64KB of bytes]          ▲            │
+│                           │            │
+│  Chunk 3 (Buffer)  ───────┘            │
+│  [64KB of bytes]                       │
+│                                         │
+└─────────────────────────────────────────┘
+```
+
+### Internal Buffer vs Chunks
+
+**Internal Buffer**: The stream's internal queue that holds chunks waiting to be processed/consumed.
+
+```javascript
+// Internal buffer of writable stream
+writable.write(chunk1); // Adds to internal buffer
+writable.write(chunk2); // Adds to internal buffer (if space)
+writable.write(chunk3); // Might return false (buffer full)
+// Internal buffer now holds chunks waiting to be flushed
+```
+
+**Key Point**:
+
+- A **chunk** is one piece of data
+- The **internal buffer** is the queue holding multiple chunks
+
+### Common Confusion Example
+
+```javascript
+const fs = require("fs");
+const stream = fs.createReadStream("file.txt");
+
+stream.on("data", (chunk) => {
+  // ✅ `chunk` is a single piece of data (a Buffer object)
+  console.log(`Received chunk of size: ${chunk.length}`);
+
+  // ❌ NOT confused: `chunk` is not the stream's internal buffer
+  // ❌ NOT confused: `chunk` is not the file's data at highWaterMark
+  // ✅ CORRECT: `chunk` is one logical unit of transfer
+});
+```
+
+### When You See "Buffer"
+
+1. **"Check the writable buffer"** = Check the internal queue holding chunks
+2. **"The chunk is a Buffer"** = Each data piece is a Buffer object
+3. **"The highWaterMark controls buffer size"** = Threshold before internal buffer fills
+
+---
+
+## Streams and Encoding: Is Data Always Transferred as Buffer?
+
+### Short Answer
+
+**Yes**, internally streams always transfer data as **Buffers** (byte arrays). But you can **set encoding** to get strings instead.
+
+### How It Works
+
+**Without encoding** (raw bytes):
+
+```javascript
+const fs = require("fs");
+
+const stream = fs.createReadStream("file.txt");
+// No encoding set
+
+stream.on("data", (chunk) => {
+  console.log(typeof chunk); // 'object' (it's a Buffer)
+  console.log(chunk); // <Buffer 48 65 6c 6c 6f 2e 2e 2e>
+  // Still a Buffer, not a string
+});
+```
+
+**With encoding** (automatic string conversion):
+
+```javascript
+const fs = require("fs");
+
+const stream = fs.createReadStream("file.txt", {
+  encoding: "utf8", // Request string encoding
+});
+
+stream.on("data", (chunk) => {
+  console.log(typeof chunk); // 'string'
+  console.log(chunk); // "Hello World..."
+  // Appears as a string, but was transferred as Buffer internally
+});
+```
+
+### The Reality: What Actually Happens
+
+Even when you set `encoding: 'utf8'`, the data flow is:
+
+```
+File System (bytes)
+        ↓
+   Read as Buffer (raw bytes)
+        ↓
+   Convert to UTF-8 string
+        ↓
+   Emit in 'data' event (as string)
+```
+
+**Critical Detail**: The **internal transfer** is still bytes. The **encoding** is just a **conversion layer** that transforms buffers to strings before emitting the event.
+
+### When to Use Encoding
+
+**Use encoding when**:
+
+- You're working with text files
+- You want strings, not raw bytes
+- Decoding happens automatically
+
+**Avoid encoding when**:
+
+- You're working with binary data (images, videos, etc.)
+- You need raw bytes for crypto/compression
+- Performance matters (conversion costs CPU)
+
+```javascript
+// ✅ Good: Text file with encoding
+fs.createReadStream("text.txt", { encoding: "utf8" }).on("data", (str) => {
+  console.log(str); // String, ready to use
+});
+
+// ✅ Good: Binary data without encoding
+fs.createReadStream("image.png").on("data", (buffer) => {
+  console.log(buffer); // Buffer, for binary processing
+});
+
+// ⚠️ Bad: Binary data with encoding
+fs.createReadStream("image.png", { encoding: "utf8" }).on("data", (str) => {
+  // Tries to decode binary as UTF-8, produces garbage
+  console.log(str); // Corrupted string
+});
+```
+
+### Multi-Byte Characters and Encoding
+
+**Problem**: Multi-byte UTF-8 characters can split across chunks.
+
+```javascript
+const stream = fs.createReadStream("file.txt", {
+  encoding: "utf8",
+  highWaterMark: 10, // Small chunk size (10 bytes)
+});
+
+stream.on("data", (chunk) => {
+  // If a multi-byte character (like "你") is split across chunks,
+  // Node.js handles it automatically:
+  // - Stores incomplete bytes in internal buffer
+  // - Emits complete character when ready
+  console.log(chunk); // Always a valid UTF-8 string
+});
+```
+
+**How Node.js handles this**:
+
+1. Raw bytes read from file
+2. Incomplete multi-byte sequences stored internally
+3. Next chunk arrives
+4. Incomplete sequence combined with next chunk
+5. Complete character decoded and emitted
+
+This is **automatic** when using encoding. Without encoding, you'd get raw bytes and have to handle multi-byte sequences yourself.
+
+### Backpressure with Encoding
+
+**Important**: Backpressure works the same with or without encoding.
+
+```javascript
+const stream = fs.createReadStream("file.txt", {
+  encoding: "utf8",
+});
+
+stream.on("data", (chunk) => {
+  // chunk is now a string, but backpressure still applies:
+  const ok = process.stdout.write(chunk);
+
+  if (!ok) {
+    stream.pause(); // Handle backpressure
+  }
+});
+
+process.stdout.on("drain", () => {
+  stream.resume();
+});
+```
+
+**Key Point**: Encoding changes the **type** (Buffer → String), not the **flow control** mechanism.
+
+---
+
 ## Common Misconceptions
 
 ### ❌ Misconception 1: "Streams are just convenience APIs"
