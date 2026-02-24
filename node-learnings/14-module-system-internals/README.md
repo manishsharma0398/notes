@@ -2,7 +2,7 @@
 
 ## Mental Model: Modules as Isolated Execution Contexts
 
-Think of modules as **isolated JavaScript execution contexts** that are **loaded once** and **cached forever**:
+Think of modules as **isolated JavaScript execution contexts** that are **loaded once** and **cached for the lifetime of the process**:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -27,10 +27,11 @@ Think of modules as **isolated JavaScript execution contexts** that are **loaded
 
 **Key Insight**: When you `require()` a module:
 
-1. **Resolve**: Find the actual file path (handles `node_modules`, extensions, etc.)
-2. **Load**: Read file from disk (only if not cached)
-3. **Execute**: Run module code in isolated context
-4. **Cache**: Store result in `require.cache` (never load again)
+1. **Resolve**: Find the absolute file path — then check `require.cache`. If hit, return immediately (no disk I/O, no re-execution).
+2. **Load**: Read file from disk; create module object
+3. **Cache**: Insert into `require.cache` **before execution** (prevents circular dep infinite loops)
+4. **Execute**: Wrap via `Module.wrap()`, compile with V8, run in isolated scope
+5. **Return**: `module.exports`; set `module.loaded = true`
 
 **Critical Reality**: Modules are **synchronous** (CommonJS) or **asynchronous** (ESM), and this difference affects:
 
@@ -56,7 +57,7 @@ Think of modules as **isolated JavaScript execution contexts** that are **loaded
 - **Isolated scope**: Each module has its own scope
 - **Exports**: Explicit API (`module.exports`)
 - **Imports**: Explicit dependencies (`require()`)
-- **Caching**: Modules loaded once, reused forever
+- **Caching**: Modules loaded once, reused for the lifetime of the process
 
 ### CommonJS Module Loading Process
 
@@ -64,12 +65,14 @@ When you call `require('./module.js')`, here's what happens:
 
 **Step 1: Resolution** (synchronous, blocking)
 
+Internally handled by `Module._resolveFilename()` — not a public API.
+
 ```
 require('./module.js')
     │
     ▼
-1. Resolve path:
-   - If relative: resolve relative to current file
+1. Resolve path:                              ← Module._resolveFilename()
+   - If relative: resolve relative to current file (__dirname)
    - If absolute: use as-is
    - If bare specifier: search node_modules
     │
@@ -81,9 +84,12 @@ require('./module.js')
    - ./module/index.js (directory)
     │
     ▼
-3. Check cache:
-   - If in require.cache → return cached module
-   - If not → continue to load
+3. Check cache:                               ← BEFORE any disk I/O
+   if (require.cache[filename])
+     return require.cache[filename].exports;
+   - Cache key is the resolved absolute filename
+   - If hit: return immediately (no disk access, no re-execution)
+   - If miss: continue to load
 ```
 
 **Step 2: Loading** (synchronous, blocking)
@@ -92,50 +98,74 @@ require('./module.js')
 1. Read file from disk (fs.readFileSync)
     │
     ▼
-2. Wrap in function:
-   (function(exports, require, module, __filename, __dirname) {
-     // Your module code here
-   })
-    │
-    ▼
-3. Create module object:
+2. Create module object:
    {
-     exports: {},
-     id: '/path/to/module.js',
+     id: '/path/to/filename',       ← resolved absolute path
+     exports: {},                    ← starts as plain empty object
      loaded: false,
-     parent: <parent module>,
+     parent: currentModule,
      children: []
    }
-```
-
-**Step 3: Execution** (synchronous, blocking)
-
-```
-1. Call wrapped function with module context
     │
     ▼
-2. Module code runs:
-   - Variables are scoped to module
-   - require() calls load dependencies
-   - module.exports sets what module exports
+3. ADD TO CACHE IMMEDIATELY (before execution):
+   require.cache['/path/to/module.js'] = module
+   ← This is what prevents infinite loops in circular deps
     │
     ▼
-3. Mark module as loaded:
+4. Wrap source code via Module.wrap():        ← NOT a direct eval()
+   (function(exports, require, module, __filename, __dirname) {
+     // Your module source code injected here
+   })
+   This is why variables are private and exports/require/__dirname exist.
+   They are just function parameters — not keywords.
+```
+
+**Step 3: Compilation + Execution** (synchronous, blocking)
+
+```
+1. V8 compiles the wrapped function:
+   - The wrapped string is passed to vm.runInThisContext() internally
+   - V8 JIT-compiles it into machine code
+   - This has a small but real cost on first load (no prior type feedback)
+    │
+    ▼
+2. Node calls the compiled function:
+   wrappedFn(module.exports, require, module, filename, dirname);
+   ↑
+   Note: first argument is module.exports, not a new object.
+   This is why:
+     exports.foo = 1         → works  (mutates module.exports)
+     exports = { foo: 1 }   → BREAKS (reassigns local param only)
+     module.exports = { foo }→ works  (replaces the reference)
+    │
+    ▼
+3. Module code runs:
+   - Variables are scoped to the wrapper function (not global)
+   - require() calls load dependencies (may recurse)
+   - module.exports is populated
+    │
+    ▼
+4. Mark module as loaded:
    module.loaded = true
 ```
 
-**Step 4: Caching** (permanent)
+**Step 4: Cache already written** (permanent)
 
 ```
-1. Store in require.cache:
-   require.cache['/path/to/module.js'] = module
+1. module.exports is now final:
+   require.cache['/path/to/module.js'].exports = { ... }
     │
     ▼
 2. Return module.exports
     │
     ▼
-3. Future require() calls return cached module
+3. Future require() calls return this same object reference
 ```
+
+> **Critical Detail**: Node.js inserts the module into `require.cache` **before** execution begins. This is not an optimization — it's the mechanism that prevents infinite recursion in circular dependencies. When B `require()`s A while A is still executing, Node.js returns the partial (incomplete) `module.exports` from cache instead of re-executing A.
+
+> **Interview trap**: `exports` and `module.exports` start pointing to the same object. But `module.exports` is what `require()` actually returns. If you do `exports = { foo }` you lose the reference — `module.exports` stays as `{}`. Always use `module.exports = ...` for full replacement.
 
 **Critical Detail**: CommonJS loading is **completely synchronous**. Every `require()` call:
 
@@ -220,7 +250,7 @@ import './module.js'
    }
 ```
 
-**Step 2: Resolution** (asynchronous, parallel)
+**Step 2: Resolution** (loader-driven, can involve parallel graph construction)
 
 ```
 1. Resolve all imports:
@@ -266,7 +296,7 @@ import './module.js'
 **Critical Detail**: ESM loading is **asynchronous** for the initial load, but **synchronous** for execution. The key difference:
 
 - **CommonJS**: Load + execute synchronously (blocks event loop)
-- **ESM**: Load asynchronously, execute synchronously (less blocking)
+- **ESM**: Instantiates and links the full dependency graph before evaluation. Execution is synchronous unless top-level await is used
 
 ### ESM Resolution Algorithm
 
@@ -364,15 +394,16 @@ const module2 = require("./module.js");
 
 **CommonJS**:
 
-- Exports are **copies** (not references)
-- Circular dependencies work, but exports may be `undefined` if accessed too early
+- You get a **reference to the partial `module.exports` object** as it existed when the circular `require()` returned
+- If A hasn't finished executing when B calls `require('./a')`, B gets `{}` (or whatever A had exported so far)
+- Primitives you destructure at that moment are frozen at that value — they won't update later
 - Order of execution matters
 
 **ESM**:
 
-- Exports are **live bindings** (references)
-- Circular dependencies work better
-- Exports are always available (even during circular loading)
+- Exports are **live bindings** (like pointers to export slots)
+- Even in circular imports, the binding always reflects the _current_ value of the export
+- This makes circular dependencies much more predictable in ESM
 
 ---
 
@@ -404,7 +435,7 @@ import module from moduleName; // SyntaxError
 
 **Problem**: Hot reloading is difficult because:
 
-- Modules are cached forever
+- Modules are cached for the lifetime of the process
 - Clearing cache breaks references
 - Dependencies may still reference old module
 
@@ -440,7 +471,7 @@ import module from "./commonjs-module.js";
 
 **Problem**: You cannot guarantee:
 
-- Which module executes first
+- You cannot arbitrarily override execution order. Execution order is strictly determined by the dependency graph topology.
 - When side effects run
 - Order of initialization
 
@@ -467,7 +498,7 @@ const moment = require("moment");
 // Each require() blocks event loop
 ```
 
-**Debugging**: Use `--trace-module-loading` to see module load times.
+**Debugging**: Use `NODE_DEBUG=module node app.js` to trace module resolution and loading.
 
 **Fix**:
 
@@ -531,7 +562,7 @@ module.exports = {};
 /project/node_modules/package-a/node_modules/package-b/node_modules/package-c/...
 ```
 
-**Debugging**: Use `--trace-module-loading` to see resolution time.
+**Debugging**: Use `NODE_DEBUG=module node app.js` to see resolution time per module.
 
 **Fix**:
 
@@ -602,7 +633,7 @@ CommonJS Module Loading:
         │
         ▼
 2. Resolve path
-   - Check cache → if found, return cached
+   - Check cache → if found, return cached exports
    - Resolve relative/absolute path
    - Try extensions (.js, .json, .node)
    - Search node_modules (if bare specifier)
@@ -613,13 +644,7 @@ CommonJS Module Loading:
    - Read file contents
         │
         ▼
-4. Wrap in function
-   (function(exports, require, module, __filename, __dirname) {
-     // module code
-   })
-        │
-        ▼
-5. Create module object
+4. Create module object
    {
      exports: {},
      id: '/path/to/module.js',
@@ -627,14 +652,20 @@ CommonJS Module Loading:
    }
         │
         ▼
-6. Execute module code
-   - Call wrapped function
-   - Module code runs (may call require() for dependencies)
-   - module.exports set
+5. INSERT INTO CACHE (before execution!)
+   require.cache['/path/to/module.js'] = module
+   ← Partial exports visible here if circular dep requires this module
         │
         ▼
-7. Cache module
-   require.cache['/path/to/module.js'] = module
+6. Wrap in function and execute
+   (function(exports, require, module, __filename, __dirname) {
+     // module code runs
+     // any require() inside here may trigger recursive loading
+   })
+   - module.exports populated during execution
+        │
+        ▼
+7. Mark loaded: module.loaded = true
         │
         ▼
 8. Return module.exports
@@ -747,7 +778,7 @@ Create a benchmark for module resolution:
 - Measure first `require()` time (resolution + loading)
 - Measure subsequent `require()` time (cache hit)
 - Compare deep `node_modules` nesting vs flat structure
-- Use `--trace-module-loading` to see resolution details
+- Use `NODE_DEBUG=module node app.js` to see resolution details
 - Optimize with `package-lock.json`
 - Explain why first resolution is slow
 
