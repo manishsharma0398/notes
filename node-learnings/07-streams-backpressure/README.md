@@ -180,22 +180,26 @@ socket.on("data", (chunk) => {
 
 ### Transform Streams
 
-**What they do**: Duplex stream that transforms data as it flows through.
+**What they do**: A special **Duplex stream** where the output is a transformation of the input. Data goes in one side, gets processed/transformed, and comes out the other side.
+
+**Key characteristic**: You implement one thing — the transformation logic — and the stream infrastructure handles all the read/write plumbing and backpressure for you.
 
 **Examples**:
 
-- `zlib.createGzip()` - Compression
-- `crypto.createCipher()` - Encryption
-- Custom transform streams
+- `zlib.createGzip()` — Compresses data as it passes through
+- `zlib.createGunzip()` — Decompresses data as it passes through
+- `crypto.createCipheriv()` — Encrypts data in-flight
+- `crypto.createDecipheriv()` — Decrypts data in-flight
+- Custom: uppercasing, JSON parsing, CSV parsing, line splitting
 
-**Key characteristic**: Data flows in one direction, gets transformed.
+**Quick example**:
 
 ```javascript
 // examples/example-37-transform-stream.js
 const fs = require("fs");
 const zlib = require("zlib");
 
-// Transform: file → gzip → output
+// Transform: file → gzip compress → output
 fs.createReadStream("input.txt")
   .pipe(zlib.createGzip())
   .pipe(fs.createWriteStream("output.txt.gz"));
@@ -226,7 +230,7 @@ Fast Producer → [Buffer fills] → Slow Consumer
 
 **Internal Buffer**:
 
-- Each writable stream has an internal buffer (default: ~16KB)
+- Each writable stream has an internal buffer with a default highWaterMark of 16KB
 - When buffer fills, `.write()` returns `false`
 - Producer should stop writing until `'drain'` event
 - When buffer drains, `'drain'` event fires
@@ -296,6 +300,8 @@ write();
 **Values**:
 
 - **Binary Streams** (default): `16KB` (16,384 bytes)
+  - Most streams (readable/writable): 16KB default
+  - fs.createReadStream(): 64KB default
 - **Object Mode Streams** (default): `16` objects
 
 **Mental Model**: Think of the highWaterMark as a **warning line**, not a lid.
@@ -312,7 +318,7 @@ write();
 
 **What actually happens**:
 
-- The stream keeps buffering data indefinitely.
+- The stream continues buffering data as long as the producer ignores backpressure. Memory grows until the process crashes.
 - Memory usage spikes.
 - The process eventually crashes with Out of Memory (OOM) if the producer doesn't respect the `false` signal.
 
@@ -766,7 +772,7 @@ File System (bytes)
         ↓
    Read as Buffer (raw bytes)
         ↓
-   Convert to UTF-8 string
+   Passed through StringDecoder before emission
         ↓
    Emit in 'data' event (as string)
 ```
@@ -818,7 +824,7 @@ const stream = fs.createReadStream("file.txt", {
 stream.on("data", (chunk) => {
   // If a multi-byte character (like "你") is split across chunks,
   // Node.js handles it automatically:
-  // - Stores incomplete bytes in internal buffer
+  // - Stores incomplete trailing bytes inside the StringDecoder (not the stream buffer)
   // - Emits complete character when ready
   console.log(chunk); // Always a valid UTF-8 string
 });
@@ -858,6 +864,709 @@ process.stdout.on("drain", () => {
 ```
 
 **Key Point**: Encoding changes the **type** (Buffer → String), not the **flow control** mechanism.
+
+---
+
+## Transform Streams: Deep Dive
+
+### Mental Model: A Processing Box in the Middle of a Pipe
+
+Think of a Transform stream as a **black box** sitting in the middle of a pipeline:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                                                              │
+│  Readable ──────► [ Transform Box ] ──────► Writable        │
+│  (input)          │ push(output)  │          (output)        │
+│                   │ or buffer it  │                          │
+│                   └───────────────┘                          │
+│                                                              │
+│  - Input side: behaves like a Writable (receives data)       │
+│  - Output side: behaves like a Readable (produces data)      │
+│  - You only implement: _transform() and optionally _flush()  │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Critical Detail**: Transform streams are **not** just for compression. Any time you need to **process data in-flight** without loading it all into memory, Transform is the right tool.
+
+---
+
+### How Transform Streams Work Internally
+
+**Two separate internal buffers**:
+
+1. **Write buffer (input side)**: Receives chunks written to it via `.write()` or piped from a Readable.
+2. **Read buffer (output side)**: Holds transformed output chunks until something reads/pipes from it.
+
+**The execution cycle for each chunk**:
+
+```
+1. External code writes chunk → write buffer
+2. Node.js calls your _transform(chunk, encoding, callback)
+3. Your code processes the chunk
+4. You call this.push(transformedChunk) → sends to read buffer
+5. You call callback() → signals ready for next chunk
+6. Downstream readable consumer pulls from read buffer
+```
+
+**What `_flush()` is for**: Called once when all input has been written (`.end()` called on writable side). Use it to emit any remaining buffered data that wasn't flushed by `_transform`.
+
+```
+All input written
+       ↓
+  _flush() called
+       ↓
+  this.push(remaining) → any final output
+       ↓
+  callback() → stream ends
+```
+
+---
+
+### Building a Custom Transform Stream
+
+**Method 1: Using the `Transform` class (recommended)**
+
+```javascript
+// examples/example-48-custom-transform.js
+const { Transform } = require("stream");
+
+class UpperCaseTransform extends Transform {
+  // _transform is called for EVERY chunk that comes in
+  _transform(chunk, encoding, callback) {
+    // chunk: Buffer or string (depending on encoding option)
+    // encoding: encoding of the chunk if it's a string
+    // callback: call when done with this chunk
+
+    const upperCased = chunk.toString().toUpperCase();
+
+    // Push the transformed data to the readable side
+    this.push(upperCased);
+
+    // Signal we're done with this chunk — ready for the next one
+    callback();
+  }
+
+  // _flush is called ONCE after all input has been written
+  // Use it to push any remaining buffered data
+  _flush(callback) {
+    // Nothing to flush in this example
+    // But if we had internally buffered data (e.g., incomplete lines),
+    // we'd push it here.
+    callback();
+  }
+}
+
+// Usage:
+const upperCase = new UpperCaseTransform();
+
+process.stdin.pipe(upperCase).pipe(process.stdout);
+// Type "hello world" → see "HELLO WORLD"
+```
+
+**Method 2: Using the factory function (lighter syntax)**
+
+```javascript
+// examples/example-49-transform-factory.js
+const { Transform } = require("stream");
+
+const upperCase = new Transform({
+  transform(chunk, encoding, callback) {
+    this.push(chunk.toString().toUpperCase());
+    callback();
+  },
+});
+
+process.stdin.pipe(upperCase).pipe(process.stdout);
+```
+
+---
+
+### Real-World Pattern 1: Line Splitter Transform
+
+**Problem**: Data arrives in arbitrary chunks. A 64KB chunk might contain 500 lines, or a single line might span two chunks. You want to emit **one complete line at a time**.
+
+**Solution**: Buffer incomplete data, only emit complete lines.
+
+```javascript
+// examples/example-50-line-splitter.js
+const { Transform } = require("stream");
+
+class LineSplitter extends Transform {
+  constructor(options) {
+    super({ ...options, readableObjectMode: true }); // emit objects (strings)
+    this._buffer = ""; // internal buffer for incomplete lines
+  }
+
+  _transform(chunk, encoding, callback) {
+    // Append incoming chunk to our internal buffer
+    this._buffer += chunk.toString();
+
+    // Split by newline
+    const lines = this._buffer.split("\n");
+
+    // The last element is either empty or an incomplete line
+    // Keep it in the buffer for the next chunk
+    this._buffer = lines.pop();
+
+    // Push all complete lines downstream
+    for (const line of lines) {
+      this.push(line);
+    }
+
+    callback();
+  }
+
+  _flush(callback) {
+    // Push the last remaining line (no trailing newline)
+    if (this._buffer) {
+      this.push(this._buffer);
+    }
+    callback();
+  }
+}
+
+// Usage:
+const fs = require("fs");
+
+fs.createReadStream("large-log-file.txt")
+  .pipe(new LineSplitter())
+  .on("data", (line) => {
+    console.log(`Line: ${line}`);
+    // Each 'data' event is one complete line, regardless of chunk boundaries
+  });
+```
+
+**What actually happens**:
+
+- A 64KB chunk arrives → might contain 1000 lines
+- `_transform` splits them and pushes each line individually
+- Downstream consumer receives one event per line
+- Memory usage stays bounded (we only buffer at most one partial line)
+
+---
+
+### Real-World Pattern 2: Compression Transform
+
+**Using built-in zlib transform streams**:
+
+```javascript
+// examples/example-51-gzip-transform.js
+const fs = require("fs");
+const zlib = require("zlib");
+const crypto = require("crypto");
+
+// Pipeline: read file → compress → encrypt → write
+// Each step is a Transform stream
+fs.createReadStream("input.mp4")
+  .pipe(zlib.createGzip()) // Transform 1: compress
+  .pipe(
+    crypto.createCipheriv(
+      "aes-256-cbc",
+      Buffer.alloc(32), // key (use real key in prod)
+      Buffer.alloc(16), // iv (use real iv in prod)
+    ),
+  ) // Transform 2: encrypt
+  .pipe(fs.createWriteStream("output.mp4.gz.enc")); // final destination
+```
+
+**Key insight**: Each `.pipe()` connects the **readable** output of one stream to the **writable** input of the next. Transforms sit in the middle — they're both.
+
+---
+
+### Real-World Pattern 3: Object Mode Transform
+
+**Use object mode when your chunks are JavaScript objects, not Buffers.**
+
+Example: Parse CSV lines → emit plain JS objects.
+
+```javascript
+// examples/example-52-object-mode-transform.js
+const { Transform } = require("stream");
+
+class CSVParser extends Transform {
+  constructor() {
+    super({
+      readableObjectMode: true, // output: JS objects
+      // writableObjectMode: false → input: Buffers/strings (default)
+    });
+    this._headers = null;
+    this._buffer = "";
+  }
+
+  _transform(chunk, encoding, callback) {
+    this._buffer += chunk.toString();
+    const lines = this._buffer.split("\n");
+    this._buffer = lines.pop(); // keep incomplete line
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const values = line.split(",");
+
+      if (!this._headers) {
+        this._headers = values; // first line = headers
+      } else {
+        // Emit a plain object for each data row
+        const obj = {};
+        this._headers.forEach((h, i) => (obj[h.trim()] = values[i]?.trim()));
+        this.push(obj); // pushing an object, not a Buffer
+      }
+    }
+    callback();
+  }
+
+  _flush(callback) {
+    if (this._buffer.trim() && this._headers) {
+      const values = this._buffer.split(",");
+      const obj = {};
+      this._headers.forEach((h, i) => (obj[h.trim()] = values[i]?.trim()));
+      this.push(obj);
+    }
+    callback();
+  }
+}
+
+// Usage:
+const fs = require("fs");
+
+fs.createReadStream("data.csv")
+  .pipe(new CSVParser())
+  .on("data", (record) => {
+    // record is a plain JS object like { name: 'Alice', age: '30' }
+    console.log(record);
+  });
+```
+
+**When to use object mode**:
+
+- When the natural output of your transform is a structured value (object, number, array)
+- When you're parsing a format (JSON lines, CSV, protocol buffers)
+- When downstream consumers work with objects, not raw bytes
+
+**Critical Detail**: You cannot mix object mode and non-object mode in the same side without explicitly setting `readableObjectMode` / `writableObjectMode`. Mismatches cause cryptic errors.
+
+---
+
+### Backpressure in Transform Streams
+
+**Transform streams respect backpressure on both sides.**
+
+- If the **downstream writable** is full: Node.js stops calling `_transform` (pauses the readable input side).
+- If you call `this.push()` and the read buffer fills: The transform pauses internally until downstream consumes.
+- `callback()` controls the pacing: next chunk is not fed to `_transform` until you call `callback()`.
+
+```javascript
+// examples/example-53-transform-backpressure.js
+const { Transform } = require("stream");
+
+class SlowTransform extends Transform {
+  _transform(chunk, encoding, callback) {
+    // Simulate async processing (e.g., DB write, API call)
+    setTimeout(() => {
+      this.push(chunk.toString().toUpperCase());
+      callback(); // Only AFTER async work is done
+      // Node.js will NOT call _transform again until callback() is called
+      // This naturally rate-limits the stream
+    }, 10);
+  }
+}
+
+process.stdin.pipe(new SlowTransform()).pipe(process.stdout);
+```
+
+**What developers think**: "If I call callback() early, I'll get better performance."
+
+**What actually happens**:
+
+- Calling `callback()` before async work finishes causes the next chunk to arrive before you're ready.
+- This leads to out-of-order output or race conditions.
+- Always call `callback()` **after** you are fully done with the chunk.
+
+---
+
+### Transform Stream Error Handling
+
+**Errors in `_transform` should be passed to `callback` or emitted.**
+
+```javascript
+// examples/example-54-transform-error.js
+const { Transform } = require("stream");
+
+class JSONParseTransform extends Transform {
+  constructor() {
+    super({ readableObjectMode: true });
+    this._buffer = "";
+  }
+
+  _transform(chunk, encoding, callback) {
+    this._buffer += chunk.toString();
+    const lines = this._buffer.split("\n");
+    this._buffer = lines.pop();
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        this.push(JSON.parse(line));
+      } catch (err) {
+        // Pass the error to callback → destroys the stream gracefully
+        return callback(new Error(`Invalid JSON: ${line.slice(0, 50)}`));
+      }
+    }
+    callback();
+  }
+}
+
+const parser = new JSONParseTransform();
+
+parser.on("error", (err) => {
+  console.error("Transform error:", err.message);
+});
+
+parser.on("data", (obj) => console.log(obj));
+
+parser.write('{"name": "Alice"}\n');
+parser.write("not json\n"); // triggers error
+```
+
+**What developers think**: "I can throw inside `_transform`."
+
+**What actually happens**:
+
+- Throwing inside `_transform` crashes the process (unhandled exception in a stream callback).
+- Always pass errors to `callback(err)` or use `this.destroy(err)`.
+- With `stream.pipeline()`, errors propagate automatically (see next section).
+
+---
+
+### Common Transform Stream Pitfalls
+
+| Pitfall                                     | What breaks                                     | Fix                                                      |
+| ------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------- |
+| Forgetting to call `callback()`             | Stream stalls forever, no more chunks processed | Always call `callback()`, even on error path             |
+| Calling `callback()` before async work done | Out-of-order output, race conditions            | Call only after fully done                               |
+| Throwing inside `_transform`                | Process crash                                   | Pass error to `callback(err)`                            |
+| Not implementing `_flush` when buffering    | Last partial chunk silently dropped             | Always implement `_flush` if you buffer data internally  |
+| Mixing object mode incorrectly              | `ERR_INVALID_ARG_TYPE` errors                   | Set `readableObjectMode`/`writableObjectMode` explicitly |
+
+---
+
+## `stream.pipeline()`: The Safe Way to Chain Streams
+
+### Why `.pipe()` Has a Hidden Problem
+
+**`.pipe()` does NOT propagate errors.** If any stream in the chain emits an error, the other streams are **not automatically cleaned up**.
+
+```javascript
+// examples/example-55-pipe-error-problem.js
+const fs = require("fs");
+const zlib = require("zlib");
+
+// BAD: .pipe() chain with no error handling
+fs.createReadStream("input.txt")
+  .pipe(zlib.createGzip())
+  .pipe(fs.createWriteStream("output.txt.gz"));
+
+// If createReadStream fails (file not found):
+// - The 'error' event fires on the readStream
+// - zlib and writeStream are NOT automatically destroyed
+// - File descriptor for output.txt.gz stays OPEN (resource leak)
+// - The process may hang
+```
+
+**What developers think**: `.pipe()` handles everything, including errors.
+
+**What actually happens**:
+
+- Only backpressure is handled automatically
+- Errors require manual `.on('error', ...)` on every stream in the chain
+- Forgetting this causes file descriptor leaks, zombie processes, memory leaks
+
+**The correct (but verbose) way with `.pipe()`**:
+
+```javascript
+// Manually handle errors for every stream
+const src = fs.createReadStream("input.txt");
+const gz = zlib.createGzip();
+const dest = fs.createWriteStream("output.txt.gz");
+
+src.on("error", cleanup);
+gz.on("error", cleanup);
+dest.on("error", cleanup);
+
+function cleanup(err) {
+  console.error(err);
+  src.destroy();
+  gz.destroy();
+  dest.destroy();
+}
+
+src.pipe(gz).pipe(dest);
+
+// This is verbose and error-prone — easy to forget one stream
+```
+
+---
+
+### `stream.pipeline()`: The Solution
+
+**`stream.pipeline()`** (added in Node.js 10) automatically:
+
+1. Connects streams in sequence (like `.pipe()`)
+2. Propagates errors from **any** stream to all others
+3. **Destroys all streams** on error or completion — no leaks
+4. Calls the final callback when the pipeline is done or has errored
+
+```
+stream.pipeline(
+  source,
+  ...transforms,
+  destination,
+  callback
+)
+```
+
+**Signature**:
+
+```javascript
+const { pipeline } = require("stream");
+
+pipeline(
+  readableStream,
+  [transform1, transform2, ...],  // zero or more transforms
+  writableStream,
+  (err) => {                       // callback: called on finish OR error
+    if (err) {
+      console.error("Pipeline failed:", err);
+    } else {
+      console.log("Pipeline succeeded");
+    }
+  }
+);
+```
+
+---
+
+### Basic `pipeline()` Usage
+
+```javascript
+// examples/example-56-pipeline-basic.js
+const { pipeline } = require("stream");
+const fs = require("fs");
+const zlib = require("zlib");
+
+pipeline(
+  fs.createReadStream("input.txt"),
+  zlib.createGzip(),
+  fs.createWriteStream("output.txt.gz"),
+  (err) => {
+    if (err) {
+      console.error("Compression failed:", err);
+    } else {
+      console.log("File compressed successfully");
+    }
+  },
+);
+
+// If ANY stream errors:
+// - All streams are destroyed automatically
+// - Callback is called with the error
+// - No resource leaks
+```
+
+**Comparison: `.pipe()` vs `pipeline()`**:
+
+| Feature                    | `.pipe()`                | `stream.pipeline()`    |
+| -------------------------- | ------------------------ | ---------------------- |
+| Backpressure               | ✅ Automatic             | ✅ Automatic           |
+| Error propagation          | ❌ Manual only           | ✅ Automatic           |
+| Stream cleanup on error    | ❌ Manual only           | ✅ Automatic           |
+| Completion callback        | ❌ None                  | ✅ Yes (last argument) |
+| Resource leak risk         | High                     | Low                    |
+| Recommended for production | ⚠️ Only for simple cases | ✅ Yes                 |
+
+---
+
+### `pipeline()` with Custom Transforms
+
+```javascript
+// examples/example-57-pipeline-transform.js
+const { pipeline, Transform } = require("stream");
+const fs = require("fs");
+const zlib = require("zlib");
+
+// Custom transform: count bytes passing through
+class ByteCounter extends Transform {
+  constructor() {
+    super();
+    this.bytesProcessed = 0;
+  }
+
+  _transform(chunk, encoding, callback) {
+    this.bytesProcessed += chunk.length;
+    this.push(chunk); // pass-through: push unchanged
+    callback();
+  }
+
+  _flush(callback) {
+    console.log(`Total bytes processed: ${this.bytesProcessed}`);
+    callback();
+  }
+}
+
+const counter = new ByteCounter();
+
+pipeline(
+  fs.createReadStream("large-video.mp4"),
+  counter, // count bytes
+  zlib.createGzip(), // compress
+  fs.createWriteStream("output.mp4.gz"),
+  (err) => {
+    if (err) {
+      console.error("Failed:", err);
+    } else {
+      console.log("Done! Bytes read:", counter.bytesProcessed);
+    }
+  },
+);
+```
+
+---
+
+### `pipeline()` with Promises (`stream/promises`)
+
+**Node.js 15+ provides a Promise-based version** — better for `async/await` code:
+
+```javascript
+// examples/example-58-pipeline-promises.js
+const { pipeline } = require("stream/promises"); // Note: stream/promises
+const fs = require("fs");
+const zlib = require("zlib");
+
+async function compressFile(input, output) {
+  try {
+    await pipeline(
+      fs.createReadStream(input),
+      zlib.createGzip(),
+      fs.createWriteStream(output),
+    );
+    console.log("Compressed successfully");
+  } catch (err) {
+    console.error("Compression failed:", err);
+    // All streams already cleaned up automatically
+  }
+}
+
+compressFile("input.txt", "output.txt.gz");
+```
+
+**Why the Promise version is often better**:
+
+- Works naturally with `async/await`
+- Errors throw in the `catch` block — no separate callback
+- Still auto-cleans all streams on error
+
+---
+
+### `pipeline()` Error Propagation: What Actually Happens
+
+**Flow diagram**:
+
+```
+Stream A ──► Stream B ──► Stream C ──► Stream D
+                               ↑
+                          ERROR fires here
+
+What pipeline() does automatically:
+  1. Catches error from Stream C
+  2. Destroys Stream A (closes, cleans up)
+  3. Destroys Stream B (closes, cleans up)
+  4. Destroys Stream D (closes, cleans up)
+  5. Calls callback(err) or rejects the Promise
+
+Result: No file descriptors left open, no memory leak
+```
+
+**Without `pipeline()`** (just `.pipe()`):
+
+```
+Stream A ──► Stream B ──► Stream C ──► Stream D
+                               ↑
+                          ERROR fires here
+
+What happens:
+  1. Stream C emits 'error'
+  2. Stream C is destroyed
+  3. Stream A, B, D: STILL RUNNING, still open
+  4. Process may hang indefinitely
+  5. File descriptors leak until GC
+```
+
+---
+
+### `pipeline()` with HTTP: The Production Pattern
+
+```javascript
+// examples/example-59-pipeline-http.js
+const { pipeline } = require("stream");
+const http = require("http");
+const fs = require("fs");
+const zlib = require("zlib");
+
+const server = http.createServer((req, res) => {
+  res.writeHead(200, {
+    "Content-Type": "text/plain",
+    "Content-Encoding": "gzip",
+  });
+
+  pipeline(
+    fs.createReadStream("large-file.txt"),
+    zlib.createGzip(),
+    res,
+    (err) => {
+      if (err) {
+        console.error("Stream error:", err);
+        // 'res' is already destroyed, can't write headers
+        // But we know everything is cleaned up
+      }
+    },
+  );
+});
+
+server.listen(3000);
+
+// What happens when client disconnects mid-transfer:
+// 1. 'res' emits 'close' or 'error'
+// 2. pipeline() detects this
+// 3. Destroys the file read stream immediately
+// 4. No CPU wasted reading rest of file for a client that left
+```
+
+**Critical Detail**: When a client disconnects mid-stream, `pipeline()` automatically stops reading the file. With plain `.pipe()`, the file would keep being read until EOF, wasting I/O.
+
+---
+
+### When to Use `pipeline()` vs `.pipe()`
+
+| Scenario                                       | Use                                                          |
+| ---------------------------------------------- | ------------------------------------------------------------ |
+| Quick one-off script, no error handling needed | `.pipe()` is fine                                            |
+| Production code with file I/O                  | `pipeline()` — resource leak prevention                      |
+| Multiple transforms in chain                   | `pipeline()` — single error callback                         |
+| HTTP servers streaming responses               | `pipeline()` — handles client disconnect                     |
+| `async/await` codebase                         | `pipeline()` from `stream/promises`                          |
+| Chaining more than 2 streams                   | `pipeline()` — `.pipe()` error handling becomes unmanageable |
+
+---
+
+### Common `pipeline()` Pitfalls
+
+| Pitfall                                        | What breaks                           | Fix                                                    |
+| ---------------------------------------------- | ------------------------------------- | ------------------------------------------------------ |
+| Using `stream/promises` in Node < 15           | `TypeError: Cannot destructure`       | Use callback-based `pipeline` from `stream` module     |
+| Forgetting the callback                        | No error handling, silent failures    | Always provide the callback (or use `await`)           |
+| Expecting to reuse streams after pipeline ends | Streams are destroyed after pipeline  | Create new stream instances for each pipeline run      |
+| Wrapping `res` in a pipeline without headers   | Headers might not be set before error | Set headers with `res.writeHead()` before `pipeline()` |
 
 ---
 
@@ -1023,6 +1732,9 @@ Before moving to the next concept, confirm:
 3. You can handle backpressure manually with `.write()` and `'drain'`
 4. You understand the difference between readable, writable, duplex, and transform streams
 5. You know when to use streams vs loading entire data into memory
+6. You can build a custom Transform stream using `_transform()` and `_flush()`
+7. You understand why `stream.pipeline()` is safer than `.pipe()` for production code
+8. You know the difference between `pipeline` (callback) and `pipeline` from `stream/promises`
 
 **Next Concept Preview**: "Buffers and Memory Layout"
 
@@ -1052,7 +1764,25 @@ Create an HTTP server that:
 
 Create a custom transform stream that:
 
-- Transforms data as it flows
-- Handles backpressure correctly
-- Can be piped between readable and writable streams
-- Demonstrates proper stream implementation
+- Reads a `.txt` file line by line (handle chunk boundaries correctly)
+- Transforms each line: uppercase it and prepend the line number
+- Writes output to a new file
+- Uses `_flush()` to ensure the last incomplete line is not dropped
+- Handles errors gracefully (no unhandled crash)
+
+### Exercise 4: Pipeline vs Pipe Error Handling
+
+Create two versions of the same file compression script:
+
+- **Version A**: Uses `.pipe()` chain with no error handling — demonstrate the resource leak by pointing to a non-existent input file
+- **Version B**: Uses `stream.pipeline()` — same scenario, but error is caught, all streams are cleaned up, and a clear message is logged
+- Demonstrate with both `pipeline` (callback style) and `pipeline` from `stream/promises` (async/await style)
+
+### Exercise 5: HTTP File Streaming with Pipeline
+
+Create an HTTP server that:
+
+- Serves large files over HTTP using `stream.pipeline()`
+- Compresses them with gzip on the fly (using `zlib.createGzip()` as a Transform)
+- Handles client disconnect mid-stream gracefully (no zombie file reads)
+- Logs bytes served per request using a custom ByteCounter Transform stream

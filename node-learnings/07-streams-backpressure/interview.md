@@ -15,7 +15,7 @@
 
 **How it works**:
 
-- Writable stream has internal buffer (default ~16KB)
+- Writable streams have an internal buffer controlled by highWaterMark (16KB default in byte mode).
 - When buffer fills, `.write()` returns `false`
 - Producer should stop writing until `'drain'` event
 - When buffer drains, `'drain'` event fires
@@ -73,6 +73,7 @@
 - Both readable and writable (bidirectional)
 - Examples: `net.Socket`, `tls.TLSSocket`
 - Two independent buffers (read buffer, write buffer)
+- Backpressure on the writable side does not automatically pause the readable side unless explicitly piped.
 
 **Transform Streams**:
 
@@ -93,11 +94,36 @@
 
 **Answer**:
 
-- Transform streams are duplex streams
-- Backpressure flows backward through the pipeline
-- If downstream buffer full, transform pauses reading
-- When downstream drains, transform resumes reading
-- `.pipe()` handles this automatically
+- Transform streams have **two independent internal buffers** (write side / read side)
+- `_transform(chunk, encoding, callback)` is called for each incoming chunk
+  - `this.push()` sends data to the readable (output) side
+  - `callback()` signals ready for the next chunk — next chunk waits until you call it
+  - `callback(err)` signals an error — destroys the stream gracefully
+- `_flush(callback)` is called **once** when all input is done (`.end()` called on write side)
+  - Use it to push any remaining internally buffered data
+  - **Must call `callback()`** even if nothing to push — or the stream never ends
+- Backpressure flows **backward**: if downstream (readable side consumer) is full
+  → Transform stops calling `_transform` until downstream drains
+- If you do async work in `_transform`, call `callback()` only **after** the async work finishes
+  → prevents out-of-order processing
+
+**Follow-up 3**: "What is object mode and when would you use it?"
+
+**Answer**:
+
+- By default transforms work with **Buffers/strings** (byte mode)
+- Setting `readableObjectMode: true` allows `this.push()` to emit any JS value (objects, numbers, arrays)
+- Setting `writableObjectMode: true` allows the write side to receive non-Buffer values
+- **Use cases**: CSV parser → JS objects, JSON lines → parsed objects, structured protocol parsing
+- **Critical**: mismatching modes (e.g., pushing an object without `readableObjectMode: true`) throws `ERR_INVALID_ARG_TYPE`
+
+**Follow-up 4**: "What's the difference between class-based and factory-style Transform?"
+
+**Answer**:
+
+- Both are equivalent in behavior
+- **Class** (extend `Transform`): use when you need **internal state** (e.g., `this._buffer`)
+- **Factory** (pass object to `new Transform({transform(){...}})`): lighter syntax for stateless transforms
 
 ---
 
@@ -115,7 +141,8 @@
 **Chunk**:
 
 - A **logical unit of data** emitted by a stream
-- Size typically matches `highWaterMark` (default 64KB for readable, 16KB for writable)
+- Chunk size is typically close to highWaterMark, but not guaranteed. (16kb for readabla and writeable, fs.createReadStream default is 64kb)
+- Chunk size can be smaller than highWaterMark due to internal buffering or partial reads.
 - Emitted in the `'data'` event
 - Example: Reading a 1MB file = ~16 chunks of 64KB each
 
@@ -267,7 +294,7 @@ The user never receives partial or corrupted characters.
 - highWaterMark controls how many bytes (or objects in objectMode) can be buffered.
 - Decoding happens during emission, not during low-level buffering.
 - UTF-8 characters can be up to 4 bytes long.
-- StringDecoder may temporarily store at most 3 incomplete bytes waiting for the remaining byte(s).
+- StringDecoder may temporarily store at most 3 incomplete bytes of an incomplete 4-byte sequence.
 - Once a full multi-byte sequence is available, it is decoded immediately.
 - The decoder’s leftover storage is bounded and independent of backpressure.
 
@@ -587,6 +614,111 @@ if (moreData) {
 
 ---
 
+## Q9: What's the problem with `.pipe()` in production? How does `stream.pipeline()` fix it?
+
+**Expected Answer**:
+
+**The `.pipe()` problem**: `.pipe()` handles backpressure but does **not propagate errors**.
+
+```javascript
+// BAD — resource leak on error
+fs.createReadStream("file.txt")
+  .pipe(zlib.createGzip())
+  .pipe(fs.createWriteStream("out.gz"));
+// If readStream errors: zlib and writeStream are NOT destroyed → file descriptor leak
+```
+
+**What happens**:
+
+- The erroring stream emits `'error'` and destroys itself
+- Other streams in the chain **stay open** (no automatic cleanup)
+- File descriptors remain open until GC — in production with many requests, this accumulates
+
+**The fix — `stream.pipeline()`** (Node 10+):
+
+```javascript
+const { pipeline } = require("stream");
+
+pipeline(
+  fs.createReadStream("file.txt"),
+  zlib.createGzip(),
+  fs.createWriteStream("out.gz"),
+  (err) => {
+    if (err)
+      console.error("failed:", err); // all streams already destroyed
+    else console.log("done");
+  },
+);
+```
+
+**What `pipeline()` does that `.pipe()` doesn't**:
+
+1. Error from **any** stream propagates to the callback
+2. **All** streams in the chain are destroyed on error or completion
+3. Provides a **single** completion/error callback
+4. When client disconnects (HTTP): stops reading source immediately (no wasted I/O)
+
+**Promise style** (Node 15+, cleaner for async/await):
+
+```javascript
+const { pipeline } = require("stream/promises");
+try {
+  await pipeline(src, transform, dst);
+} catch (err) {
+  // all streams already cleaned up
+}
+```
+
+**Follow-up**: "When is `.pipe()` still acceptable?"
+
+**Answer**: Short-lived scripts, single-stream chains, or when you manually attach `.on('error', ...)` to every stream. In production HTTP servers or long-running processes, always use `pipeline()`.
+
+---
+
+## Q10: How would you build a production-safe HTTP file streaming server?
+
+**Expected Answer**:
+
+```javascript
+const { pipeline } = require("stream");
+const http = require("http");
+const fs = require("fs");
+const zlib = require("zlib");
+
+http
+  .createServer((req, res) => {
+    // Set headers BEFORE pipeline — res gets destroyed on error
+    res.writeHead(200, {
+      "Content-Type": "text/plain",
+      "Content-Encoding": "gzip",
+    });
+
+    pipeline(
+      fs.createReadStream("large-file.txt"),
+      zlib.createGzip(),
+      res,
+      (err) => {
+        if (err) {
+          // Most likely: client disconnected (ECONNRESET)
+          // All streams already destroyed by pipeline()
+          console.error("Stream error:", err.message);
+        }
+      },
+    );
+  })
+  .listen(3000);
+```
+
+**Key points to mention**:
+
+1. `pipeline()` not `.pipe()` — handles client disconnect, no resource leaks
+2. Set headers before pipeline — can't set them after error destroys `res`
+3. gzip as a Transform stream in the middle
+4. Client disconnect is handled: `pipeline()` destroys `fs.createReadStream` immediately
+5. Can insert custom Transforms (ByteCounter, rate limiter) at any point in the chain
+
+---
+
 ## Interview Traps
 
 ### Trap 1: "What is backpressure?"
@@ -613,6 +745,21 @@ if (moreData) {
 
 **Trap**: Candidates might say "no" or "only if you have enough memory".
 **Correct**: **Yes** - streams use constant memory. Can process files larger than available memory.
+
+### Trap 6: "Is `.pipe()` safe for production?"
+
+**Trap**: Candidates might say "yes, it handles everything".
+**Correct**: `.pipe()` handles backpressure but **not errors**. Use `stream.pipeline()` in production to prevent resource leaks.
+
+### Trap 7: "What happens if you throw inside `_transform()`?"
+
+**Trap**: Candidates might say "the stream handles it".
+**Correct**: Unhandled exception — **process crash**. Always pass errors to `callback(err)` or use `this.destroy(err)`.
+
+### Trap 8: "What does `_flush()` do?"
+
+**Trap**: Candidates might say "it's optional" or "it clears the buffer".
+**Correct**: `_flush()` is called **once** when all input is written. If you buffer data internally (e.g., incomplete lines), you **must** implement `_flush()` or the last chunk is silently dropped. And you must call `callback()` inside it.
 
 ---
 
