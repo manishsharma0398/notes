@@ -9,3 +9,6 @@ console.log("  [index.js] Require ./b.js...");
 const b = require("./b.js");
 
 console.log("  [index.js] End");
+
+console.log9;
+const =

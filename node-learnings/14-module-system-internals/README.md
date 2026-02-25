@@ -71,22 +71,19 @@ Internally handled by `Module._resolveFilename()` — not a public API.
 require('./module.js')
     │
     ▼
-1. Resolve path:                              ← Module._resolveFilename()
-   - If relative: resolve relative to current file (__dirname)
+1. Resolve path: Module._resolveFilename()
+   - If relative: resolve relative to parent module’s directory
    - If absolute: use as-is
    - If bare specifier: search node_modules
-    │
-    ▼
-2. Try extensions:
-   - ./module.js
-   - ./module.json
-   - ./module.node (native addon)
-   - ./module/index.js (directory)
-    │
-    ▼
-3. Check cache:                               ← BEFORE any disk I/O
-   if (require.cache[filename])
-     return require.cache[filename].exports;
+   - Try file extensions (.js, .json, .node(native addon))
+   - If directory:
+      - read package.json "main"
+      - fallback to index.js / index.json / index.node
+   - returns resolved absolute filename
+
+2. Check cache (Module._cache) BEFORE any disk I/O:
+   - if (Module._cache[filename]) [require.cache is a public alias for Module._cache]
+      return Module._cache[filename].exports;
    - Cache key is the resolved absolute filename
    - If hit: return immediately (no disk access, no re-execution)
    - If miss: continue to load
@@ -95,30 +92,32 @@ require('./module.js')
 **Step 2: Loading** (synchronous, blocking)
 
 ```
-1. Read file from disk (fs.readFileSync)
-    │
-    ▼
-2. Create module object:
+1. Create module object:
    {
      id: '/path/to/filename',       ← resolved absolute path
-     exports: {},                    ← starts as plain empty object
+     filename: filename,
+     exports: {},                   ← starts as plain empty object
      loaded: false,
      parent: currentModule,
-     children: []
+     children: [],
+     paths: Module._nodeModulePaths(dirname)
    }
-    │
-    ▼
-3. ADD TO CACHE IMMEDIATELY (before execution):
-   require.cache['/path/to/module.js'] = module
+
+2. Insert into CACHE (Module._cache) IMMEDIATELY:
+   - Module._cache['absolute file path'] = module
    ← This is what prevents infinite loops in circular deps
-    │
-    ▼
-4. Wrap source code via Module.wrap():        ← NOT a direct eval()
-   (function(exports, require, module, __filename, __dirname) {
-     // Your module source code injected here
-   })
-   This is why variables are private and exports/require/__dirname exist.
-   They are just function parameters — not keywords.
+
+3. module.load(filename)
+   - Delegates to Module._extensions['.js']
+      - Read file from disk (fs.readFileSync)
+      - Wrap source via Module.wrap() ← NOT a direct eval()
+            (function(exports, require, module, __filename, __dirname) {
+               // Your module source code injected here in string
+            })
+
+            This is why variables are private and exports/require/__dirname exist.
+            They are just function parameters — not keywords.
+      - Compile and execute (see Step 3)
 ```
 
 **Step 3: Compilation + Execution** (synchronous, blocking)
@@ -126,40 +125,42 @@ require('./module.js')
 ```
 1. V8 compiles the wrapped function:
    - The wrapped string is passed to vm.runInThisContext() internally
-   - V8 JIT-compiles it into machine code
-   - This has a small but real cost on first load (no prior type feedback)
-    │
-    ▼
-2. Node calls the compiled function:
-   wrappedFn(module.exports, require, module, filename, dirname);
-   ↑
-   Note: first argument is module.exports, not a new object.
-   This is why:
-     exports.foo = 1         → works  (mutates module.exports)
-     exports = { foo: 1 }   → BREAKS (reassigns local param only)
-     module.exports = { foo }→ works  (replaces the reference)
-    │
-    ▼
-3. Module code runs:
-   - Variables are scoped to the wrapper function (not global)
-   - require() calls load dependencies (may recurse)
-   - module.exports is populated
-    │
-    ▼
+   - V8 parses source
+      - Syntax errors are thrown here during parsing/compilation
+   - V8 compiles it to bytecode (Ignition interpreter)
+   - May later optimize hot code via JIT
+
+2. Create module-scoped require() bound to this module
+   - require is a function tied to this module for relative resolution
+
+3. Node calls the compiled wrapper:
+   - wrappedFn(module.exports, require, module, filename, dirname);
+      - Execution context created
+      - Hoisting occurs
+      - Parameter binding occurs during execution context creation:
+         exports     → module.exports
+         require     → module-scoped require function
+         module      → module object
+         __filename  → absolute file path
+         __dirname   → directory path
+
+      - Code runs (depth-first)
+         - Variables are scoped to the wrapper function (not global)
+         - require() calls load dependencies (may recurse)
+         - module.exports is mutated or replaced
+
 4. Mark module as loaded:
    module.loaded = true
 ```
 
-**Step 4: Cache already written** (permanent)
+**Step 4: Cache already written** (Permanent for the lifetime of the process)
 
 ```
-1. module.exports is now final:
-   require.cache['/path/to/module.js'].exports = { ... }
-    │
-    ▼
+1. module.exports is now finalized:
+   (The cache already references this same module object.)
+
 2. Return module.exports
-    │
-    ▼
+
 3. Future require() calls return this same object reference
 ```
 
@@ -184,22 +185,20 @@ This means module loading **blocks the event loop**.
    - 'fs', 'http', 'path', etc.
    - Return immediately (no file system access)
 
-2. Start at current directory, walk up:
-   /project/src/app.js
+2. Start at current module directory, walk up:
    /project/src/node_modules/express  ← Check here
-   /project/node_modules/express       ← Then here
-   /node_modules/express              ← Then here
-   /express                           ← Finally here
+   /project/node_modules/express      ← Then here
+   /node_modules/express              ← Finally here
 
 3. For each directory, check:
    - node_modules/express/package.json
-     → Look for "main" field
-     → Default: index.js
+     - Look for "main" field
+     - Default: index.js
    - node_modules/express/index.js
    - node_modules/express/express.js
 
-4. Cache resolved path:
-   - Future require('express') uses cached path
+4. Cache module instance in Module._cache
+   - Future require() returns cached exports
    - No file system traversal needed
 ```
 
