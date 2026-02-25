@@ -108,43 +108,47 @@ require('./module.js')
    ← This is what prevents infinite loops in circular deps
 
 3. module.load(filename)
-   - Delegates to Module._extensions['.js']
+   - Determines extension handler via Module._extensions['.js']
+   - Calls module._compile(source, filename)
       - Read file from disk (fs.readFileSync)
-      - Wrap source via Module.wrap() ← NOT a direct eval()
+      - Wrap source via Module.wrap(): ← NOT a direct eval()
             (function(exports, require, module, __filename, __dirname) {
                // Your module source code injected here in string
             })
 
             This is why variables are private and exports/require/__dirname exist.
             They are just function parameters — not keywords.
-      - Compile and execute (see Step 3)
+      - Delegate to compilation phase (see Step 3)
 ```
 
 **Step 3: Compilation + Execution** (synchronous, blocking)
 
 ```
-1. V8 compiles the wrapped function:
-   - The wrapped string is passed to vm.runInThisContext() internally
+1. module._compile(source, filename)
+   - Calls wrapSafe(filename, wrappedSource)
+
+2. wrapSafe() compiles the wrapped function:
+   - Calls vm.runInThisContext(wrappedSource, { filename })
    - V8 parses source
       - Syntax errors are thrown here during parsing/compilation
    - V8 compiles it to bytecode (Ignition interpreter)
    - May later optimize hot code via JIT
 
 2. Create module-scoped require() bound to this module
-   - require is a function tied to this module for relative resolution
+   - require resolves relative to this module’s directory
+   - require.cache references Module._cache
 
 3. Node calls the compiled wrapper:
    - wrappedFn(module.exports, require, module, filename, dirname);
       - Execution context created
-      - Hoisting occurs
       - Parameter binding occurs during execution context creation:
          exports     → module.exports
          require     → module-scoped require function
          module      → module object
          __filename  → absolute file path
          __dirname   → directory path
-
-      - Code runs (depth-first)
+      - Hoisting occurs
+      - Code executes (depth-first)
          - Variables are scoped to the wrapper function (not global)
          - require() calls load dependencies (may recurse)
          - module.exports is mutated or replaced
