@@ -63,7 +63,7 @@ Think of Node.js startup as a **sequential pipeline** where each step blocks the
 
 ### Phase 2: Module Loading
 
-**What happens**:
+**What happens (CommonJS)**:
 
 1. **Parse entry point**: Read and parse `index.js` or entry file
 2. **Resolve dependencies**: For each `require()`, resolve path
@@ -71,11 +71,18 @@ Think of Node.js startup as a **sequential pipeline** where each step blocks the
 4. **Execute modules**: Run module code (synchronous)
 5. **Cache modules**: Store in `require.cache`
 
-**Blocking**: Yes, completely synchronous. Each `require()` blocks until:
+**What happens (ESM - ECMAScript Modules)**:
 
-- File is read from disk
-- Module code executes
-- All dependencies load
+ESM uses an asynchronous, three-phase loading process:
+
+1. **Construction (Parsing)**: Read files, parse into module records, and resolve `import` specifiers recursively to build the dependency graph.
+2. **Instantiation**: Allocate memory for exported values and link imports to exports (no code is run yet).
+3. **Evaluation**: Execute top-level code in the modules in a post-order traversal (dependencies first, then the entry point).
+
+**Blocking**:
+
+- In **CommonJS**, yes, completely synchronous. Each `require()` blocks until the file is read, executed, and all its dependencies load.
+- In **ESM**, building the graph (Construction) can be parallelized and is asynchronous, but the final **Evaluation** phase is strictly synchronous and blocks the event loop. Top-level await also pauses the evaluation of that specific module branch.
 
 **Performance impact**:
 
@@ -155,7 +162,15 @@ Think of Node.js startup as a **sequential pipeline** where each step blocks the
 2. **Execute function code** (no startup)
 3. **Return response**
 
-**Critical Detail**: Cold start includes **entire startup pipeline**. Every `require()`, every database connection, every initialization runs again.
+**Critical Detail**: Cold start includes the **entire startup pipeline**. Every `require()` (or full ESM graph evaluation), every database connection, every initialization runs again.
+
+### The ESM Cold Start Reality
+
+While developers often assume ESM is purely "async" and therefore better for startup, **ESM still suffers from cold starts**:
+
+1. **Network/Disk I/O**: The engine still has to read all files to build the graph.
+2. **Evaluation is Synchronous**: The actual execution of top-level code (Phase 3 of ESM) blocks the process exactly like CommonJS.
+3. **Top-Level Await**: If a module uses top-level await (e.g., fetching config from AWS Secrets Manager), the evaluation phase completely pauses until the promise resolves, delaying the "Ready to Serve" phase.
 
 ### Serverless Cold Start Timeline
 
@@ -322,7 +337,7 @@ const data = fs.readFileSync("large-file.txt");
 const users = db.query("SELECT * FROM users"); // Blocks!
 ```
 
-**Debugging**: Use `--trace-module-loading` to see what blocks.
+**Debugging**: Use `NODE_DEBUG=module` (or `--trace-require-module` in newer Node versions) to see what blocks.
 
 **Fix**:
 
@@ -360,7 +375,7 @@ const cache = new Map(allUsers.map((u) => [u.id, u]));
 /project/node_modules/package-a/node_modules/package-b/node_modules/...
 ```
 
-**Debugging**: Use `--trace-module-loading` to see resolution time.
+**Debugging**: Use `NODE_DEBUG=module` (or `--trace-require-module`) to see resolution time.
 
 **Fix**:
 
@@ -386,7 +401,7 @@ const cache = new Map(allUsers.map((u) => [u.id, u]));
 - Process creation: ~10-50ms (2-5%)
 - Module loading: ~500-2000ms (50-70%)
 - Application initialization: ~200-500ms (20-30%)
-- Function execution: ~50-200ms (5-10%)
+- Function execution: ~50-200ms (5-10%) _(This is the actual time spent running your handler function, e.g., `exports.handler = async (event) => { ... }`, processing the incoming HTTP request, and returning the response.)_
 - Total: ~760-2750ms
 
 **Key insight**: Module loading is **the biggest bottleneck** in both cases.
@@ -432,12 +447,13 @@ async function getDb() {
 
 **Impact**: Reduces startup time by 30-50%
 
-**4. Use ESM**:
+**4. Use ESM (with caution)**:
 
-- Parallel module loading
-- Better tree-shaking
-- Smaller bundles
-  **Impact**: Reduces startup time by 10-30%
+- Parallel execution of file I/O during the Construction phase
+- Better tree-shaking for smaller bundles
+- Smaller bundles = less parsing time
+- **Warning**: Top-level await in ESM _will_ block module evaluation and increase cold start time if doing heavy network I/O.
+  **Impact**: Reduces startup time by 10-30% depending on I/O bottlenecks.
 
 ### Serverless-Specific Optimizations
 
@@ -525,21 +541,21 @@ Total: ~50ms (much faster!)
 
 ## Key Takeaways
 
-1. **Startup is sequential**: Each phase blocks the next. No parallelization in CommonJS.
+1. **Startup is sequential**: Each phase blocks the next. CommonJS is fully sequential, whereas ESM parallelizes graph building but still evaluates synchronously.
 
-2. **Module loading is the bottleneck**: 40-60% of startup time is spent loading modules.
+2. **Module loading is the bottleneck**: 40-60% of startup time is spent reading, parsing, and evaluating files.
 
-3. **Cold starts are expensive**: Serverless cold starts run entire startup pipeline (10-20x slower than warm).
+3. **Cold starts are expensive**: Serverless cold starts run the entire startup pipeline (10-20x slower than warm). This applies to **both CommonJS and ESM**.
 
-4. **Lazy loading helps**: Load modules on-demand to reduce startup time by 50-80%.
+4. **Lazy loading helps**: Load modules on-demand to reduce startup time by 50-80%. (Note: Harder to do in ESM natively without dynamic `import()`).
 
 5. **Reduce dependencies**: Fewer modules = faster startup. Both count and size matter.
 
-6. **Defer initialization**: Move non-critical initialization to request handlers.
+6. **Defer initialization**: Move non-critical initialization to request handlers instead of top-level await.
 
 7. **Serverless needs optimization**: Cold starts directly impact user experience and cost.
 
-8. **Measure before optimizing**: Use `--trace-module-loading` and profiling to find bottlenecks.
+8. **Measure before optimizing**: Use `NODE_DEBUG=module` (or `--trace-require-module`) and profiling to find bottlenecks.
 
 ---
 
@@ -562,7 +578,7 @@ In the examples, we'll explore:
 
 Create comprehensive startup profiling:
 
-- Use `--trace-module-loading` to measure module load times
+- Use `NODE_DEBUG=module` to measure module load times
 - Instrument code to measure each initialization phase
 - Identify top 10 slowest modules
 - Measure total startup time (process start to first request)
