@@ -101,7 +101,7 @@ console.log("\n--- ESM Behavior (using dynamic import) ---");
     );
     console.log("   - No top-level await");
     console.log("\n2. ESM:");
-    console.log("   - Asynchronous loading (parallel)");
+    console.log("   - Asynchronous parsing/resolution (parallel fetches)");
     console.log("   - Static imports (known at parse time)");
     console.log("   - Live bindings (exports are references)");
     console.log("   - Top-level await supported");

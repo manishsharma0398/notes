@@ -42,9 +42,9 @@
    - Bundle dependencies if possible
 
 3. **Use ESM**: Better parallel loading for large dependency trees
-   - ESM loads modules asynchronously
-   - Can load multiple modules in parallel
-   - Less blocking than CommonJS
+   - ESM parses and resolves modules asynchronously
+   - Can fetch and link multiple modules in parallel
+   - Doesn't block the event loop during the heavy graph resolution phase
 
 4. **Preload critical modules**: Load only essential modules at startup
    - Core application modules
@@ -195,10 +195,10 @@ module.exports = {};
    }, 0);
    ```
 
-3. **Use ESM**: ESM handles circular dependencies better
-   - Uses live bindings (references, not copies)
-   - Exports are always available (even during circular loading)
-   - Better support for circular dependencies
+3. **Use ESM**: ESM handles circular dependencies inherently better
+   - Uses live bindings (pointers to memory slots) instead of returning `{}`.
+   - **Linking happens before Execution**: V8 allocates memory slots for all exports during the linking phase. When a circular dependency is detected, it safely points to that uninitialized memory slot. No execution loop occurs.
+   - Exports always reflect the live, up-to-date value once evaluated.
 
 **Key Insight**: Circular dependencies work in CommonJS, but **order of execution matters**. If you access exports too early, you get `undefined`.
 
@@ -216,17 +216,18 @@ module.exports = {};
 
 **ESM Advantages**:
 
-1. **Parallel loading**: ESM can load multiple modules in parallel
-   - CommonJS loads sequentially (each `require()` blocks)
-   - ESM loads dependencies asynchronously
+2. **Parallel sibling loading**: ESM can fetch multiple modules concurrently
+   - CommonJS loads strictly sequentially (each `require()` blocks the next)
+   - ESM fires off independent `Promise` chains simultaneously for all siblings in a file
+   - E.g. `import './a.js'` and `import './b.js'` will trigger two simultaneous disk/network requests
    - Better for large dependency trees
 
-2. **Static analysis**: ESM allows tree-shaking
+3. **Static analysis**: ESM allows tree-shaking
    - Bundlers can eliminate unused code
    - Smaller bundle sizes
    - Better for frontend/bundled code
 
-3. **Better circular dependency handling**: Live bindings work better
+4. **Better circular dependency handling**: Live bindings work better
    - Exports are references, not copies
    - Circular dependencies work more predictably
 
@@ -478,11 +479,14 @@ When you write `import './utils'`, ESM **fails**.
 
 1. **No extension guessing**: You MUST specify the exact extension (`import './utils.js'`).
 2. **No directory index fallback**: You MUST specify the index file (`import './utils/index.js'`), unless the package explicitly sets up an `"exports"` map in `package.json`.
+3. **Internal Package Shortcuts (`#`)**: Packages can define internal shortcuts using the `"imports"` field in `package.json` (e.g., `import { db } from '#utils/db.js'`).
+4. **Self-referencing**: A package can `import` itself by its own name, resolving via its own `"exports"` map.
+5. **Data URLs**: Specifiers can be raw `data:` URLs (e.g., `import 'data:text/javascript,console.log("hi")'`).
 
 **Why the difference?**
 
-- CommonJS was built for servers where synchronous file system checks (checking if `.js` or `.json` exists) were acceptable.
-- ESM was designed for the browser as well, where blindly guessing extensions would trigger multiple expensive and slow network requests (404s).
+- CommonJS was built for servers where synchronous file system checks (checking if `.js` or `.json` exists on disk) were acceptable.
+- ESM was designed to perfectly mirror the **Web Platform**. Browsers don't have file systems; they have URLs. When you import `./utils.js`, Node acts like a browser: it strictly combines the relative string with the **parent module's URL** context to derive the final exact target. Blindly guessing extensions would trigger multiple expensive and slow network requests (404s) on the web.
 
 **Key Insight**: ESM prioritizes predictability and cross-environment compatibility (browsers) by eliminating file system heuristics like extension appending.
 

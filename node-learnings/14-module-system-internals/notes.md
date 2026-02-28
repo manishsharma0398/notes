@@ -19,11 +19,31 @@
 
 ### ESM Loading Process
 
-1. **Parse**: Extract import/export statements (static analysis)
-2. **Resolve**: Resolve all dependencies (asynchronous, parallel)
-3. **Link**: Connect imports to exports (live bindings)
-4. **Evaluate**: Execute module code
-5. **Cache**: Store for future imports
+1. **Parse**: Extract import/export statements and **validate syntax** (synchronous text analysis). This instantiates a lightweight **Module Record** containing only structure, not data.
+2. **Resolve**: Convert import strings to URLs / file paths (generally synchronous, utilizes cached node_modules lookups)
+3. **Load**: Feed exact URLs to disk/network to fetch file contents (asynchronous)
+4. **Link**: V8 allocates memory slots for all exports, **hoists variables/functions**, and connects them to parent imports (live bindings). Circular dependencies point safely to uninitialized memory.
+5. **Evaluate**: V8 pushes an **Execution Context** to the Call Stack to execute module code and fill memory slots mapping.
+6. **Cache**: Store for future imports
+
+_(Note: Steps 2 and 3 operate continuously during the graph construction phase. When a file has multiple sibling imports, Node does **not** wait to resolve them sequentially. Instead, it immediately fires off concurrent `Promise` chains (Resolve + Fetch) for all siblings simultaneously via `Promise.all`)_
+
+#### Example: Parallel Sibling Resolution
+
+```javascript
+// app.js
+import "./a.js";
+import "./b.js";
+import "./c.js";
+```
+
+When `app.js` is parsed, Node immediately creates 3 independent asynchronous background tasks at the exact same time:
+
+- Task 1: Resolve URL for `a.js` -> Fetch `a.js` -> Parse `a.js`
+- Task 2: Resolve URL for `b.js` -> Fetch `b.js` -> Parse `b.js`
+- Task 3: Resolve URL for `c.js` -> Fetch `c.js` -> Parse `c.js`
+
+This means path resolution (like searching `node_modules`), disk I/O, and subsequent parsing for all 3 siblings happen **entirely in parallel**.
 
 ## Key Differences
 
@@ -52,7 +72,8 @@
 
 1. Validates specifier type (built-in, relative/absolute, bare specifier)
 2. Check core modules (use `node:` prefix)
-3. For relative/absolute paths:
+3. For relative/absolute paths (`./`, `../`, `/`):
+   - Converted into absolute `file://` URLs by combining with the parent module's URL (just like resolving links on a webpage).
    - Exact filename required
    - **No extension guessing** (must explicitly include `.js`, `.mjs`, etc.)
    - **No directory index fallback** (`index.js` is not automatically resolved)
@@ -60,6 +81,12 @@
    - Locate nearest `node_modules`
    - Use `package.json` `"exports"` field (strict mapping, blocks deep imports if not exported)
    - Fallback to `"main"` field, then legacy `index.js`
+5. Internal Package Imports (`#`):
+   - Resolves via the current `package.json` `"imports"` field (useful for internal shortcuts)
+6. Package Self-Referencing:
+   - A package can import itself using its own name, resolving via its own `"exports"` field
+7. Data URLs:
+   - Specifiers starting with `data:` evaluate the string directly as a module
 
 ## Common Misconceptions
 
@@ -140,7 +167,7 @@
 
 2. **Modules are cached**: First `require()` is slow, subsequent calls are fast.
 
-3. **ESM is asynchronous**: Loading happens in parallel, execution is synchronous.
+3. **ESM parsing and loading is asynchronous**: Loading happens concurrently, execution is synchronous unless top-level await is used.
 
 4. **Resolution is expensive**: First resolution traverses node_modules, subsequent uses cache.
 
