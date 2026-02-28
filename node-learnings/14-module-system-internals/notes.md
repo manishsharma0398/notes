@@ -50,11 +50,16 @@
 
 **ESM**:
 
-1. Check core modules (use `node:` prefix)
-2. Resolve using package.json "exports" field
-3. Fallback to "main" field
-4. Try extensions (.mjs, .js)
-5. Directory resolution (package.json, index.mjs, index.js)
+1. Validates specifier type (built-in, relative/absolute, bare specifier)
+2. Check core modules (use `node:` prefix)
+3. For relative/absolute paths:
+   - Exact filename required
+   - **No extension guessing** (must explicitly include `.js`, `.mjs`, etc.)
+   - **No directory index fallback** (`index.js` is not automatically resolved)
+4. For bare specifiers (packages):
+   - Locate nearest `node_modules`
+   - Use `package.json` `"exports"` field (strict mapping, blocks deep imports if not exported)
+   - Fallback to `"main"` field, then legacy `index.js`
 
 ## Common Misconceptions
 

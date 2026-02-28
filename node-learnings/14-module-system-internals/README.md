@@ -109,8 +109,8 @@ require('./module.js')
 
 3. module.load(filename)
    - Determines extension handler via Module._extensions['.js']
-   - Calls module._compile(source, filename)
-      - Read file from disk (fs.readFileSync)
+   - Extension handler reads file from disk (fs.readFileSync)
+   - Extension handler calls module._compile(source, filename)
       - Wrap source via Module.wrap(): ← NOT a direct eval()
             (function(exports, require, module, __filename, __dirname) {
                // Your module source code injected here in string
@@ -196,7 +196,8 @@ This means module loading **blocks the event loop**.
 
 3. For each directory, check:
    - node_modules/express/package.json
-     - Look for "main" field
+     - Look for "exports" field (modern Node respects this even for require)
+     - Look for "main" field (legacy fallback)
      - Default: index.js
    - node_modules/express/index.js
    - node_modules/express/express.js
@@ -223,7 +224,7 @@ This means module loading **blocks the event loop**.
 
 **Solution**: ESM provides:
 
-- **Asynchronous loading**: Modules load in parallel
+- **Asynchronous loading**: Static graph enables parallel loading in browsers
 - **Static analysis**: Dependencies known at parse time
 - **Better circular dependency handling**
 - **Tree-shaking support**: Bundlers can eliminate unused code
@@ -232,102 +233,144 @@ This means module loading **blocks the event loop**.
 
 When you `import './module.js'`, here's what happens:
 
-**Step 1: Parse** (synchronous, but no execution)
+**Step 1: Parse** (synchronous, no execution)
 
 ```
 import './module.js'
     │
     ▼
 1. Parse source code:
-   - Extract all import/export statements
-   - Build dependency graph
    - Validate syntax
-    │
-    ▼
-2. Create module record:
-   {
-     url: 'file:///path/to/module.js',
-     status: 'unlinked',
-     dependencies: [],
-     exports: {}
-   }
+   - Extract static import/export statements
+   - Record module specifiers like
+      {
+         url: 'file:///path/to/module.js',
+         status: 'unlinked',
+         dependencies: [],
+         exports: {}
+      }
 ```
 
-**Step 2: Resolution** (loader-driven, can involve parallel graph construction)
+- Node does NOT yet create full Module Records here (only structure is created)
+- Node parses and records all static imports and exports
+- Dynamic import() is ignored at this stage.
+- It does not execute any code at this stage
+
+**Step 2: Resolution + Graph Construction** (synchronous, loader-driven)
+
+For each static import specifier:
 
 ```
-1. Resolve all imports:
-   - Convert relative paths to absolute URLs
-   - Resolve bare specifiers (node_modules)
-   - Handle package.json "exports" field
-    │
-    ▼
-2. Load all dependencies in parallel:
-   - Fetch module files
-   - Parse module code
-   - Build dependency graph
+1. Resolve import specifier:
+   - Convert relative paths to file:// URLs
+   - Resolve bare specifiers via node_modules
+   - Respect package.json "exports" field
+
+
+Then recursively:
+   2. Load dependency source from disk
+   3. Parse dependency
+   4. Repeat resolution process
 ```
 
-**Step 3: Linking** (synchronous)
+- After the recursive process, the full static dependency graph is built.
+- This is the "heavy" part of the loading process.
+- This process is synchronous (filesystem-based).
+- Node performs resolution sequentially and does not parallelize sibling dependency loading the way browsers do.
+- Only modules reachable via static imports are included.
+
+**Step 3: Linking (Instantiation)** (synchronous)
+
+Now Node creates internal Module Records and performs linking:
 
 ```
-1. Link module exports to imports:
-   - Connect import statements to exports
-   - Handle circular dependencies
-   - Validate export/import compatibility
-    │
-    ▼
-2. Set up live bindings:
+1. Create Module Records for each module
+2. Allocate export binding slots
    - Exports are references, not copies
    - Changes to exports reflect in imports
+3. Connect import statements to export slots
+4. Validate export/import compatibility
+5. Handle circular dependencies
 ```
 
-**Step 4: Evaluation** (synchronous, but can be parallel)
+- Exports are live bindings (references to internal variable cells).
+- No module code runs yet.
+- Only structure and binding relationships are established.
+
+**Step 4: Evaluation** (can be asynchronous if top-level await exists, synchronous otherwise)
 
 ```
-1. Execute module code:
-   - Run top-level code
-   - Initialize exports
-   - Handle side effects
-    │
-    ▼
-2. Mark module as evaluated:
+1. Execute module code in dependency order:
+   - Leaf dependencies execute first
+   - Parent dependencies execute after children
+   - Then entry point (main module) executes last
+
+2. Run top-level code
+3. Handle side effects
+4. Mark module as evaluated:
    - Module.status = 'evaluated'
    - Exports are now available
+
+If Top-Level Await Exists
+   - Evaluation becomes async-aware
+   - Module pauses at await
+   - Evaluation returns a Promise internally
+   - Parent modules wait
+   - Independent branches may run concurrently
+
+Only the evaluation phase can become asynchronous.
 ```
 
-**Critical Detail**: ESM loading is **asynchronous** for the initial load, but **synchronous** for execution. The key difference:
+**Critical Detail**:
 
-- **CommonJS**: Load + execute synchronously (blocks event loop)
-- **ESM**: Instantiates and links the full dependency graph before evaluation. Execution is synchronous unless top-level await is used
+- **CommonJS**: resolve -> load -> execute synchronously (blocks event loop)
+- **ESM**: parse -> resolve -> link -> evaluate (can be asynchronous if top-level await exists, synchronous otherwise)
 
 ### ESM Resolution Algorithm
 
 **Resolution order** (different from CommonJS):
 
 ```
-1. Check if core module (built-in)
+1. Specifier Classification
+   - When Node sees:
+      import specifier
+   - It first classifies it:
+     - Starts with ./ or ../ → relative
+     - Starts with / → absolute
+     - Starts with node: → built-in
+     - Otherwise → bare specifier (package)
+
+2. Built-in Modules
    - 'fs', 'http', 'path', etc.
-   - Use node: prefix for explicit core modules
+   - Use node: prefix for explicit core modules (recommended)
+   - No filesystem resolution required.
 
-2. Resolve using package.json "exports" field:
-   - package.json has "exports" field (newer)
-   - Maps import paths to actual files
-   - More explicit than "main" field
+3. Relative / Absolute Imports
+   - Rules
+      - Must include exact filename.
+      - No extension guessing.
+      - No automatic .js appending.
+      - No automatic directory index fallback.
+   - Valid:
+      - import './foo.js';
+      - import './foo.mjs';
+      - import './foo.json';
+      - import './foo.node';
+   - Invalid (Unless explicitly mapped via package "exports"):
+      - import './foo';
+      - import './folder';
 
-3. Fallback to "main" field:
-   - package.json has "main" field (legacy)
-   - Similar to CommonJS
-
-4. Try extensions:
-   - .mjs (explicit ESM)
-   - .js (if package.json has "type": "module")
-   - .json, .node
+4. Bare Specifiers (Packages)
+   - Resolution order
+      1. Locate nearest node_modules
+      2. Read package.json
+      3. If "exports" exists → use it (strict mapping)
+      4. If no "exports" → fallback to "main"
+      5. If neither → legacy index.js fallback
+   - If "exports" exists, deep imports are blocked unless explicitly allowed.
 
 5. Directory resolution:
    - package.json (with "exports" or "main")
-   - index.mjs
-   - index.js
 ```
 
 **Key difference**: ESM uses **URL-based resolution** (file:// URLs), while CommonJS uses **file paths**.
@@ -408,6 +451,14 @@ const module2 = require("./module.js");
 - Even in circular imports, the binding always reflects the _current_ value of the export
 - This makes circular dependencies much more predictable in ESM
 
+### Misconception 5: "require, exports, and \_\_dirname are global variables"
+
+**What developers think**: `require`, `exports`, `module`, `__filename`, and `__dirname` are built-in global variables available everywhere in Node.js.
+
+**What actually happens**: They are **function parameters** injected by Node.js. Before executing a CommonJS module, Node.js wraps it in a function: `(function(exports, require, module, __filename, __dirname) { ... })`. Therefore, these variables are scoped only to that specific module.
+
+**Reality**: In ESM, this wrapper doesn't exist. That's why `require` and `__dirname` are explicitly "not defined" in ESM files. You get file paths via `import.meta.url` instead.
+
 ---
 
 ## What Cannot Be Done (and Why)
@@ -479,6 +530,24 @@ import module from "./commonjs-module.js";
 - Order of initialization
 
 **Reality**: Execution order follows dependency graph. If `A` requires `B`, `B` executes before `A`.
+
+### 5. Cannot Omit File Extensions or Rely on Directory Index in ESM
+
+**Why**: ESM prioritizes predictable, browser-compatible URL resolution over expensive file system heuristics.
+
+**CommonJS (works)**:
+
+```javascript
+const utils = require("./utils"); // Tries utils.js, utils.json, utils/index.js
+```
+
+**ESM (fails)**:
+
+```javascript
+import utils from "./utils"; // ERR_UNSUPPORTED_DIR_IMPORT or module not found
+```
+
+**Workaround**: You must provide the exact filename (`import utils from './utils/index.js'`) unless the target package specifically uses an `"exports"` map in its `package.json` to allow bare or directory imports.
 
 ---
 
@@ -730,6 +799,10 @@ ESM Module Loading:
 
 8. **Lazy loading optimizes startup**: Load modules on-demand instead of at startup.
 
+9. **ESM requires exact paths**: ESM does not guess extensions or directory indexes like CommonJS does.
+
+10. **Wrapper Variables vs Globals**: `require`, `exports`, and `__dirname` in CommonJS are local function parameters injected by Node.js, not globals.
+
 ---
 
 ## Next Steps
@@ -786,3 +859,13 @@ Create a benchmark for module resolution:
 - Explain why first resolution is slow
 
 **Interview question this tests**: "Why is the first require() slow and how do you optimize module resolution?"
+
+### Exercise 4: The Module Wrapper and Global Scope
+
+Create a script demonstrating that `require` and `exports` are local variables:
+
+- Print `arguments` at the top level of a CommonJS module to see the wrapper function arguments.
+- Try accessing `global.require` vs `require`.
+- Explain why declaring a variable with `var` or `let` at the top level doesn't pollute the global scope in Node.js, unlike in browsers.
+
+**Interview question this tests**: "Are `require` and `module` global variables? Support your answer by explaining how CommonJS executes a file."

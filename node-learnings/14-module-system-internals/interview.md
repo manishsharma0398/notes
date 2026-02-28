@@ -424,6 +424,70 @@ app.get("/admin", async (req, res) => {
 
 ---
 
+## Question 7: The Module Wrapper and "Global" Variables
+
+**Q**: In a CommonJS file, you can freely use `require`, `exports`, `module`, `__dirname`, and `__filename`. Are these global variables? If not, how do they exist in every file, and how does this differ from ESM?
+
+**Expected Answer**:
+
+**They are NOT Global Variables**:
+They are **function parameters** specific to that module.
+
+**How It Actually Works (CommonJS)**:
+Before Node.js executes your CommonJS module, it wraps the entire source code in a function:
+
+```javascript
+(function (exports, require, module, __filename, __dirname) {
+  // Your module code is injected here
+});
+```
+
+When Node.js invokes wrapper, it passes the module-specific `require` function, the `module` object, etc.
+
+**Why This Matters**:
+
+1. **Isolated Scope**: Top-level variables (`var`/`let`/`const`) don't pollute the global scope; they are local to the wrapper function.
+2. **Relative Resolution**: The `require` function passed to the wrapper contains the logic to resolve paths relative to `__dirname`. (It is not a single global `require` function!).
+
+**How ESM Differs**:
+ESM **does not** use this wrapper function. It relies on V8's native ESM parsing.
+Therefore, `require`, `exports`, `module`, `__filename`, and `__dirname` **do not exist** in an ESM file.
+Instead, you get the file path via `import.meta.url`.
+
+**Trap**: Many candidates think `require` is a global object in Node.js. It's actually a local variable injected into each module individually.
+
+---
+
+## Question 8: Module Resolution Strictness (CommonJS vs ESM)
+
+**Q**: How does module resolution differ between CommonJS and ESM, particularly regarding file extensions and directory imports?
+
+**Expected Answer**:
+
+**CommonJS is Forgiving (Heuristic-based)**:
+When you write `require('./utils')`, CommonJS tries to guess what you meant:
+
+1. Try exactly `./utils`
+2. Try `./utils.js`
+3. Try `./utils.json`
+4. Try `./utils.node`
+5. If `./utils` is a directory, check `package.json` for `"main"`, or try `./utils/index.js`
+
+**ESM is Strict (URL-based)**:
+When you write `import './utils'`, ESM **fails**.
+
+1. **No extension guessing**: You MUST specify the exact extension (`import './utils.js'`).
+2. **No directory index fallback**: You MUST specify the index file (`import './utils/index.js'`), unless the package explicitly sets up an `"exports"` map in `package.json`.
+
+**Why the difference?**
+
+- CommonJS was built for servers where synchronous file system checks (checking if `.js` or `.json` exists) were acceptable.
+- ESM was designed for the browser as well, where blindly guessing extensions would trigger multiple expensive and slow network requests (404s).
+
+**Key Insight**: ESM prioritizes predictability and cross-environment compatibility (browsers) by eliminating file system heuristics like extension appending.
+
+---
+
 ## Bonus: Production Debugging Scenario
 
 **Q**: Your production application has slow startup (5+ seconds). You suspect module loading. Walk me through your debugging process.
