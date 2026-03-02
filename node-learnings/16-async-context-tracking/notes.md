@@ -3,17 +3,27 @@
 ## Core Concepts
 
 ### The Context Loss Problem
-- **JavaScript's async model loses context**: When async operations are scheduled, original context (call stack, variables) is lost
-- **No way to know where callback came from**: Can't access original context in async callbacks
-- **Traditional solutions have problems**: Passing explicitly (tedious), closures (doesn't scale), globals (race conditions)
+
+- **Async Boundary**: The moment synchronous execution ends and yields to the event loop, discarding the current call stack.
+- **Async Resource**: The internal object (e.g. `Timeout`, `FSReqCallback`, `PROMISE`) Node.js creates to track the gap across an async boundary.
+- **JavaScript's async model loses context**: Because boundaries discard the call stack, callbacks execute in a brand new stack without parent variables.
+- **Traditional solutions have problems**: Passing explicitly (tedious), closures (doesn't scale), globals (race conditions).
+
+### Node's Execution Stack
+
+- **`asyncId`**: A unique ID assigned to every single Async Resource upon creation.
+- **`triggerAsyncId`**: The ID of whatever resource was executing at the exact moment this new resource was created (the parent).
+- **`executionAsyncId()`**: The ID of the resource currently executing on the top of the call stack.
 
 ### AsyncLocalStorage
-- **High-level API**: Built on Async Hooks, provides automatic context propagation
+
+- **High-level API**: Built on V8 Embedder Data (`AsyncContextFrame`) for Promises, and Async Hooks for callbacks.
 - **Isolated context per async chain**: Each request has its own context, no interference
-- **Automatic propagation**: Context propagates to all async operations automatically
+- **Automatic propagation**: Context propagates to native async operations automatically
 - **Simple API**: `storage.run(context, callback)` and `storage.getStore()`
 
 ### Async Hooks
+
 - **Low-level API**: Tracks lifecycle of async resources
 - **Lifecycle events**: init, before, after, destroy, promiseResolve
 - **Manual context management**: Must store/retrieve context manually
@@ -22,19 +32,22 @@
 ## Key Insights
 
 ### Context Propagation
+
 - **Within storage.run()**: Context is available
 - **Nested async operations**: Context propagates automatically (setTimeout, Promise, etc.)
 - **Outside storage.run()**: Context is undefined
 - **Worker threads**: Context doesn't propagate (must pass explicitly)
 
 ### Isolation
+
 - **Each async chain has isolated context**: Multiple concurrent requests don't interfere
 - **No race conditions**: Unlike global variables, contexts are isolated
 - **Automatic**: No manual synchronization needed
 
 ### Performance
-- **AsyncLocalStorage overhead**: Usually < 2% (minimal)
-- **Async Hooks overhead**: Usually < 5% (more if complex)
+
+- **Modern AsyncLocalStorage (Node 16+)**: < 2% overhead (near zero for Promises due to V8 integration)
+- **Raw Async Hooks**: Noticeable overhead (~5% to 20%), thrashes Garbage Collector
 - **Memory overhead**: ~50-100 bytes per async resource (usually negligible)
 - **Optimization**: Keep hook callbacks lightweight, use AsyncLocalStorage instead of raw hooks
 
@@ -42,9 +55,9 @@
 
 1. **"Async context is like global variables"**: False. Provides isolated context per async chain, no race conditions.
 
-2. **"Context propagates to all async operations"**: Partially false. Propagates to operations created within context, not to operations created before storage.run().
+2. **"Context propagates to all async operations"**: False. Propagates natively, but fails manually queued callbacks (custom arrays) or EventEmitters (`.emit` context overrides). Use `AsyncResource.bind()`.
 
-3. **"Async Hooks have no performance cost"**: False. Has overhead (< 5% usually), but usually acceptable.
+3. **"Async Hooks have no performance cost"**: False. Raw `async_hooks` heavily degrade performance. Only `AsyncLocalStorage` is optimized.
 
 4. **"AsyncLocalStorage works with Worker Threads"**: False. Context doesn't propagate to worker threads. Must pass explicitly.
 
@@ -61,21 +74,25 @@
 ## Production Failure Modes
 
 ### Context Loss in Nested Async Operations
+
 - **Symptom**: Context is undefined in nested async callbacks
 - **Cause**: Context not properly propagated (operations created before storage.run())
 - **Fix**: Create async operations within storage.run()
 
 ### Performance Degradation
+
 - **Symptom**: Application slows down after enabling async hooks
 - **Cause**: Too many hooks or expensive hook callbacks
 - **Fix**: Keep hook callbacks lightweight, use AsyncLocalStorage
 
 ### Memory Leak
+
 - **Symptom**: Memory usage grows over time
 - **Cause**: Context not cleaned up (missing destroy hook)
 - **Fix**: Always implement destroy hook, or use AsyncLocalStorage (handles automatically)
 
 ### Race Conditions
+
 - **Symptom**: Wrong context retrieved in concurrent requests
 - **Cause**: Using multiple storage instances incorrectly
 - **Fix**: Use single storage instance per application
@@ -106,9 +123,9 @@
 
 3. **Each async chain has isolated context**: Multiple concurrent requests don't interfere.
 
-4. **Async Hooks are low-level**: Use AsyncLocalStorage (high-level) instead when possible.
+4. **Raw Async Hooks are slow**: Use AsyncLocalStorage (high-level) instead. It uses V8 directly for Promises.
 
-5. **Performance overhead is minimal**: Usually < 2% for AsyncLocalStorage.
+5. **Performance overhead is minimal now**: < 2% for modern AsyncLocalStorage (Node 16+).
 
 6. **Context doesn't propagate to worker threads**: Must pass context explicitly.
 

@@ -35,6 +35,41 @@ Think of async context as **thread-local storage** for asynchronous code. In tra
 
 ---
 
+## Core Concepts: Boundaries and Resources
+
+Before understanding how contexts are tracked, we must define the two fundamental building blocks of Node.js's asynchronous architecture:
+
+### What is an "Async Boundary"?
+
+An **Async Boundary** is the exact moment where synchronous JavaScript execution stops, and control is handed back to the environment (libuv, V8 microtask queue, or OS), with a promise to resume later.
+
+When your code crosses an async boundary:
+
+1. The current JavaScript **call stack unwinds completely** and is thrown away.
+2. The asynchronous task runs in the background (C++ thread pool, networking stack, etc.).
+3. When the task finishes, a **brand new call stack** is created to run your callback.
+
+**Examples of crossing an async boundary:**
+
+- Calling `setTimeout(cb, 1000)`
+- Calling `fs.readFile('data.txt', cb)`
+- `await`ing a Promise
+
+### What is an "Async Resource"?
+
+An **Async Resource** is the internal C++ or JS object that Node.js creates to represent the operation happening _across_ the async boundary. It encapsulates the state, lifecycle, and callback of the deferred task.
+
+Whenever you cross an async boundary, Node creates a corresponding Async Resource to track it.
+
+- When you use `setTimeout`, Node creates a `Timeout` resource.
+- When you read a file, Node creates an `FSReqCallback` resource.
+- When you use `process.nextTick`, Node creates a `TickObject`.
+- When you create a Promise, V8 creates a `PROMISE` resource.
+
+These resources are what Node.js uses to trace the genealogy of your application (who spawned whom).
+
+---
+
 ## What Actually Happens: The Context Loss Problem
 
 ### Why Context is Lost
@@ -140,7 +175,32 @@ function handleRequest(userId) {
 └─────────────────────────────────────────────────────────┘
 ```
 
-**How It Works**:
+### How Node Knows What is Running (The Execution Stack)
+
+To orchestrate these async hooks, Node.js must always know two things:
+
+1. **What is currently running?**
+2. **What created the thing that is currently running?**
+
+Node solves this by assigning every single Async Resource a globally unique integer called an **`asyncId`**. It then maintains an internal C++ stack (a stack of `asyncId`s) to track execution.
+
+- **`executionAsyncId()`**: The `asyncId` of the resource currently executing on the call stack. (What is running right now?)
+- **`triggerAsyncId()`**: The `asyncId` of the resource that _caused_ the current resource to be created. (What spawned me?)
+
+**The Workflow:**
+
+1. You call `setTimeout(cb, 1000)`.
+2. Node creates a `Timeout` resource (let's say it gets `asyncId: 5`).
+3. Node immediately records that its `triggerAsyncId` is the _current_ `executionAsyncId` (let's say we were in the main script, `asyncId: 1`). So, **5 was spawned by 1**.
+4. Node triggers the `init(5, 'Timeout', 1)` hook.
+5. 1000ms later, the Timers phase fires.
+6. Before calling your JS `cb`, Node pushes `5` to the top of the internal execution stack. `executionAsyncId()` now returns `5`.
+7. Node triggers the `before(5)` hook.
+8. Your `cb` runs.
+9. Node triggers the `after(5)` hook and pops `5` off the execution stack.
+10. Later, the object is garbage collected, triggering the `destroy(5)` hook.
+
+**How It Works for Context**:
 
 1. **Hook registration**: Register callbacks for async resource lifecycle
 2. **Resource tracking**: Node.js calls hooks when async resources are created/executed
@@ -229,7 +289,58 @@ function handleRequest(userId) {
 }
 ```
 
-**Critical Detail**: AsyncLocalStorage **automatically propagates** context. No manual tracking needed. Much simpler than Async Hooks.
+**Critical Detail**: AsyncLocalStorage **automatically propagates** context. No manual tracking needed. Much simpler than raw Async Hooks.
+
+---
+
+## Deep Dive: How It Works Internally (Step-by-Step)
+
+If you look at the Node.js source code (specifically `src/async_wrap.cc` and `lib/internal/async_local_storage/async_hooks.js`), the context tracking is an intricate dance between C++ and JavaScript.
+
+### 1. Raw `async_hooks` Internals
+
+1. **Creation (C++)**: When you create a built-in async resource (like a `setTimeout` or a network socket), Node.js instantiates a C++ `AsyncWrap` class (`src/async_wrap.cc`).
+2. **Identification (C++)**: The `AsyncWrap` constructor assigns a unique `asyncId` and captures the `triggerAsyncId` (the ID of whatever is currently executing on the call stack).
+3. **Init Hook (JS)**: C++ calls `EmitAsyncInit`, which triggers the JS `emitInitScript` function, finally calling your user-land `init()` hook.
+4. **Before Hook (JS)**: Just before the callback fires, C++ calls `EmitBefore`, which fires your `before()` hook. You use this to set the current context.
+5. **Execution**: The JavaScript callback runs.
+6. **After Hook (JS)**: Once the callback finishes, C++ calls `EmitAfter`, firing your `after()` hook to restore the previous context.
+7. **Destruction (C++ -> JS)**: When the `AsyncWrap` C++ object is garbage collected or explicitly destroyed, it fires the `destroy()` hook so you can clean up memory.
+
+### 2. AsyncLocalStorage (Legacy / Callbacks)
+
+When using callbacks, `AsyncLocalStorage` (`lib/internal/async_local_storage/async_hooks.js`) works like this:
+
+1. `storage.run(store, cb)` creates a new `AsyncResource` to track the synchronous `cb` execution.
+2. It pushes your `store` onto a private tracking stack (`storageList`).
+3. It relies on a globally registered `async_hook`.
+4. When new resources are created (`init`), the hook intercepts them and attaches the current store directly to the JS object (`resource[this.kResourceStore] = store`).
+5. When the resource executes, `AsyncLocalStorage` reads that symbol and makes it the active context.
+
+### 3. AsyncLocalStorage (Modern / Promises)
+
+For Promises in Node 16.4+ (`lib/internal/async_context_frame.js`):
+
+1. `storage.run(store, cb)` calls a V8 engine API: `v8.setContinuationPreservedEmbedderData(data)`.
+2. V8 intrinsically attaches this data to the current execution microtask.
+3. When V8 creates a `.then()` continuation or pauses at `await`, it natively copies the embedder data to the new microtask.
+4. When V8 resumes the microtask, it natively restores the embedder data. **Zero JavaScript callbacks are fired**, explaining the massive performance boost.
+
+---
+
+### The Massive Node 16+ Optimization (`AsyncContextFrame`)
+
+In older versions of Node.js, `AsyncLocalStorage` was just a JavaScript-level wrapper around the raw `async_hooks` module. This meant every single Promise and V8 microtask had to emit `init`, `before`, `after`, and `destroy` events back to JavaScript, **devastating performance**.
+
+In modern Node.js (v16.4.0+), `AsyncLocalStorage` no longer uses JS-level async hooks for Promises. Instead, it uses a V8 engine feature called **`ContinuationPreservedEmbedderData`** (exposed in Node core as `AsyncContextFrame`).
+
+**How `AsyncContextFrame` works**:
+
+1. When you call `storage.run()`, Node.js attaches a tiny C++ pointer to the current V8 execution state.
+2. When V8 creates a Promise or pauses at an `await`, V8 _intrinsically_ saves this pointer.
+3. When V8 resumes the Promise, it automatically restores the pointer.
+
+Because this happens entirely inside the V8 engine without ever executing JavaScript callbacks, **the performance overhead of modern `AsyncLocalStorage` is near zero** (often < 2%), making it perfectly safe for high-throughput production applications.
 
 ---
 
@@ -265,24 +376,33 @@ storage.run({ userId: 456 }, () => {
 
 ### Misconception 2: "Context propagates to all async operations"
 
-**What developers think**: Context automatically propagates everywhere.
+**What developers think**: Context automatically propagates everywhere, including custom in-memory queues and EventEmitters.
 
-**What actually happens**: Context propagates to **async operations created within the context**, but **not** to:
+**What actually happens**: Context propagates to **async operations natively tracked by V8/Node**, but **fails** in:
 
+- User-land queues (e.g., `const queue = []; queue.push(callback);`)
+- EventEmitters (callbacks run in the context of whoever called `.emit()`, not `.on()`)
 - Operations created before `storage.run()`
 - Operations in different processes/threads
-- Native addons that don't use async hooks
+- Native addons that don't hook into the V8 embedder data
 
-**Example**:
+**Example of Event Emitter Context Loss**:
 
 ```javascript
-// This won't have context!
-setTimeout(() => {
-  storage.run({ userId: 123 }, () => {
-    // Context available here
+const EE = new EventEmitter();
+
+storage.run({ userId: 123 }, () => {
+  // We attach the listener inside the context...
+  EE.on("data", () => {
+    console.log(storage.getStore());
   });
-}, 1000);
+});
+
+// LATER, outside the context (or in a different request's context):
+EE.emit("data"); // Will print `undefined`!
 ```
+
+**Workaround:** You must explicitly bind lost contexts using `AsyncResource.bind(callback)`.
 
 ### Misconception 3: "Async Hooks have no performance cost"
 
@@ -435,9 +555,9 @@ const storage2 = new AsyncLocalStorage();
 ### AsyncLocalStorage Overhead
 
 **Baseline**: ~1000 async operations/ms
-**With AsyncLocalStorage**: ~980 async operations/ms (~2% overhead)
+**With modern AsyncLocalStorage (Node 16+)**: ~980 async operations/ms (~2% overhead)
 
-**Key insight**: AsyncLocalStorage is **optimized** and has minimal overhead. Use it instead of raw Async Hooks when possible.
+**Key insight**: Because modern `AsyncLocalStorage` uses V8's `ContinuationPreservedEmbedderData` instead of raw JS hooks, it is **highly optimized** and perfectly safe for production.
 
 ### Context Storage Memory
 
@@ -493,15 +613,15 @@ storage.run({ userId: 456 }, () => {
 
 3. **Each async chain has isolated context**: Multiple concurrent requests don't interfere with each other.
 
-4. **Async Hooks are low-level**: Use AsyncLocalStorage (high-level) instead of raw hooks when possible.
+4. **EventEmitters and custom queues break context**: Context follows V8's native continuation chains. If you push a callback to an array and call it later, context is lost. Use `AsyncResource.bind()`.
 
-5. **Performance overhead is minimal**: Usually < 2% for AsyncLocalStorage.
+5. **Performance overhead is minimal now**: Thanks to `AsyncContextFrame` in Node 16+, overhead is usually < 2%.
 
 6. **Context doesn't propagate to worker threads**: Must pass context explicitly.
 
 7. **Use for request tracking**: Essential for correlating logs, tracing, and monitoring.
 
-8. **Clean up context**: Always implement `destroy` hook to prevent memory leaks.
+8. **Clean up context**: When bypassing ALS for raw hooks, implement destroy hooks to prevent memory leaks.
 
 ---
 
@@ -558,3 +678,59 @@ Benchmark async context performance:
 - Determine when overhead becomes significant
 
 **Interview question this tests**: "What is the performance cost of AsyncLocalStorage and when does it matter?"
+
+### Exercise 4: Build a Mini-ALS Clone Using Raw Async Hooks
+
+To truly understand how `AsyncLocalStorage` worked before Node 16, build a miniature version yourself using raw `async_hooks`:
+
+- Create a class `MiniALS` with `run(context, cb)` and `getStore()`.
+- Use `async_hooks.createHook()`.
+- Implement `init`: Store the context in a `Map` keyed by `asyncId`, copying it from the `triggerAsyncId`.
+- Implement `before`: Set a global variable `currentContext` to the context of the executing `asyncId`.
+- Implement `after`: Restore `currentContext` to what it was previously.
+- Implement `destroy`: `delete` the `asyncId` from the `Map` to prevent memory leaks.
+
+**Interview question this tests**: "How does AsyncLocalStorage actually work under the hood using Async Hooks?"
+
+### Exercise 5: Fixing Context Loss in Event Emitters
+
+EventEmitters notoriously lose async context because their callbacks execute in the context of whoever called `.emit()`, not who called `.on()`.
+
+- Create an `AsyncLocalStorage` instance storing a `requestId`.
+- Create a standard `EventEmitter`.
+- Inside `storage.run()`, add an event listener: `ee.on('data', () => console.log(storage.getStore()))`.
+- Outside of `storage.run()`, emit the event: `ee.emit('data')`. Observe that it prints `undefined`.
+- **The Fix**: Require `const { AsyncResource } = require('async_hooks')`.
+- Wrap your event listener using `AsyncResource.bind(callback)`.
+- Run it again and verify the context is successfully preserved!
+
+**Interview question this tests**: "Why do EventEmitters lose AsyncLocalStorage context, and how do you fix it utilizing AsyncResource?"
+
+### Exercise 6: Investigating the `destroy` Hook Garbage Collection
+
+Write a script to prove that the `destroy` hook is asynchronous and dependent on the Garbage Collector (for promises):
+
+- Create a raw `async_hook` tracking `init` and `destroy`.
+- Create a dangling Promise that resolves, but throw away the reference.
+- Log every time `destroy` is called.
+- Note that `destroy` doesn't fire immediately!
+- Add a `--expose-gc` flag to your node script and force `global.gc()` manually.
+- Observe how `destroy` suddenly fires right after the garbage collection sweep.
+
+**Interview question this tests**: "Is it safe to rely on the `destroy` hook of `async_hooks` for timely resource cleanup? Why or why not?"
+
+### Exercise 7: Tracking Mixed Synchronous and Asynchronous Workloads
+
+Write a script to prove that `AsyncLocalStorage` safely preserves context regardless of whether the execution thread is blocking the CPU synchronously or yielding asynchronously:
+
+1. Create an `AsyncLocalStorage` instance holding a `RequestId`.
+2. Write a heavy, synchronous `calculatePrimes(limit)` function that takes ~200ms to run (blocking the main thread).
+3. Inside `storage.run()`, immediately log the `RequestId`.
+4. Call `calculatePrimes(100000)`, then log the `RequestId` again to prove it survived the sync workload.
+5. Cross an async boundary by wrapping the next block of code in a `setTimeout(..., 50)`.
+6. Inside the timeout callback, log the `RequestId` to prove it survived the async boundary.
+7. Call `calculatePrimes(100000)` _again_ inside the timeout.
+8. Log the `RequestId` one last time.
+9. **The Test**: Run this entire flow concurrently 5 times using `Promise.all`. Ensure that none of the heavy mathematical CPU throttling nor the async yielding causes the 5 concurrent request contexts to bleed into one another.
+
+**Interview question this tests**: "Does AsyncLocalStorage drop context during long-running synchronous code? How do mixed workloads affect context tracking?"
