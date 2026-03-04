@@ -17,6 +17,7 @@ Think of a Node.js process as having **three distinct lifecycle states**:
 ```
 
 **Key Insight**: Node.js doesn't just "stop" when you kill it. The process lifecycle is **explicitly managed** through:
+
 - **Process events** (`beforeExit`, `exit`, `uncaughtException`, `unhandledRejection`)
 - **OS signals** (`SIGTERM`, `SIGINT`, `SIGHUP`, etc.)
 - **Event loop state** (active handles, pending operations)
@@ -38,24 +39,24 @@ When you run `node app.js`, here's what happens **before your code runs**:
 
 ```javascript
 // examples/example-01-startup-trace.js
-console.log('1: Script execution starts');
+console.log("1: Script execution starts");
 
 // This runs during startup phase
-process.on('beforeExit', () => {
-  console.log('5: beforeExit - event loop is empty');
+process.on("beforeExit", () => {
+  console.log("5: beforeExit - event loop is empty");
 });
 
-process.on('exit', (code) => {
+process.on("exit", (code) => {
   console.log(`6: exit - process is exiting with code ${code}`);
 });
 
 setTimeout(() => {
-  console.log('3: Timer callback');
+  console.log("3: Timer callback");
 }, 100);
 
-console.log('2: Script execution ends');
+console.log("2: Script execution ends");
 // Event loop starts here
-console.log('4: (implicit) Event loop processing timers');
+console.log("4: (implicit) Event loop processing timers");
 ```
 
 **What developers think**: "My code runs, then the process exits."
@@ -69,19 +70,20 @@ console.log('4: (implicit) Event loop processing timers');
 ### Event Loop and Process Lifetime
 
 The Node.js process **stays alive** as long as:
+
 - There are **active handles** (timers, servers, file watchers)
 - There are **pending operations** (I/O callbacks, pending promises)
 
 ```javascript
 // examples/example-02-process-lifetime.js
-const net = require('net');
+const net = require("net");
 
-console.log('Starting server...');
+console.log("Starting server...");
 
 const server = net.createServer();
 server.listen(3000, () => {
-  console.log('Server listening on port 3000');
-  console.log('Process will stay alive because server is an active handle');
+  console.log("Server listening on port 3000");
+  console.log("Process will stay alive because server is an active handle");
 });
 
 // Process never exits because server handle is active
@@ -89,6 +91,7 @@ server.listen(3000, () => {
 ```
 
 **Internal Mechanism**:
+
 - libuv maintains a **reference count** of active handles
 - When count reaches 0, event loop exits naturally
 - `process.exit()` bypasses this and exits immediately
@@ -157,40 +160,41 @@ When a signal arrives:
 
 ```javascript
 // examples/example-03-sigterm-handling.js
-const fs = require('fs');
+const fs = require("fs");
 
 console.log(`Process PID: ${process.pid}`);
-console.log('Run: kill -TERM <PID> to test');
+console.log("Run: kill -TERM <PID> to test");
 
 let isShuttingDown = false;
 
-process.on('SIGTERM', () => {
+process.on("SIGTERM", () => {
   if (isShuttingDown) {
-    console.log('Already shutting down, ignoring duplicate SIGTERM');
+    console.log("Already shutting down, ignoring duplicate SIGTERM");
     return;
   }
-  
+
   isShuttingDown = true;
-  console.log('SIGTERM received, starting graceful shutdown...');
-  
+  console.log("SIGTERM received, starting graceful shutdown...");
+
   // Simulate cleanup
-  console.log('Closing database connections...');
-  console.log('Flushing logs...');
-  console.log('Finishing pending requests...');
-  
+  console.log("Closing database connections...");
+  console.log("Flushing logs...");
+  console.log("Finishing pending requests...");
+
   setTimeout(() => {
-    console.log('Cleanup complete, exiting');
+    console.log("Cleanup complete, exiting");
     process.exit(0);
   }, 2000);
 });
 
 // Keep process alive
 setInterval(() => {
-  console.log('Heartbeat...');
+  console.log("Heartbeat...");
 }, 1000);
 ```
 
 **Critical Details**:
+
 - SIGTERM is **catchable** (you can handle it)
 - Default behavior: terminate the process
 - Used by orchestrators (Docker, Kubernetes) to request graceful shutdown
@@ -200,23 +204,24 @@ setInterval(() => {
 
 ```javascript
 // examples/example-04-sigint-handling.js
-console.log('Press Ctrl+C to trigger SIGINT');
+console.log("Press Ctrl+C to trigger SIGINT");
 
-process.on('SIGINT', () => {
-  console.log('\nSIGINT received');
-  console.log('Performing cleanup before exit...');
-  
+process.on("SIGINT", () => {
+  console.log("\nSIGINT received");
+  console.log("Performing cleanup before exit...");
+
   // Cleanup logic
   process.exit(0);
 });
 
 // Without the handler, Ctrl+C would terminate immediately
 setInterval(() => {
-  console.log('Working...');
+  console.log("Working...");
 }, 1000);
 ```
 
 **What happens without a handler**:
+
 - Node.js default: terminate immediately
 - Call stack: interrupted mid-execution
 - No cleanup, no graceful shutdown
@@ -226,20 +231,21 @@ setInterval(() => {
 ```javascript
 // examples/example-05-sigkill-demonstration.js
 console.log(`Process PID: ${process.pid}`);
-console.log('Try: kill -KILL <PID>');
+console.log("Try: kill -KILL <PID>");
 
 // This handler WILL NOT RUN for SIGKILL
-process.on('SIGKILL', () => {
-  console.log('This will never print!');
+process.on("SIGKILL", () => {
+  console.log("This will never print!");
 });
 
 // SIGKILL cannot be caught or ignored - process terminates immediately
 setInterval(() => {
-  console.log('Running...');
+  console.log("Running...");
 }, 1000);
 ```
 
 **Why SIGKILL exists**:
+
 - Final failsafe to kill unresponsive processes
 - Kernel terminates the process **immediately**
 - No cleanup, no handlers, no graceful shutdown
@@ -250,18 +256,18 @@ setInterval(() => {
 ```javascript
 // examples/example-06-sigusr1-debugger.js
 console.log(`Process PID: ${process.pid}`);
-console.log('Send SIGUSR1 to start debugger: kill -USR1 <PID>');
+console.log("Send SIGUSR1 to start debugger: kill -USR1 <PID>");
 
 // Node.js default SIGUSR1 handler: start debugger
 // You can override it
-process.on('SIGUSR1', () => {
-  console.log('SIGUSR1 received');
-  console.log('You could start custom profiling here');
+process.on("SIGUSR1", () => {
+  console.log("SIGUSR1 received");
+  console.log("You could start custom profiling here");
   // If you override, default debugger behavior is disabled
 });
 
 setInterval(() => {
-  console.log('Working...');
+  console.log("Working...");
 }, 2000);
 ```
 
@@ -273,39 +279,40 @@ setInterval(() => {
 
 ```javascript
 // examples/example-07-beforeexit-vs-exit.js
-console.log('1: Script starts');
+console.log("1: Script starts");
 
-process.on('beforeExit', (code) => {
-  console.log('4: beforeExit - event loop is empty');
+process.on("beforeExit", (code) => {
+  console.log("4: beforeExit - event loop is empty");
   console.log(`   Exit code will be: ${code}`);
-  
+
   // YOU CAN schedule new async work here!
   setTimeout(() => {
-    console.log('5: New work scheduled from beforeExit');
+    console.log("5: New work scheduled from beforeExit");
   }, 100);
-  
+
   // This will cause beforeExit to fire again after the timer
 });
 
-process.on('exit', (code) => {
-  console.log('6: exit - process is exiting NOW');
+process.on("exit", (code) => {
+  console.log("6: exit - process is exiting NOW");
   console.log(`   Final exit code: ${code}`);
-  
+
   // ONLY SYNCHRONOUS CODE WORKS HERE
   // Event loop is stopped
   setTimeout(() => {
-    console.log('This will NEVER run!');
+    console.log("This will NEVER run!");
   }, 0);
 });
 
 setTimeout(() => {
-  console.log('3: Timer executed');
+  console.log("3: Timer executed");
 }, 50);
 
-console.log('2: Script ends');
+console.log("2: Script ends");
 ```
 
 **Execution Order**:
+
 ```
 1: Script starts
 2: Script ends
@@ -319,10 +326,10 @@ console.log('2: Script ends');
 
 **Critical Differences**:
 
-| Event | When It Fires | Can Schedule Async | Event Loop State |
-|-------|---------------|-------------------|------------------|
-| `beforeExit` | Event loop becomes empty | ✅ Yes | Still running |
-| `exit` | Process is about to exit | ❌ No | Stopped |
+| Event        | When It Fires            | Can Schedule Async | Event Loop State |
+| ------------ | ------------------------ | ------------------ | ---------------- |
+| `beforeExit` | Event loop becomes empty | ✅ Yes             | Still running    |
+| `exit`       | Process is about to exit | ❌ No              | Stopped          |
 
 ---
 
@@ -332,8 +339,8 @@ console.log('2: Script ends');
 
 ```javascript
 // examples/example-08-graceful-shutdown.js
-const http = require('http');
-const { EventEmitter } = require('events');
+const http = require("http");
+const { EventEmitter } = require("events");
 
 class GracefulShutdown extends EventEmitter {
   constructor() {
@@ -345,28 +352,28 @@ class GracefulShutdown extends EventEmitter {
 
   init(server) {
     this.server = server;
-    
+
     // Track active connections
-    server.on('connection', (conn) => {
+    server.on("connection", (conn) => {
       this.activeConnections.add(conn);
-      conn.on('close', () => {
+      conn.on("close", () => {
         this.activeConnections.delete(conn);
       });
     });
 
     // Handle signals
-    process.on('SIGTERM', () => this.shutdown('SIGTERM'));
-    process.on('SIGINT', () => this.shutdown('SIGINT'));
-    
+    process.on("SIGTERM", () => this.shutdown("SIGTERM"));
+    process.on("SIGINT", () => this.shutdown("SIGINT"));
+
     // Handle uncaught errors
-    process.on('uncaughtException', (err) => {
-      console.error('Uncaught Exception:', err);
-      this.shutdown('uncaughtException', 1);
+    process.on("uncaughtException", (err) => {
+      console.error("Uncaught Exception:", err);
+      this.shutdown("uncaughtException", 1);
     });
-    
-    process.on('unhandledRejection', (reason, promise) => {
-      console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-      this.shutdown('unhandledRejection', 1);
+
+    process.on("unhandledRejection", (reason, promise) => {
+      console.error("Unhandled Rejection at:", promise, "reason:", reason);
+      this.shutdown("unhandledRejection", 1);
     });
   }
 
@@ -381,22 +388,22 @@ class GracefulShutdown extends EventEmitter {
 
     // Set a hard timeout
     const forceExitTimer = setTimeout(() => {
-      console.error('Graceful shutdown timeout, forcing exit');
+      console.error("Graceful shutdown timeout, forcing exit");
       process.exit(1);
     }, this.shutdownTimeout);
 
     try {
       // Step 1: Stop accepting new connections
-      console.log('1. Stopping server (no new connections)...');
+      console.log("1. Stopping server (no new connections)...");
       await new Promise((resolve) => {
         this.server.close((err) => {
-          if (err) console.error('Error closing server:', err);
+          if (err) console.error("Error closing server:", err);
           resolve();
         });
       });
 
       // Step 2: Close idle connections
-      console.log('2. Closing idle connections...');
+      console.log("2. Closing idle connections...");
       for (const conn of this.activeConnections) {
         if (!conn.destroyed) {
           conn.end();
@@ -404,22 +411,22 @@ class GracefulShutdown extends EventEmitter {
       }
 
       // Step 3: Wait for active connections to finish
-      console.log('3. Waiting for active connections to close...');
+      console.log("3. Waiting for active connections to close...");
       await this.waitForConnections();
 
       // Step 4: Close database connections
-      console.log('4. Closing database connections...');
+      console.log("4. Closing database connections...");
       await this.closeDatabase();
 
       // Step 5: Flush logs and metrics
-      console.log('5. Flushing logs and metrics...');
+      console.log("5. Flushing logs and metrics...");
       await this.flushLogs();
 
-      console.log('Graceful shutdown complete');
+      console.log("Graceful shutdown complete");
       clearTimeout(forceExitTimer);
       process.exit(exitCode);
     } catch (err) {
-      console.error('Error during shutdown:', err);
+      console.error("Error during shutdown:", err);
       clearTimeout(forceExitTimer);
       process.exit(1);
     }
@@ -429,24 +436,26 @@ class GracefulShutdown extends EventEmitter {
     const startTime = Date.now();
     while (this.activeConnections.size > 0) {
       if (Date.now() - startTime > maxWait) {
-        console.warn(`Forcing close of ${this.activeConnections.size} connections`);
+        console.warn(
+          `Forcing close of ${this.activeConnections.size} connections`,
+        );
         for (const conn of this.activeConnections) {
           conn.destroy();
         }
         break;
       }
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }
 
   async closeDatabase() {
     // Simulate database close
-    return new Promise(resolve => setTimeout(resolve, 500));
+    return new Promise((resolve) => setTimeout(resolve, 500));
   }
 
   async flushLogs() {
     // Simulate log flush
-    return new Promise(resolve => setTimeout(resolve, 200));
+    return new Promise((resolve) => setTimeout(resolve, 200));
   }
 }
 
@@ -455,7 +464,7 @@ const server = http.createServer((req, res) => {
   // Simulate slow request
   setTimeout(() => {
     res.writeHead(200);
-    res.end('Response after 2 seconds\n');
+    res.end("Response after 2 seconds\n");
   }, 2000);
 });
 
@@ -463,9 +472,9 @@ const gracefulShutdown = new GracefulShutdown();
 gracefulShutdown.init(server);
 
 server.listen(3000, () => {
-  console.log('Server listening on port 3000');
+  console.log("Server listening on port 3000");
   console.log(`Process PID: ${process.pid}`);
-  console.log('Test: curl http://localhost:3000 & kill -TERM <PID>');
+  console.log("Test: curl http://localhost:3000 & kill -TERM <PID>");
 });
 ```
 
@@ -476,6 +485,7 @@ server.listen(3000, () => {
 Let's trace what happens when `SIGTERM` is received:
 
 **T0: Server Running**
+
 ```
 Call Stack: []
 Event Loop: Running (server handle active)
@@ -484,6 +494,7 @@ Kernel: Process is running normally
 ```
 
 **T1: User Sends SIGTERM**
+
 ```
 Kernel: Delivers SIGTERM to process
 libuv Signal Handler (C):
@@ -495,6 +506,7 @@ Event Loop: Continues processing
 ```
 
 **T2: Event Loop Check Phase**
+
 ```
 Event Loop: Check phase processes queued signals
 V8 Call Stack:
@@ -506,6 +518,7 @@ JavaScript: SIGTERM handler executes
 ```
 
 **T3: Server.close() Called**
+
 ```
 Call Stack:
   ┌────────────────────────────┐
@@ -518,6 +531,7 @@ Event Loop: Will close in next iteration
 ```
 
 **T4: Cleanup Async Operations**
+
 ```
 Microtask Queue: Promise callbacks from async cleanup
 Event Loop Phases:
@@ -527,6 +541,7 @@ Event Loop Phases:
 ```
 
 **T5: process.exit() Called**
+
 ```
 Call Stack:
   ┌────────────────────────────┐
@@ -544,14 +559,15 @@ Process: Terminated
 ## Common Misconceptions
 
 ### ❌ Misconception 1: "Signals are handled immediately"
+
 **Reality**: Signals are **queued** and processed during the event loop's **check phase**.
 
 ```javascript
 // examples/example-09-signal-timing.js
-console.log('1: Start');
+console.log("1: Start");
 
-process.on('SIGTERM', () => {
-  console.log('4: SIGTERM handler');
+process.on("SIGTERM", () => {
+  console.log("4: SIGTERM handler");
 });
 
 // Simulate blocking operation
@@ -560,14 +576,15 @@ while (count < 2000000000) {
   count++;
 }
 
-console.log('2: After blocking operation');
-setTimeout(() => console.log('3: Timer'), 0);
+console.log("2: After blocking operation");
+setTimeout(() => console.log("3: Timer"), 0);
 
 // Send SIGTERM during blocking operation
 // Signal will be delivered, but handler won't run until event loop resumes
 ```
 
 ### ❌ Misconception 2: "process.exit() runs cleanup code"
+
 **Reality**: `process.exit()` **immediately** terminates the process. No async cleanup runs.
 
 ```javascript
@@ -575,14 +592,15 @@ setTimeout(() => console.log('3: Timer'), 0);
 process.exit(0);
 
 // NONE of this runs
-setTimeout(() => console.log('Cleanup'), 0);
-process.on('exit', () => {
+setTimeout(() => console.log("Cleanup"), 0);
+process.on("exit", () => {
   // Only synchronous code works here
-  setTimeout(() => console.log('Async cleanup'), 0); // Won't run
+  setTimeout(() => console.log("Async cleanup"), 0); // Won't run
 });
 ```
 
 ### ❌ Misconception 3: "SIGTERM guarantees graceful shutdown"
+
 **Reality**: SIGTERM is just a **request**. If you don't handle it, default behavior is immediate termination.
 
 ```javascript
@@ -598,24 +616,24 @@ process.on('exit', () => {
 
 ```javascript
 // examples/example-11-shutdown-timeout.js
-const http = require('http');
+const http = require("http");
 
 let shutdownCalled = false;
 
-process.on('SIGTERM', async () => {
+process.on("SIGTERM", async () => {
   if (shutdownCalled) return;
   shutdownCalled = true;
 
-  console.log('SIGTERM received, starting shutdown...');
-  
+  console.log("SIGTERM received, starting shutdown...");
+
   // BUG: No timeout protection
   await new Promise((resolve) => {
     server.close(resolve);
   });
-  
+
   // If server has long-lived connections, this hangs forever
   // Kubernetes sends SIGKILL after 30s, killing the process
-  
+
   process.exit(0);
 });
 
@@ -637,18 +655,18 @@ server.listen(3000);
 
 ```javascript
 // examples/example-12-active-operations.js
-const fs = require('fs');
+const fs = require("fs");
 
-process.on('SIGTERM', () => {
-  console.log('Exiting immediately');
+process.on("SIGTERM", () => {
+  console.log("Exiting immediately");
   process.exit(0);
   // BUG: File write is still in progress!
 });
 
 // Start a file write
-fs.writeFile('/tmp/data.txt', 'important data', (err) => {
-  if (err) console.error('Write failed:', err);
-  else console.log('Write complete');
+fs.writeFile("/tmp/data.txt", "important data", (err) => {
+  if (err) console.error("Write failed:", err);
+  else console.log("Write complete");
 });
 
 // If SIGTERM arrives immediately, file write is interrupted
@@ -664,8 +682,8 @@ fs.writeFile('/tmp/data.txt', 'important data', (err) => {
 
 ```javascript
 // examples/example-13-recursive-signal.js
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received');
+process.on("SIGTERM", () => {
+  console.log("SIGTERM received");
   // BUG: Calling exit() without cleanup can trigger another signal
   gracefulShutdown(); // Calls process.exit()
 });
@@ -677,7 +695,7 @@ function gracefulShutdown() {
 
 // Better: use a flag to prevent re-entry
 let isShuttingDown = false;
-process.on('SIGTERM', () => {
+process.on("SIGTERM", () => {
   if (isShuttingDown) return;
   isShuttingDown = true;
   gracefulShutdown();
@@ -689,21 +707,25 @@ process.on('SIGTERM', () => {
 ## What Cannot Be Done (And Why)
 
 ### Cannot: Catch SIGKILL or SIGSTOP
+
 **Why**: These are **kernel-enforced** signals that guarantee process control. If they could be caught, a process could make itself unkillable.
 
 **Workaround**: Handle SIGTERM gracefully so SIGKILL is never needed.
 
 ### Cannot: Guarantee Shutdown Completion
+
 **Why**: External forces (SIGKILL, power loss, OOM killer) can terminate the process instantly.
 
 **Workaround**: Design for crash recovery. Use transactions, WAL, idempotent operations.
 
 ### Cannot: Run Async Code in `exit` Event
+
 **Why**: Event loop is **already stopped** when `exit` fires. Only synchronous code executes.
 
 **Workaround**: Do cleanup before calling `process.exit()`, or use `beforeExit`.
 
 ### Cannot: Prevent Multiple Signal Deliveries
+
 **Why**: OS can send the same signal multiple times (user spams Ctrl+C).
 
 **Workaround**: Use a flag to track shutdown state (see example-08).
@@ -834,29 +856,105 @@ Signals are processed in the **Poll phase**, but handlers run like any other cal
 
 ---
 
-## Practice Exercise
-
-1. Run `examples/example-08-graceful-shutdown.js`
-2. In another terminal: `curl http://localhost:3000 &`
-3. Immediately send `kill -TERM <PID>`
-4. Observe:
-   - Server stops accepting new connections
-   - Active request completes
-   - Cleanup happens in order
-   - Process exits cleanly
-
-**Prediction**: What happens if you send SIGTERM twice rapidly?
-
-**Answer**: First signal triggers shutdown. Second signal is caught by the `isShuttingDown` flag and ignored.
+**Next Concept Preview**: "Runtime Debugging Tools: inspect, tracing, heap snapshots, CPU profiling"
 
 ---
 
-## Next Steps
+## Practice Exercises
 
-Before moving to the next concept, confirm:
-1. You understand the three process lifecycle phases (startup, running, shutdown)
-2. You can explain how OS signals are delivered to JavaScript handlers
-3. You know the difference between `beforeExit` and `exit` events
-4. You can implement a production-ready graceful shutdown handler
+### Exercise 1: Prove the beforeExit vs exit Difference
 
-**Next Concept Preview**: "Runtime Debugging Tools: inspect, tracing, heap snapshots, CPU profiling"
+Write a script that makes the difference between `beforeExit` and `exit` observable:
+
+- Register both `process.on('beforeExit')` and `process.on('exit')` handlers.
+- Inside the `beforeExit` handler, schedule a `setTimeout` of 100ms.
+- Inside that timeout, schedule another `setTimeout` of 100ms.
+- Observe that `beforeExit` fires after **each** time the event loop empties, until no new work is added.
+- In the `exit` handler, attempt to call `setTimeout(() => console.log('async in exit'), 0)`. Observe it **never runs**.
+- In comments, explain why async code in `exit` is silently ignored.
+
+**Interview question this tests**: "What is the difference between `beforeExit` and `exit`? Can you schedule async work in `exit`? Why or why not?"
+
+### Exercise 2: Signal Timing — Prove Signals Are Queued, Not Immediate
+
+Prove that a signal delivered during a CPU-blocking operation is not handled until the event loop resumes:
+
+- Register a `SIGTERM` handler that logs `"SIGTERM received at: <timestamp>"`.
+- Start a tight blocking loop that runs for 3 seconds (`while (Date.now() < start + 3000) {}`).
+- Before blocking, log `"Starting block at: <timestamp>"`. After blocking ends, log `"Block finished at: <timestamp>"`.
+- From another terminal, send SIGTERM to the process while it's blocking.
+- Observe: the SIGTERM handler only executes **after** the block finishes, not at the moment of delivery.
+- Explain in comments: where in the event loop lifecycle are signals queued and dispatched?
+
+**Interview question this tests**: "If a signal arrives while Node.js is executing a CPU-intensive synchronous operation, when exactly does the signal handler run?"
+
+### Exercise 3: Implement Graceful HTTP Server Shutdown with a Hard Timeout
+
+Build a complete graceful shutdown implementation for an HTTP server:
+
+- Create an HTTP server that responds to `GET /` after a simulated 2-second delay (db query).
+- Track all active connections in a `Set`:
+  - Add each connection on the `'connection'` event.
+  - Remove it on the `'close'` event.
+- On `SIGTERM`:
+  1. Call `server.close()` to stop accepting new connections.
+  2. Wait for all active connections to close using `Promise.all`.
+  3. Log each step with a timestamp.
+  4. Call `process.exit(0)` when all connections are closed.
+- Add a **hard timeout**: if shutdown takes more than 5 seconds, force `process.exit(1)`.
+- Test: start the server, fire a slow request with `curl`, then kill with SIGTERM. Verify the request completes before the process exits.
+
+**Interview question this tests**: "Walk me through a production-ready graceful HTTP server shutdown. What happens to in-flight requests, and how do you prevent shutdown from hanging indefinitely?"
+
+### Exercise 4: Double SIGTERM — Idempotent Shutdown Guard
+
+Prove that signal handlers can be called multiple times and implement an idempotent guard:
+
+- Create a simple server with a SIGTERM handler that starts a 3-second async cleanup.
+- From the command line, send SIGTERM twice in rapid succession (`kill -TERM <pid>; kill -TERM <pid>`).
+- **Without a guard**: observe that `shutdown()` is called twice. This causes race conditions (e.g., `server.close()` called on an already-closed server throws).
+- **With a guard**: add `let isShuttingDown = false`. Check and set the flag at the top of the handler. Verify only one shutdown sequence runs even when SIGTERM arrives multiple times.
+- Extend: handle `SIGINT` with the same guard (`Ctrl+C` followed by another `Ctrl+C`).
+
+**Interview question this tests**: "What happens if SIGTERM is sent twice to a Node.js process handling graceful shutdown? How do you make the handler idempotent?"
+
+### Exercise 5: Process Exit Codes — Communicate Status to the OS
+
+Demonstrate how exit codes communicate process status to orchestrators:
+
+- Write a script that accepts a CLI argument: `node app.js success | failure | crash`.
+- For `success`: do some work and call `process.exit(0)`.
+- For `failure`: log a known operational failure (e.g., "DB connection refused") and call `process.exit(1)`.
+- For `crash`: throw an uncaught exception and let Node.js exit with code `1` automatically.
+- In a shell script, invoke each variant and use `$?` (or `echo %ERRORLEVEL%` on Windows) to print the exit code.
+- Log how Kubernetes, PM2, and Docker use exit codes to decide whether to restart a container.
+
+**Interview question this tests**: "What exit codes should a Node.js application use, and how do process managers and container runtimes interpret them?"
+
+### Exercise 6: SIGUSR1 and SIGUSR2 — Custom Signal-Triggered Operations
+
+Use custom signals to trigger operational actions in a running process without restarting it:
+
+- Write a long-running server with:
+  - `SIGUSR1`: reload configuration from a JSON file on disk (simulate with `fs.readFileSync`). Log `"Config reloaded"`.
+  - `SIGUSR2`: dump current memory stats (`process.memoryUsage()`) to a log file and log `"Memory dump written"`.
+- Start the server, modify the config file, and send `kill -USR1 <pid>`. Verify the config is picked up without restart.
+- Send `kill -USR2 <pid>` and verify the memory dump file is created.
+- Explain in comments why you should NOT override `SIGUSR1` in production Node.js (it activates the built-in debugger).
+
+**Interview question this tests**: "How do you implement live configuration reload in a Node.js process using signals? Which signals are conventionally used for custom operations?"
+
+### Exercise 7: Kubernetes-Style Rolling Restart — Zero-Downtime Shutdown
+
+Simulate a zero-downtime rolling restart pattern:
+
+- Run two instances of a server (different ports, e.g., 3001 and 3002) behind a simple in-process load balancer on port 3000.
+- The load balancer round-robins between the two instances via `http.request`.
+- Implement graceful shutdown on each instance: on SIGTERM, stop accepting connections, wait for in-flight requests to complete, then exit.
+- Send SIGTERM to instance 3001 while the load balancer is in use. Verify:
+  - In-flight requests to 3001 complete.
+  - New requests are routed only to 3002 after 3001 shuts down.
+  - The load balancer logs `"Instance 3001 removed from rotation"`.
+- Restart 3001 and re-add it. Simulate a complete rolling restart cycle.
+
+**Interview question this tests**: "How does rolling restart work in Node.js? What must the application do to support zero-downtime deployments, and what does the orchestrator (Kubernetes) expect from the process?"

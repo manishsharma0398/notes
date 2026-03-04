@@ -76,9 +76,9 @@ function handleRequest(req, res) {
   const id = crypto.randomUUID();
   requests.set(id, { startedAt: Date.now(), req, res, payload: req.body });
 
-  res.on('finish', () => {
+  res.on("finish", () => {
     // BUG: forgot to delete requests.delete(id);
-    console.log('Request finished:', id);
+    console.log("Request finished:", id);
   });
 }
 ```
@@ -99,19 +99,19 @@ function handleRequest(req, res) {
 ### 3. Event Listeners that Are Never Removed
 
 ```javascript
-const EventEmitter = require('events');
+const EventEmitter = require("events");
 const emitter = new EventEmitter();
 
 function subscribe(userId) {
   function onMessage(msg) {
     // Capture userId in closure
-    console.log('Message for', userId, ':', msg);
+    console.log("Message for", userId, ":", msg);
   }
 
-  emitter.on('message', onMessage);
+  emitter.on("message", onMessage);
 
   // BUG: no way to unsubscribe (or we forget to call it)
-  return () => emitter.off('message', onMessage);
+  return () => emitter.off("message", onMessage);
 }
 ```
 
@@ -340,12 +340,14 @@ class LruCache {
 
 ```javascript
 function subscribe(userId) {
-  function onMessage(msg) { /* ... */ }
+  function onMessage(msg) {
+    /* ... */
+  }
 
-  emitter.on('message', onMessage);
+  emitter.on("message", onMessage);
 
   return function unsubscribe() {
-    emitter.off('message', onMessage);
+    emitter.off("message", onMessage);
   };
 }
 ```
@@ -405,3 +407,93 @@ function getWithTtl(key) {
 
 The mindset shift: a Node.js memory leak is almost always “**we are still holding onto this**”, not “GC forgot to clean up.” Designing your data structures and lifecycles with that in mind prevents most 3 AM leak hunts.
 
+---
+
+## Practice Exercises
+
+### Exercise 1: Create and Observe an Unbounded Cache Leak
+
+Write a reproducible memory leak using an unbounded `Map`, then fix it:
+
+- Create a global `Map` cache. Write a `getUser(id)` function that sets a new entry on every unique `id` and never evicts.
+- Run a loop that calls `getUser` with 100,000 unique IDs. After the loop, log `process.memoryUsage().heapUsed` in MB.
+- Fix it with a simple LRU eviction: if `cache.size >= 1000`, delete the oldest entry (`cache.keys().next().value`) before inserting.
+- Run the same loop with the fixed cache. Log `heapUsed` again and compare.
+- Add a test: insert 5000 IDs. Assert `cache.size <= 1000` at all times.
+
+**Interview question this tests**: "What is the single most common memory leak in long-running Node.js services, and what is the correct Fix?"
+
+### Exercise 2: Event Listener Accumulation Leak
+
+Prove that unremoved event listeners accumulate and leak their closures:
+
+- Create an `EventEmitter` and a loop that calls `subscribe(i)` 10,000 times. Each `subscribe` call adds a listener that closes over a 10 KB array (`new Array(1000).fill(i)`).
+- Log `emitter.listenerCount('message')` and `process.memoryUsage().heapUsed` after the loop. Observe the high listener count and heap usage.
+- Fix: make `subscribe` return an `unsubscribe` function and call it after use in the loop.
+- Verify: after unsubscribing all, `listenerCount` returns to 0 and `heapUsed` drops (you may need to force GC with `--expose-gc`).
+- Node.js emits a `MaxListenersExceededWarning` after 10 listeners by default. Observe this warning and explain what it signals.
+
+**Interview question this tests**: "How do event listeners cause memory leaks? What does `MaxListenersExceededWarning` tell you, and how do you fix it?"
+
+### Exercise 3: Timer and Interval Retention
+
+Show that uncancelled intervals keep their callbacks and closures alive forever:
+
+- Create a `startTask(config)` function that starts a `setInterval` capturing `config` (a 100 KB object) in its closure.
+- Call `startTask` 100 times with different config objects. None of the intervals are ever cleared.
+- Log heap memory growth over 5 seconds using `setInterval(() => console.log(process.memoryUsage().heapUsed), 1000)`.
+- Fix: `startTask` returns a `stop()` function that calls `clearInterval`. After starting 100 tasks, stop them all immediately.
+- Observe the heap stabilize after the fix.
+
+**Interview question this tests**: "Why does `setInterval` prevent garbage collection of its callback and all variables it closes over? What is the reliable pattern for managing timer lifecycles?"
+
+### Exercise 4: Closure Capturing More Than Needed
+
+Demonstrate memory retained by unnecessarily large closure captures:
+
+- Write a `createRequestHandler(bigConfig)` where `bigConfig` is a 5 MB object. The handler function only uses `bigConfig.timeout` (a number).
+- Create 1000 such handlers and store them in an array. Log heap usage.
+- Fix: extract only the needed fields before creating the closure: `const { timeout } = bigConfig`. Pass `timeout` to the closure instead of the entire `bigConfig`.
+- Set `bigConfig = null` after extraction. Log heap usage again — should be dramatically lower.
+- Verify with a heap snapshot: the large config objects no longer appear in retained object graphs.
+
+**Interview question this tests**: "How do closures cause memory leaks, and what is the correct design principle for what closures should capture?"
+
+### Exercise 5: Take and Interpret Two Heap Snapshots
+
+Use `v8.writeHeapSnapshot()` to find a leak between two snapshots:
+
+- Start a script that takes **Snapshot 1** into `heap1.heapsnapshot`.
+- Run 500 iterations of `cache.set(i, new Array(1000).fill(i))` (no eviction).
+- Take **Snapshot 2** into `heap2.heapsnapshot`.
+- Open both in Chrome DevTools → Memory → Load Profile.
+- In the Comparison view, find objects present in Snapshot 2 but NOT in Snapshot 1. Identify the `Map` entries and their retained size.
+- Fix the cache and take Snapshot 3. Verify the delta between Snapshot 1 and Snapshot 3 is near zero.
+
+**Interview question this tests**: "Walk me through the heap snapshot comparison workflow to find a memory leak. What do 'shallow size' and 'retained size' mean, and which one matters more for finding leaks?"
+
+### Exercise 6: WeakRef and FinalizationRegistry — GC-Friendly Caches
+
+Build a cache that automatically releases values when the GC reclaims them:
+
+- Implement a `WeakCache` class backed by a `Map<key, WeakRef<value>>`.
+- `get(key)`: call `weakRef.deref()`. If it returns `undefined`, delete the key and return `null` (the value was GC'd).
+- `set(key, value)`: store `new WeakRef(value)`.
+- Register a `FinalizationRegistry` that logs `"Key <k> collected by GC"` when values are reclaimed.
+- Populate the cache with 50 large objects. Set references to `null`. Force GC with `--expose-gc`. Observe the registry callbacks fire.
+- Explain in comments: when is a `WeakRef`-backed cache appropriate vs. an explicit LRU cache?
+
+**Interview question this tests**: "What are `WeakRef` and `FinalizationRegistry`? When would you use them for caching, and what are their limitations?"
+
+### Exercise 7: Production Memory Monitoring Script
+
+Build a self-contained memory health monitor for a long-running Node.js process:
+
+- Every 5 seconds, log a structured JSON line: `{ ts, heapUsed, heapTotal, rss, external, arrayBuffers }` (from `process.memoryUsage()`).
+- Compute a `heapTrend`: compare the current `heapUsed` to the value from 30 seconds ago. If it grew by more than 20%, log `WARN: heap growing — possible leak`.
+- Simulate a leak: start the monitor, then every 500ms push a 100 KB buffer into a global array indefinitely.
+- Observe the `WARN` messages appear within 1–2 minutes.
+- Fix the leak (clear the array on a schedule) and observe the warnings stop.
+- Add a check: if `heapUsed / heapTotal > 0.9`, log `CRITICAL: heap near limit — restart recommended`.
+
+**Interview question this tests**: "How would you instrument a Node.js process to detect memory leaks automatically in production without a APM tool? What metrics would you track and what thresholds would you alert on?"

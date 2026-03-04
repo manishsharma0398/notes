@@ -37,6 +37,7 @@ Think of debugging a Node.js process like examining a patient with **four differ
 ```
 
 **Key Insight**: Each tool reveals different aspects of runtime behavior:
+
 - **Inspector**: "What is happening RIGHT NOW?" (live debugging)
 - **CPU Profiler**: "WHERE is my code spending time?" (performance)
 - **Heap Profiler**: "WHAT is consuming memory?" (memory leaks)
@@ -80,7 +81,8 @@ When you debug Node.js, here's what happens **under the hood**:
 
 **What developers think**: "Debugging magically shows my code."
 
-**What actually happens**: 
+**What actually happens**:
+
 1. Node.js starts **inspector agent** (WebSocket server)
 2. V8 Inspector **instruments** your code (adds hooks)
 3. Client connects via **WebSocket**
@@ -96,7 +98,7 @@ When you debug Node.js, here's what happens **under the hood**:
 
 ```javascript
 // examples/example-01-basic-inspect.js
-console.log('Application starting...');
+console.log("Application starting...");
 console.log(`Process PID: ${process.pid}`);
 
 function slowFunction() {
@@ -108,19 +110,21 @@ function slowFunction() {
 }
 
 setInterval(() => {
-  console.log('Heartbeat:', Date.now());
+  console.log("Heartbeat:", Date.now());
   const result = slowFunction();
-  console.log('Result:', result);
+  console.log("Result:", result);
 }, 2000);
 ```
 
 **Run with inspector**:
+
 ```bash
 node --inspect example-01-basic-inspect.js
 # Output: Debugger listening on ws://127.0.0.1:9229/...
 ```
 
 **Internal Process**:
+
 1. Node.js calls `inspector::Agent::Start()` during startup
 2. WebSocket server binds to `127.0.0.1:9229`
 3. Inspector waits for client connection
@@ -131,21 +135,22 @@ node --inspect example-01-basic-inspect.js
 ```javascript
 // examples/example-02-attach-later.js
 console.log(`Process PID: ${process.pid}`);
-console.log('Running without inspector initially...');
+console.log("Running without inspector initially...");
 
 let counter = 0;
 setInterval(() => {
   counter++;
   console.log(`Counter: ${counter}`);
-  
+
   if (counter === 10) {
-    console.log('Something seems wrong, need to debug!');
+    console.log("Something seems wrong, need to debug!");
     // In real scenario, you'd send SIGUSR1 from outside
   }
 }, 1000);
 ```
 
 **Attach debugger to running process**:
+
 ```bash
 # Start normally
 node example-02-attach-later.js
@@ -158,6 +163,7 @@ process.kill(process.pid, 'SIGUSR1');
 ```
 
 **What happens when SIGUSR1 arrives**:
+
 1. Node.js **default SIGUSR1 handler** activates
 2. Calls `inspector::Agent::Start()`
 3. Opens WebSocket server on port 9229
@@ -173,11 +179,11 @@ process.kill(process.pid, 'SIGUSR1');
 ```javascript
 // examples/example-03-breakpoint-demo.js
 function processUser(user) {
-  console.log('Processing user:', user.name);
-  
+  console.log("Processing user:", user.name);
+
   // Set breakpoint here via DevTools
   const validation = validateUser(user);
-  
+
   if (validation.valid) {
     return saveUser(user);
   } else {
@@ -188,29 +194,30 @@ function processUser(user) {
 function validateUser(user) {
   // Inspect variables here
   if (!user.email) {
-    return { valid: false, reason: 'No email' };
+    return { valid: false, reason: "No email" };
   }
-  if (!user.email.includes('@')) {
-    return { valid: false, reason: 'Invalid email format' };
+  if (!user.email.includes("@")) {
+    return { valid: false, reason: "Invalid email format" };
   }
   return { valid: true };
 }
 
 function saveUser(user) {
-  console.log('Saving user to database...');
+  console.log("Saving user to database...");
   return { id: Math.random(), ...user };
 }
 
 // Test
 try {
-  processUser({ name: 'Alice', email: 'alice@example.com' });
-  processUser({ name: 'Bob', email: 'invalid' });
+  processUser({ name: "Alice", email: "alice@example.com" });
+  processUser({ name: "Bob", email: "invalid" });
 } catch (err) {
-  console.error('Error:', err.message);
+  console.error("Error:", err.message);
 }
 ```
 
 **Inspector Features**:
+
 - **Breakpoints**: Pause execution at specific line
 - **Step Over**: Execute current line, move to next
 - **Step Into**: Enter function call
@@ -220,6 +227,7 @@ try {
 - **Scope Variables**: Inspect local, closure, and global variables
 
 **How breakpoints work internally**:
+
 1. Client sends `Debugger.setBreakpoint` command
 2. V8 Inspector **modifies bytecode** to insert debug hook
 3. When execution hits breakpoint, V8 **pauses** event loop
@@ -234,33 +242,33 @@ try {
 
 ```javascript
 // examples/example-04-cpu-profiling.js
-const { Session } = require('inspector');
-const fs = require('fs');
+const { Session } = require("inspector");
+const fs = require("fs");
 
 const session = new Session();
 session.connect();
 
 // Start profiling
-session.post('Profiler.enable', () => {
-  session.post('Profiler.start', () => {
-    console.log('Profiling started...');
-    
+session.post("Profiler.enable", () => {
+  session.post("Profiler.start", () => {
+    console.log("Profiling started...");
+
     // Run code to profile
     runWorkload();
-    
+
     // Stop profiling after 5 seconds
     setTimeout(() => {
-      session.post('Profiler.stop', (err, { profile }) => {
+      session.post("Profiler.stop", (err, { profile }) => {
         if (err) {
-          console.error('Profiler stop error:', err);
+          console.error("Profiler stop error:", err);
           return;
         }
-        
+
         // Save profile
-        fs.writeFileSync('cpu-profile.cpuprofile', JSON.stringify(profile));
-        console.log('Profile saved to cpu-profile.cpuprofile');
-        console.log('Load in Chrome DevTools: Performance > Load Profile');
-        
+        fs.writeFileSync("cpu-profile.cpuprofile", JSON.stringify(profile));
+        console.log("Profile saved to cpu-profile.cpuprofile");
+        console.log("Load in Chrome DevTools: Performance > Load Profile");
+
         session.disconnect();
         process.exit(0);
       });
@@ -294,9 +302,9 @@ function slowFunction() {
 }
 
 function mediumFunction() {
-  let result = '';
+  let result = "";
   for (let i = 0; i < 10000; i++) {
-    result += 'x';
+    result += "x";
   }
   return result;
 }
@@ -327,6 +335,7 @@ function mediumFunction() {
 ```
 
 **Sample Output Structure**:
+
 ```
 slowFunction: 85% (425 samples)
   └─ runWorkload: 100% (500 samples)
@@ -337,6 +346,7 @@ fastFunction: 3% (15 samples)
 ```
 
 **Critical Detail**: CPU profiler uses **sampling**, not instrumentation:
+
 - ✅ Low overhead (~1% performance impact)
 - ✅ Production-safe (can run on live traffic)
 - ❌ Doesn't capture very fast functions (<1ms)
@@ -350,10 +360,10 @@ fastFunction: 3% (15 samples)
 
 ```javascript
 // examples/example-05-heap-snapshot.js
-const v8 = require('v8');
-const fs = require('fs');
+const v8 = require("v8");
+const fs = require("fs");
 
-console.log('Creating objects to analyze...');
+console.log("Creating objects to analyze...");
 
 // Global leak simulation
 global.leakyCache = [];
@@ -361,12 +371,12 @@ global.leakyCache = [];
 function createLeak() {
   const data = {
     timestamp: Date.now(),
-    largeArray: new Array(10000).fill('x'.repeat(100)),
+    largeArray: new Array(10000).fill("x".repeat(100)),
     nested: {
-      moreData: new Array(5000).fill({ id: Math.random() })
-    }
+      moreData: new Array(5000).fill({ id: Math.random() }),
+    },
   };
-  
+
   global.leakyCache.push(data);
 }
 
@@ -378,16 +388,16 @@ for (let i = 0; i < 50; i++) {
 console.log(`Created ${global.leakyCache.length} leaked objects`);
 
 // Take heap snapshot
-console.log('Taking heap snapshot...');
+console.log("Taking heap snapshot...");
 const snapshot = v8.writeHeapSnapshot();
 console.log(`Heap snapshot written to: ${snapshot}`);
-console.log('Load in Chrome DevTools: Memory > Load Profile');
+console.log("Load in Chrome DevTools: Memory > Load Profile");
 
-console.log('\nTo analyze:');
-console.log('1. Open Chrome DevTools');
-console.log('2. Memory tab > Load profile');
+console.log("\nTo analyze:");
+console.log("1. Open Chrome DevTools");
+console.log("2. Memory tab > Load profile");
 console.log('3. Search for "leakyCache" to find the leak');
-console.log('4. Check retainers to see what holds references');
+console.log("4. Check retainers to see what holds references");
 ```
 
 **Heap Snapshot Contents**:
@@ -419,51 +429,56 @@ console.log('4. Check retainers to see what holds references');
 
 ```javascript
 // examples/example-06-heap-sampling.js
-const { Session } = require('inspector');
-const fs = require('fs');
+const { Session } = require("inspector");
+const fs = require("fs");
 
 const session = new Session();
 session.connect();
 
-console.log('Starting heap sampling...');
+console.log("Starting heap sampling...");
 
-session.post('HeapProfiler.enable', () => {
-  session.post('HeapProfiler.startSampling', { samplingInterval: 512 }, () => {
-    console.log('Heap profiler started');
-    
+session.post("HeapProfiler.enable", () => {
+  session.post("HeapProfiler.startSampling", { samplingInterval: 512 }, () => {
+    console.log("Heap profiler started");
+
     // Allocate memory over time
     let allocations = [];
     let counter = 0;
-    
+
     const interval = setInterval(() => {
       counter++;
-      
+
       // Allocate objects
       const batch = [];
       for (let i = 0; i < 1000; i++) {
         batch.push({
           id: counter * 1000 + i,
-          data: new Array(100).fill(Math.random())
+          data: new Array(100).fill(Math.random()),
         });
       }
       allocations.push(batch);
-      
-      console.log(`Iteration ${counter}: ${allocations.length * 1000} objects allocated`);
-      
+
+      console.log(
+        `Iteration ${counter}: ${allocations.length * 1000} objects allocated`,
+      );
+
       if (counter === 10) {
         clearInterval(interval);
-        
+
         // Stop sampling
-        session.post('HeapProfiler.stopSampling', (err, { profile }) => {
+        session.post("HeapProfiler.stopSampling", (err, { profile }) => {
           if (err) {
-            console.error('Error stopping:', err);
+            console.error("Error stopping:", err);
             return;
           }
-          
-          fs.writeFileSync('heap-sampling.heapprofile', JSON.stringify(profile));
-          console.log('Heap sampling profile saved');
-          console.log('Load in Chrome DevTools: Memory > Load Profile');
-          
+
+          fs.writeFileSync(
+            "heap-sampling.heapprofile",
+            JSON.stringify(profile),
+          );
+          console.log("Heap sampling profile saved");
+          console.log("Load in Chrome DevTools: Memory > Load Profile");
+
           session.disconnect();
         });
       }
@@ -474,13 +489,13 @@ session.post('HeapProfiler.enable', () => {
 
 **Sampling vs Snapshot**:
 
-| Feature | Heap Snapshot | Heap Sampling |
-|---------|--------------|---------------|
-| **Size** | Large (~10-100MB) | Small (~1-5MB) |
-| **Overhead** | High (pauses app) | Low (runs live) |
-| **Detail** | Every object | Sampled allocations |
-| **Use Case** | Find memory leaks | Track allocation patterns |
-| **Production** | ❌ Not recommended | ✅ Safe for prod |
+| Feature        | Heap Snapshot      | Heap Sampling             |
+| -------------- | ------------------ | ------------------------- |
+| **Size**       | Large (~10-100MB)  | Small (~1-5MB)            |
+| **Overhead**   | High (pauses app)  | Low (runs live)           |
+| **Detail**     | Every object       | Sampled allocations       |
+| **Use Case**   | Find memory leaks  | Track allocation patterns |
+| **Production** | ❌ Not recommended | ✅ Safe for prod          |
 
 ---
 
@@ -490,33 +505,33 @@ session.post('HeapProfiler.enable', () => {
 
 ```javascript
 // examples/example-07-tracing.js
-const { performance, PerformanceObserver } = require('perf_hooks');
+const { performance, PerformanceObserver } = require("perf_hooks");
 
 // Start tracing
 // Run with: node --trace-events-enabled --trace-event-categories v8,node,node.async_hooks example-07-tracing.js
 
-console.log('Tracing enabled, running workload...');
+console.log("Tracing enabled, running workload...");
 
 // Add custom performance marks
-performance.mark('workload-start');
+performance.mark("workload-start");
 
 async function asyncWork() {
-  performance.mark('async-start');
-  
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
-  performance.mark('async-end');
-  performance.measure('async-duration', 'async-start', 'async-end');
+  performance.mark("async-start");
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  performance.mark("async-end");
+  performance.measure("async-duration", "async-start", "async-end");
 }
 
 async function databaseQuery() {
-  performance.mark('db-query-start');
-  
+  performance.mark("db-query-start");
+
   // Simulate database query
-  await new Promise(resolve => setTimeout(resolve, 200));
-  
-  performance.mark('db-query-end');
-  performance.measure('db-query', 'db-query-start', 'db-query-end');
+  await new Promise((resolve) => setTimeout(resolve, 200));
+
+  performance.mark("db-query-end");
+  performance.measure("db-query", "db-query-start", "db-query-end");
 }
 
 async function runWorkload() {
@@ -531,16 +546,16 @@ const obs = new PerformanceObserver((items) => {
     console.log(`${entry.name}: ${entry.duration}ms`);
   });
 });
-obs.observe({ entryTypes: ['measure'] });
+obs.observe({ entryTypes: ["measure"] });
 
 runWorkload().then(() => {
-  performance.mark('workload-end');
-  performance.measure('total-workload', 'workload-start', 'workload-end');
-  
+  performance.mark("workload-end");
+  performance.measure("total-workload", "workload-start", "workload-end");
+
   setTimeout(() => {
-    console.log('\nTracing complete!');
-    console.log('Trace file: node_trace.*.log');
-    console.log('Open in: chrome://tracing');
+    console.log("\nTracing complete!");
+    console.log("Trace file: node_trace.*.log");
+    console.log("Open in: chrome://tracing");
   }, 500);
 });
 ```
@@ -562,6 +577,7 @@ runWorkload().then(() => {
 ```
 
 **Trace Timeline Shows**:
+
 - ✅ Garbage collection pauses
 - ✅ Function compilation (JIT)
 - ✅ Async operation lifecycles
@@ -609,13 +625,13 @@ class ProductionDebugger {
   takeHeapSnapshot(filename) {
     const filepath = path.join(__dirname, filename || `heap-${Date.now()}.heapsnapshot`);
     console.log('Taking heap snapshot...');
-    
+
     const snapshot = v8.writeHeapSnapshot(filepath);
     const stats = fs.statSync(snapshot);
-    
+
     console.log(`Snapshot written: ${snapshot}`);
     console.log(`Size: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
-    
+
     return snapshot;
   }
 
@@ -643,7 +659,7 @@ class ProductionDebugger {
 
               const filename = `cpu-profile-${Date.now()}.cpuprofile`;
               fs.writeFileSync(filename, JSON.stringify(profile));
-              
+
               console.log(`CPU profile saved: ${filename}`);
               this.session.disconnect();
               this.isProfilerRunning = false;
@@ -700,6 +716,7 @@ console.log('Use signals to debug while running.');
 ```
 
 **Production Usage**:
+
 ```bash
 # Start application
 node example-08-production-debug.js
@@ -720,7 +737,9 @@ kill -USR2 <pid>
 ## Common Misconceptions
 
 ### ❌ Misconception 1: "Inspector has no performance impact"
-**Reality**: 
+
+**Reality**:
+
 - Enabling inspector: **negligible** impact (just opens WebSocket)
 - Connecting client: **low** impact (adds some hooks)
 - **Active debugging** (breakpoints, stepping): **pauses execution**
@@ -728,7 +747,9 @@ kill -USR2 <pid>
 - Heap snapshots: **pauses app** for seconds
 
 ### ❌ Misconception 2: "Heap snapshot shows all memory usage"
+
 **Reality**: Heap snapshots show **JavaScript heap** only:
+
 - ✅ JavaScript objects, arrays, strings
 - ✅ Closures, hidden classes
 - ❌ **Not** native memory (C++ addons, Buffers allocated outside V8)
@@ -736,16 +757,19 @@ kill -USR2 <pid>
 - ❌ **Not** code (V8 bytecode)
 
 Use `process.memoryUsage()` to see full picture:
+
 ```javascript
 const mem = process.memoryUsage();
-console.log('Heap Total:', mem.heapTotal / 1024 / 1024, 'MB');
-console.log('Heap Used:', mem.heapUsed / 1024 / 1024, 'MB');
-console.log('External:', mem.external / 1024 / 1024, 'MB'); // Buffers, etc.
-console.log('RSS:', mem.rss / 1024 / 1024, 'MB'); // Total resident memory
+console.log("Heap Total:", mem.heapTotal / 1024 / 1024, "MB");
+console.log("Heap Used:", mem.heapUsed / 1024 / 1024, "MB");
+console.log("External:", mem.external / 1024 / 1024, "MB"); // Buffers, etc.
+console.log("RSS:", mem.rss / 1024 / 1024, "MB"); // Total resident memory
 ```
 
 ### ❌ Misconception 3: "CPU profiler shows exact execution time"
+
 **Reality**: CPU profiler uses **sampling**:
+
 - Captures call stack every ~1ms
 - **Statistical** approximation, not exact
 - Fast functions (<1ms) may not appear
@@ -766,19 +790,19 @@ const largeData = [];
 for (let i = 0; i < 1000000; i++) {
   largeData.push({
     id: i,
-    data: new Array(1000).fill('x'.repeat(100))
+    data: new Array(1000).fill("x".repeat(100)),
   });
 }
 
-console.log('Allocated ~10GB of data');
-console.log('Taking snapshot will likely crash...');
+console.log("Allocated ~10GB of data");
+console.log("Taking snapshot will likely crash...");
 
 // Taking snapshot duplicates memory temporarily!
 // Can cause OOM if heap is already near limit
 try {
   v8.writeHeapSnapshot();
 } catch (err) {
-  console.error('Snapshot failed:', err);
+  console.error("Snapshot failed:", err);
 }
 ```
 
@@ -787,6 +811,7 @@ try {
 **How to detect**: Monitoring shows sudden memory spike, then crash.
 
 **How to fix**:
+
 - Check available memory before snapshot
 - Use heap sampling instead (lower overhead)
 - Increase heap limit temporarily: `--max-old-space-size=4096`
@@ -812,6 +837,7 @@ try {
 **How to detect**: Port scan shows 9229 open, unauthorized connections in logs.
 
 **How to fix**:
+
 ```bash
 # GOOD: Bind to localhost only
 node --inspect=127.0.0.1:9229 app.js
@@ -827,12 +853,12 @@ node --inspect=0.0.0.0:9229 app.js
 
 ```javascript
 // examples/example-11-breakpoint-trap.js
-const inspector = require('inspector');
+const inspector = require("inspector");
 
 function criticalPath() {
   // Developer set breakpoint here during debugging
   // debugger; // ← Forgot to remove!
-  
+
   return processPayment();
 }
 
@@ -845,6 +871,7 @@ function criticalPath() {
 **How to detect**: All requests hang, no error logs, CPU drops to 0%.
 
 **How to fix**:
+
 - Linting rule to catch `debugger;` statements
 - CI/CD checks for debugging code
 - Only enable inspector when explicitly needed
@@ -854,21 +881,25 @@ function criticalPath() {
 ## What Cannot Be Done (And Why)
 
 ### Cannot: Profile Without Overhead
+
 **Why**: All profiling requires **instrumentation** or **sampling**, both add overhead. Sampling is lowest (~1%), but still measurable.
 
 **Workaround**: Profile in staging with production-like load, or use sampling profilers for minimal impact.
 
 ### Cannot: Snapshot While GC is Running
+
 **Why**: Heap snapshot requires heap to be in **consistent state**. If GC is active, objects are being moved/deleted.
 
 **Workaround**: V8 automatically **triggers full GC** before snapshot (adds latency).
 
 ### Cannot: Debug Optimized Code Perfectly
+
 **Why**: V8 **optimizes** hot code (inlining, dead code elimination). Debugger may show unexpected behavior (variables "optimized away").
 
 **Workaround**: Run with `--no-turbo-fan` to disable optimization (performance penalty).
 
 ### Cannot: Inspect Native Addon Internals
+
 **Why**: Inspector protocol is for **JavaScript only**. Native C++ code isn't visible.
 
 **Workaround**: Use native debuggers (GDB, LLDB) for C++ addons, or add logging in addon code.
@@ -938,35 +969,104 @@ function criticalPath() {
 
 ---
 
-## Practice Exercise
-
-Run example-04-cpu-profiling.js:
-```bash
-node examples/example-04-cpu-profiling.js
-```
-
-This will generate `cpu-profile.cpuprofile`. Load it in Chrome DevTools:
-1. Open Chrome DevTools (F12)
-2. Performance tab
-3. Click "Load profile" icon
-4. Select the .cpuprofile file
-5. Analyze which function consumed most CPU
-
-**Prediction**: Which function will show highest CPU usage?
-- A) `fastFunction` (100 iterations)
-- B) `mediumFunction` (10,000 string concatenations)
-- C) `slowFunction` (1,000,000 Math.sqrt operations)
-
-**Answer**: C - `slowFunction` does the most computational work.
+**Next Concept Preview**: "Performance Analysis and Observability (perf_hooks, tracing costs)"
 
 ---
 
-## Next Steps
+## Practice Exercises
 
-Before moving to the next concept, confirm:
-1. You understand the V8 Inspector architecture (WebSocket protocol)
-2. You can differentiate between CPU profiling and heap snapshots
-3. You know how to attach debugger to running process (SIGUSR1)
-4. You understand production debugging safety (localhost binding, overhead)
+### Exercise 1: Attach Inspector to a Running Process via SIGUSR1
 
-**Next Concept Preview**: "Performance Analysis and Observability (perf_hooks, tracing costs)"
+Prove that you can begin debugging a process without restarting it:
+
+- Start a long-running script without any `--inspect` flag: `node script.js`. The script should run a `setInterval` that logs a counter every second.
+- In a second terminal, send `kill -USR1 <pid>` (or on Windows: you can use `process.kill(process.pid, 'SIGUSR1')` from within the script on a timer).
+- Observe the process logs: `Debugger listening on ws://127.0.0.1:9229/...` without stopping.
+- Open `chrome://inspect` in Chrome and connect. Set a breakpoint in the interval callback.
+- Observe the breakpoint is hit on the next tick. Step through, inspect the `counter` variable.
+- Disconnect the client. Verify the process resumes normally.
+
+**Interview question this tests**: "How do you attach a debugger to a Node.js process that is already running in production without restarting it? What signal enables this?"
+
+### Exercise 2: Generate and Analyze a CPU Profile
+
+Use the `inspector` module to capture a CPU profile programmatically:
+
+- Write a script with three functions: `fast()` (100 iterations), `medium()` (100,000 string concatenations), and `slow()` (1,000,000 `Math.sqrt` calls). Call all three in a `setInterval` every 200ms.
+- Use `inspector.Session` to:
+  1. Enable the Profiler.
+  2. Start sampling.
+  3. After 5 seconds, stop and write the profile to `profile.cpuprofile`.
+- Open the file in Chrome DevTools → Performance → Load Profile.
+- Identify which function appears hottest. Note its `self time` vs `total time`.
+- In comments, explain the difference between **self time** (time in the function) and **total time** (including callees).
+
+**Interview question this tests**: "What is the difference between 'self time' and 'total time' in a CPU flame graph? How does V8's sampling profiler work, and what are its blind spots?"
+
+### Exercise 3: Take Two Heap Snapshots and Compare
+
+Detect a memory leak using the heap snapshot comparison workflow:
+
+- Write a script that creates a global `Map` and adds 1000 entries per second, never evicting.
+- Start the script and immediately take **Snapshot 1** using `v8.writeHeapSnapshot()`.
+- Wait 10 seconds (let 10,000 entries accumulate). Take **Snapshot 2**.
+- Open both in Chrome DevTools → Memory → Comparison view.
+- Find the `Map` and its entries in the "New" column. Note the retained size delta.
+- Fix the script (cap at 1000 entries). Take **Snapshot 3** and verify the delta vs Snapshot 1 is near zero.
+
+**Interview question this tests**: "Walk me through the process of using heap snapshots to identify a specific memory leak. What is 'retained size', and why is it more useful than 'shallow size' for finding leaks?"
+
+### Exercise 4: Heap Allocation Profiler — Find Where Memory Is Allocated
+
+Use the `HeapProfiler.startSampling` session API to find allocation hot paths:
+
+- Write a script that has two allocation sources:
+  - `allocateStrings()`: appends strings to a growing array.
+  - `allocateBuffers()`: pushes `Buffer.alloc(1024)` to a growing array.
+- Start the heap sampling profiler (sampling interval: 512 bytes).
+- Run both functions for 5 seconds. Stop the profiler and write the `.heapprofile` file.
+- Open in Chrome DevTools → Memory → Load Profile.
+- Identify which function is responsible for the most allocation. Verify with a comment in the code.
+- Explain: why is heap **sampling** preferred over heap **snapshots** for production use?
+
+**Interview question this tests**: "When would you use a heap allocation profile (`.heapprofile`) vs a heap snapshot (`.heapsnapshot`)? What is the performance cost of each?"
+
+### Exercise 5: Inspect Variable State Without Stopping the Process — Logpoints
+
+Use the inspector protocol to evaluate expressions in the live process without pausing:
+
+- Start a running HTTP server with the inspector enabled (`--inspect`).
+- Connect via Chrome DevTools. Navigate to the source file.
+- Instead of setting a breakpoint, set a **logpoint**: right-click a line inside the request handler → "Add logpoint" → enter `"Request received, headers: " + JSON.stringify(req.headers)`.
+- Send several requests to the server. Observe the logpoint output in the Console tab without the server pausing.
+- Note: logpoints have near-zero impact on request latency (no pause, just a log). Contrast this with a regular breakpoint that halts the process.
+
+**Interview question this tests**: "What is a logpoint, and how does it differ from a breakpoint in terms of production safety? How is it implemented by the V8 inspector?"
+
+### Exercise 6: Production Signal-Triggered Heap Snapshot
+
+Implement a production-safe signal-triggered heap snapshot system:
+
+- Create a long-running HTTP server.
+- Register `process.on('SIGUSR2')` to:
+  1. Log `"Snapshot requested at <timestamp>"`.
+  2. Write the heap snapshot to a timestamped file using `v8.writeHeapSnapshot()`.
+  3. Log the path and file size.
+- Simulate a memory leak: add 100 KB to a global array on each request.
+- Run the server for 30 seconds with load, then send `kill -USR2 <pid>` to trigger a snapshot.
+- Open the snapshot and identify the growing global array.
+- Explain in comments: why taking a snapshot doubles memory usage temporarily, and what to check before triggering in production.
+
+**Interview question this tests**: "How do you safely take heap snapshots from a production Node.js process on demand? What is the risk of doing this when the process is near its memory limit?"
+
+### Exercise 7: Event Loop Stall Detection Using the Inspector
+
+Use the `Debugger.pause` and performance timeline to detect event loop stalls:
+
+- Write a script that occasionally blocks the event loop for 300ms (simulate CPU work with a tight loop, triggered every 3 seconds).
+- Separately, implement an event loop lag monitor: record `Date.now()` before a `setImmediate`, and log the actual delay when the callback fires. Any delay over 50ms is a stall.
+- Enable tracing with `--trace-events-enabled --trace-event-categories node,v8`. Observe the generated trace file.
+- Open the trace in `chrome://tracing`. Identify the 300ms stall on the main thread timeline.
+- In comments, explain why event loop lag > 100ms is a production alert-worthy condition (latency spikes, missed SLAs, timeouts).
+
+**Interview question this tests**: "How do you detect event loop stalls in production? What tool gives you a timeline view of where the main thread was blocked and for how long?"
