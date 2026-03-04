@@ -25,11 +25,13 @@ Think of Node.js as a **single-threaded event loop** that excels at I/O but stru
 ```
 
 **Key Insight**: Node.js is **single-threaded for JavaScript execution**, but:
+
 - **I/O operations** are non-blocking (handled by libuv)
 - **CPU-bound operations** block the event loop
 - **libuv thread pool** handles some I/O (fs, dns, crypto) but NOT all
 
 **Critical Reality**: When you need to scale Node.js, you have two fundamentally different approaches:
+
 1. **Worker Threads**: Offload CPU-bound work to separate threads (same process)
 2. **Clustering**: Fork multiple processes to handle more concurrent requests (I/O-bound)
 
@@ -42,6 +44,7 @@ Think of Node.js as a **single-threaded event loop** that excels at I/O but stru
 ### Problem 1: CPU-Bound Work Blocks Everything
 
 **What happens**:
+
 ```javascript
 // This blocks the entire event loop!
 function heavyComputation() {
@@ -53,13 +56,14 @@ function heavyComputation() {
 }
 
 // All other requests wait!
-app.get('/compute', (req, res) => {
+app.get("/compute", (req, res) => {
   const result = heavyComputation(); // Blocks for seconds!
   res.json({ result });
 });
 ```
 
 **Execution flow**:
+
 1. Request arrives → enters event loop
 2. Handler executes → **blocks event loop** (CPU work)
 3. **All other requests wait** (can't process I/O, can't handle new requests)
@@ -73,15 +77,17 @@ app.get('/compute', (req, res) => {
 ### Problem 2: Single Process Limits Concurrent Requests
 
 **What happens**:
+
 ```javascript
 // Even with non-blocking I/O, single process has limits
-app.get('/api/data', async (req, res) => {
-  const data = await fetch('https://api.example.com/data'); // Non-blocking
+app.get("/api/data", async (req, res) => {
+  const data = await fetch("https://api.example.com/data"); // Non-blocking
   res.json(data);
 });
 ```
 
 **Execution flow**:
+
 1. Request 1 arrives → starts I/O (non-blocking)
 2. Request 2 arrives → starts I/O (non-blocking)
 3. Request 100 arrives → starts I/O (non-blocking)
@@ -127,6 +133,7 @@ Worker threads create **separate V8 isolates** (separate JavaScript contexts) in
 ```
 
 **Key Insight**: Worker threads share the **process** but have **separate JavaScript contexts**:
+
 - Separate V8 isolates (separate heaps)
 - Separate call stacks
 - Separate global objects
@@ -135,15 +142,17 @@ Worker threads create **separate V8 isolates** (separate JavaScript contexts) in
 ### What Actually Happens: Worker Thread Creation
 
 **Step 1: Worker thread creation**
-```javascript
-const { Worker } = require('worker_threads');
 
-const worker = new Worker('./worker.js', {
-  workerData: { input: 'data' } // Initial data
+```javascript
+const { Worker } = require("worker_threads");
+
+const worker = new Worker("./worker.js", {
+  workerData: { input: "data" }, // Initial data
 });
 ```
 
 **What happens internally**:
+
 1. **OS thread creation**: Create new OS thread (~1-5ms)
 2. **V8 isolate creation**: Create new V8 isolate (separate JavaScript context)
    - Allocate new heap
@@ -155,19 +164,21 @@ const worker = new Worker('./worker.js', {
 **Cost**: ~10-50ms per worker (much faster than process fork)
 
 **Step 2: Message passing**
+
 ```javascript
 // Main thread
-worker.postMessage({ task: 'compute', data: [1, 2, 3] });
+worker.postMessage({ task: "compute", data: [1, 2, 3] });
 
 // Worker thread (worker.js)
-const { parentPort } = require('worker_threads');
-parentPort.on('message', (msg) => {
+const { parentPort } = require("worker_threads");
+parentPort.on("message", (msg) => {
   const result = heavyComputation(msg.data);
   parentPort.postMessage({ result });
 });
 ```
 
 **What happens internally**:
+
 1. **Serialize data**: Convert JavaScript object to binary (structured clone algorithm)
 2. **Copy to worker**: Copy data to worker's memory space
 3. **Deserialize**: Convert binary back to JavaScript object in worker
@@ -179,6 +190,7 @@ parentPort.on('message', (msg) => {
 **Cost**: Serialization/deserialization overhead. **Large objects are expensive**.
 
 **Step 3: Worker execution**
+
 ```javascript
 // Worker thread executes CPU-bound work
 function heavyComputation(data) {
@@ -191,6 +203,7 @@ function heavyComputation(data) {
 ```
 
 **What happens internally**:
+
 1. Worker thread executes JavaScript (separate V8 isolate)
 2. **Does NOT block main thread** (separate event loop)
 3. Main thread continues handling I/O requests
@@ -201,6 +214,7 @@ function heavyComputation(data) {
 ### Worker Thread Limitations
 
 **1. No shared memory by default**
+
 ```javascript
 // This does NOT work!
 let sharedVariable = 0;
@@ -212,9 +226,10 @@ sharedVariable = 100;
 console.log(sharedVariable); // undefined! Different context
 ```
 
-**Solution**: Use `SharedArrayBuffer` (requires specific flags) or message passing.
+**Solution**: Use `SharedArrayBuffer` (natively supported in Node.js v16+) or message passing.
 
 **2. Serialization overhead**
+
 ```javascript
 // Large objects are expensive to copy
 const largeData = new Array(1000000).fill(0).map((_, i) => i);
@@ -225,20 +240,22 @@ worker.postMessage({ data: largeData }); // Expensive! Copies entire array
 **Cost**: ~10-100ms for large objects (depends on size).
 
 **3. Worker creation overhead**
+
 ```javascript
 // Creating workers is expensive
 for (let i = 0; i < 100; i++) {
-  const worker = new Worker('./worker.js'); // ~10-50ms each!
+  const worker = new Worker("./worker.js"); // ~10-50ms each!
 }
 ```
 
 **Solution**: Use worker pools (reuse workers).
 
 **4. Cannot access Node.js APIs directly**
+
 ```javascript
 // Worker thread
-const fs = require('fs');
-fs.readFile('file.txt', (err, data) => {
+const fs = require("fs");
+fs.readFile("file.txt", (err, data) => {
   // This works! Workers have access to Node.js APIs
   // BUT: They share the libuv thread pool with main thread
 });
@@ -277,6 +294,7 @@ Clustering forks **multiple Node.js processes** (each with its own event loop):
 ```
 
 **Key Insight**: Each worker is a **separate process**:
+
 - Separate memory space (isolated)
 - Separate event loop
 - Separate libuv thread pool
@@ -287,23 +305,25 @@ Clustering forks **multiple Node.js processes** (each with its own event loop):
 ### What Actually Happens: Cluster Creation
 
 **Step 1: Master process forks workers**
-```javascript
-const cluster = require('cluster');
-const os = require('os');
 
-if (cluster.isMaster) {
-  const numWorkers = os.cpus().length; // e.g., 4 workers
-  
+```javascript
+const cluster = require("cluster");
+const os = require("os");
+
+if (cluster.isPrimary) {
+  const numWorkers = os.availableParallelism(); // e.g., 4 workers
+
   for (let i = 0; i < numWorkers; i++) {
     cluster.fork(); // Fork new process
   }
 } else {
   // Worker process
-  require('./server.js'); // Start HTTP server
+  require("./server.js"); // Start HTTP server
 }
 ```
 
 **What happens internally**:
+
 1. **Process fork**: `fork()` system call creates new process
    - Copy parent's memory (copy-on-write)
    - Create new process ID (PID)
@@ -316,18 +336,20 @@ if (cluster.isMaster) {
 **Cost**: ~100-1000ms per worker (much slower than worker threads)
 
 **Step 2: Load balancing**
+
 ```javascript
 // Master process handles load balancing
-const http = require('http');
+const http = require("http");
 
 const server = http.createServer((req, res) => {
   // Round-robin: send request to next worker
   const worker = getNextWorker(); // Round-robin selection
-  worker.send({ type: 'request', data: req });
+  worker.send({ type: "request", data: req });
 });
 ```
 
 **What happens internally**:
+
 1. Master process receives connection (from OS)
 2. **Round-robin selection**: Master selects next worker
 3. **IPC message**: Master sends request data to worker via IPC
@@ -340,13 +362,14 @@ const server = http.createServer((req, res) => {
 **Alternative**: Use external load balancer (nginx, HAProxy) instead of master process.
 
 **Step 3: Worker processes requests**
+
 ```javascript
 // Worker process
-const http = require('http');
+const http = require("http");
 
 const server = http.createServer(async (req, res) => {
   // I/O-bound work (non-blocking)
-  const data = await fetch('https://api.example.com/data');
+  const data = await fetch("https://api.example.com/data");
   res.json(data);
 });
 
@@ -354,6 +377,7 @@ server.listen(3000);
 ```
 
 **What happens internally**:
+
 1. Worker receives request (from master via IPC)
 2. Worker starts I/O operation (non-blocking)
 3. Worker can handle other requests (event loop continues)
@@ -366,6 +390,7 @@ server.listen(3000);
 ### Clustering Limitations
 
 **1. Process fork overhead**
+
 ```javascript
 // Forking processes is expensive
 for (let i = 0; i < 100; i++) {
@@ -376,6 +401,7 @@ for (let i = 0; i < 100; i++) {
 **Cost**: ~100-1000ms per worker (much slower than worker threads).
 
 **2. Memory overhead**
+
 ```javascript
 // Each worker has separate memory
 // 4 workers = 4x memory usage (approximately)
@@ -384,6 +410,7 @@ for (let i = 0; i < 100; i++) {
 **Cost**: Each worker uses ~50-200MB+ memory (depends on application).
 
 **3. No shared state**
+
 ```javascript
 // This does NOT work!
 let sharedCounter = 0;
@@ -398,6 +425,7 @@ console.log(sharedCounter); // 0! Different process
 **Solution**: Use external storage (Redis, database) or IPC (limited).
 
 **4. IPC overhead**
+
 ```javascript
 // Master-worker communication via IPC
 worker.send({ data: largeObject }); // Expensive! Serialization
@@ -406,9 +434,10 @@ worker.send({ data: largeObject }); // Expensive! Serialization
 **Cost**: IPC serialization overhead (similar to worker threads).
 
 **5. Process management complexity**
+
 ```javascript
 // Workers can crash
-worker.on('exit', (code) => {
+worker.on("exit", (code) => {
   console.log(`Worker ${worker.process.pid} died`);
   cluster.fork(); // Restart worker
 });
@@ -423,6 +452,7 @@ worker.on('exit', (code) => {
 ### Use Worker Threads When:
 
 **1. CPU-bound work**
+
 ```javascript
 // Image processing, video encoding, data analysis
 function processImage(imageData) {
@@ -434,6 +464,7 @@ function processImage(imageData) {
 **Why**: Worker threads offload CPU work to separate threads, keeping main thread free for I/O.
 
 **2. Need to share memory (with SharedArrayBuffer)**
+
 ```javascript
 // Shared memory between threads
 const sharedBuffer = new SharedArrayBuffer(1024);
@@ -442,14 +473,16 @@ const sharedBuffer = new SharedArrayBuffer(1024);
 **Why**: Worker threads can share memory (with SharedArrayBuffer), processes cannot.
 
 **3. Need fast startup**
+
 ```javascript
 // Worker threads start faster (~10-50ms)
-const worker = new Worker('./worker.js'); // Fast!
+const worker = new Worker("./worker.js"); // Fast!
 ```
 
 **Why**: Worker threads are faster to create than processes.
 
 **4. Limited memory**
+
 ```javascript
 // Worker threads share process memory
 // Processes have separate memory (more overhead)
@@ -460,10 +493,11 @@ const worker = new Worker('./worker.js'); // Fast!
 ### Use Clustering When:
 
 **1. I/O-bound workload**
+
 ```javascript
 // Many concurrent HTTP requests
-app.get('/api/data', async (req, res) => {
-  const data = await db.query('SELECT * FROM users');
+app.get("/api/data", async (req, res) => {
+  const data = await db.query("SELECT * FROM users");
   res.json(data);
 });
 ```
@@ -471,6 +505,7 @@ app.get('/api/data', async (req, res) => {
 **Why**: Clustering allows more concurrent requests (each worker handles many requests).
 
 **2. Need process isolation**
+
 ```javascript
 // If one worker crashes, others continue
 // Worker threads share process (crash affects all)
@@ -479,14 +514,16 @@ app.get('/api/data', async (req, res) => {
 **Why**: Process isolation provides better fault tolerance.
 
 **3. Need to utilize multiple CPU cores**
+
 ```javascript
 // 4 CPU cores = 4 workers
-const numWorkers = os.cpus().length; // Utilize all cores
+const numWorkers = os.availableParallelism();
 ```
 
 **Why**: Each worker runs on separate CPU core (better CPU utilization for I/O-bound work).
 
 **4. Need graceful restarts**
+
 ```javascript
 // Restart workers without downtime
 worker.kill(); // Graceful shutdown
@@ -498,13 +535,14 @@ cluster.fork(); // Start new worker
 ### Use Both When:
 
 **1. Mixed workload**
+
 ```javascript
 // I/O-bound API + CPU-bound processing
-app.get('/api/process', async (req, res) => {
+app.get("/api/process", async (req, res) => {
   // Use worker thread for CPU work
-  const worker = new Worker('./processor.js');
+  const worker = new Worker("./processor.js");
   worker.postMessage({ data: req.body });
-  
+
   // Main thread handles other I/O requests
 });
 ```
@@ -512,6 +550,7 @@ app.get('/api/process', async (req, res) => {
 **Why**: Clustering for I/O-bound API, worker threads for CPU-bound processing.
 
 **2. High concurrency + CPU work**
+
 ```javascript
 // Many concurrent requests + occasional CPU work
 // Cluster for concurrency, worker threads for CPU work
@@ -526,41 +565,49 @@ app.get('/api/process', async (req, res) => {
 ### Worker Threads Performance
 
 **CPU-bound work**:
+
 - **Main thread**: Free (handles I/O)
 - **Worker threads**: Process CPU work in parallel
 - **Speedup**: ~Nx (where N = number of CPU cores)
 
 **Example**:
+
 ```javascript
 // Single-threaded: 10 seconds
 // 4 worker threads: ~2.5 seconds (4x speedup)
 ```
 
 **Memory**:
+
 - **Overhead**: ~10-50MB per worker (shared process memory)
 - **Total**: Process memory + worker overhead
 
 **Startup**:
+
 - **Cost**: ~10-50ms per worker
 - **Total**: Fast (suitable for dynamic worker creation)
 
 ### Clustering Performance
 
 **I/O-bound work**:
+
 - **Concurrent requests**: ~N workers × requests per worker
 - **Speedup**: ~Nx for concurrent requests (not latency)
 
 **Example**:
+
 ```javascript
 // Single process: 1000 concurrent requests
 // 4 workers: ~4000 concurrent requests (4x capacity)
 ```
 
 **Memory**:
+
 - **Overhead**: ~50-200MB per worker (separate process memory)
 - **Total**: N × worker memory (significant overhead)
 
 **Startup**:
+
 - **Cost**: ~100-1000ms per worker
 - **Total**: Slow (suitable for long-running servers)
 
@@ -571,6 +618,7 @@ app.get('/api/process', async (req, res) => {
 ### Misconception 1: "Clustering helps with CPU-bound work"
 
 **Wrong**:
+
 ```javascript
 // This does NOT help!
 function heavyComputation() {
@@ -578,7 +626,7 @@ function heavyComputation() {
 }
 
 // 4 workers, but each still blocks on CPU work
-app.get('/compute', (req, res) => {
+app.get("/compute", (req, res) => {
   const result = heavyComputation(); // Still blocks!
   res.json({ result });
 });
@@ -589,6 +637,7 @@ app.get('/compute', (req, res) => {
 ### Misconception 2: "Worker threads are always faster"
 
 **Wrong**:
+
 ```javascript
 // Worker thread overhead for small tasks
 worker.postMessage({ data: smallData }); // Overhead > benefit
@@ -599,6 +648,7 @@ worker.postMessage({ data: smallData }); // Overhead > benefit
 ### Misconception 3: "More workers = better performance"
 
 **Wrong**:
+
 ```javascript
 // 100 workers on 4 CPU cores
 for (let i = 0; i < 100; i++) {
@@ -611,12 +661,13 @@ for (let i = 0; i < 100; i++) {
 ### Pitfall 1: Worker thread pool starvation
 
 **Problem**:
+
 ```javascript
 // Main thread + workers share libuv thread pool
 // Too many workers = thread pool starvation
 
 for (let i = 0; i < 100; i++) {
-  const worker = new Worker('./worker.js');
+  const worker = new Worker("./worker.js");
   // Workers use fs operations → thread pool starvation
 }
 ```
@@ -626,11 +677,12 @@ for (let i = 0; i < 100; i++) {
 ### Pitfall 2: Memory leaks in workers
 
 **Problem**:
+
 ```javascript
 // Worker thread
 let cache = {}; // Grows forever!
 
-parentPort.on('message', (msg) => {
+parentPort.on("message", (msg) => {
   cache[msg.id] = msg.data; // Memory leak!
 });
 ```
@@ -640,6 +692,7 @@ parentPort.on('message', (msg) => {
 ### Pitfall 3: IPC message size limits
 
 **Problem**:
+
 ```javascript
 // Large messages fail
 const largeData = new Array(10000000).fill(0);
@@ -655,23 +708,24 @@ worker.postMessage({ data: largeData }); // May fail!
 ### Worker Threads in Production
 
 **1. Worker pool pattern**
+
 ```javascript
 // Reuse workers (don't create new ones for each task)
 class WorkerPool {
   constructor(size) {
     this.workers = [];
     this.queue = [];
-    
+
     for (let i = 0; i < size; i++) {
-      this.workers.push(new Worker('./worker.js'));
+      this.workers.push(new Worker("./worker.js"));
     }
   }
-  
+
   execute(task) {
     return new Promise((resolve) => {
       const worker = this.getAvailableWorker();
       worker.postMessage(task);
-      worker.once('message', resolve);
+      worker.once("message", resolve);
     });
   }
 }
@@ -680,15 +734,16 @@ class WorkerPool {
 **Why**: Reusing workers avoids creation overhead.
 
 **2. Error handling**
+
 ```javascript
-worker.on('error', (err) => {
-  console.error('Worker error:', err);
+worker.on("error", (err) => {
+  console.error("Worker error:", err);
   // Restart worker or handle error
 });
 
-worker.on('exit', (code) => {
+worker.on("exit", (code) => {
   if (code !== 0) {
-    console.error('Worker crashed');
+    console.error("Worker crashed");
     // Restart worker
   }
 });
@@ -697,6 +752,7 @@ worker.on('exit', (code) => {
 **Why**: Workers can crash (must handle errors).
 
 **3. Resource limits**
+
 ```javascript
 // Limit worker count
 const MAX_WORKERS = os.cpus().length;
@@ -704,7 +760,7 @@ const workers = [];
 
 function createWorker() {
   if (workers.length < MAX_WORKERS) {
-    workers.push(new Worker('./worker.js'));
+    workers.push(new Worker("./worker.js"));
   }
 }
 ```
@@ -714,6 +770,7 @@ function createWorker() {
 ### Clustering in Production
 
 **1. Process manager**
+
 ```javascript
 // Use PM2 or similar (handles clustering automatically)
 // pm2 start app.js -i 4
@@ -722,9 +779,10 @@ function createWorker() {
 **Why**: Process managers handle worker management, restarts, monitoring.
 
 **2. Graceful shutdown**
+
 ```javascript
 // Graceful shutdown
-process.on('SIGTERM', () => {
+process.on("SIGTERM", () => {
   server.close(() => {
     process.exit(0);
   });
@@ -734,20 +792,22 @@ process.on('SIGTERM', () => {
 **Why**: Graceful shutdown prevents request loss.
 
 **3. Health checks**
+
 ```javascript
 // Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
 });
 ```
 
 **Why**: Load balancers need health checks.
 
 **4. Monitoring**
+
 ```javascript
 // Monitor worker processes
-cluster.on('exit', (worker) => {
-  console.error('Worker died:', worker.process.pid);
+cluster.on("exit", (worker) => {
+  console.error("Worker died:", worker.process.pid);
   // Alert, restart, etc.
 });
 ```
@@ -759,6 +819,7 @@ cluster.on('exit', (worker) => {
 ## Summary: Key Takeaways
 
 **Worker Threads**:
+
 - **Use for**: CPU-bound work
 - **Benefit**: Offload CPU work, keep main thread free
 - **Cost**: ~10-50ms creation, serialization overhead
@@ -766,6 +827,7 @@ cluster.on('exit', (worker) => {
 - **Isolation**: Separate V8 isolates (same process)
 
 **Clustering**:
+
 - **Use for**: I/O-bound workloads (more concurrent requests)
 - **Benefit**: More concurrent requests, process isolation
 - **Cost**: ~100-1000ms creation, memory overhead
@@ -773,13 +835,112 @@ cluster.on('exit', (worker) => {
 - **Isolation**: Separate processes (complete isolation)
 
 **Decision Framework**:
+
 1. **CPU-bound work** → Worker threads
 2. **I/O-bound work** → Clustering
 3. **Mixed workload** → Both
 4. **Memory constrained** → Worker threads (less overhead)
 5. **Need fault tolerance** → Clustering (process isolation)
 
-**Critical Reality**: 
+**Critical Reality**:
+
 - Clustering **does NOT help** with CPU-bound work
 - Worker threads **do NOT help** with I/O-bound concurrency (they share the same process)
 - Use the right tool for the right problem
+
+---
+
+## Practice Exercises
+
+### Exercise 1: Offload CPU-Bound Work to a Worker Thread
+
+Prove that a worker thread keeps the main thread responsive during heavy computation:
+
+- Create a `heavyCompute(n)` function that calculates the sum of square-roots of numbers 0..n using a tight loop (~500ms).
+- On the **main thread**, start an interval that prints `"main thread alive"` every 100ms.
+- Run `heavyCompute` **directly on the main thread** first. Observe the interval stalls.
+- Refactor: spawn a `Worker` that runs the computation and `postMessage`s the result back.
+- Start the same interval and this time send the task to the worker. Verify the interval fires on time.
+- Terminate the worker and clear the interval after the result arrives.
+
+**Interview question this tests**: "How do you prove that a Worker Thread keeps the event loop free during CPU-intensive work?"
+
+### Exercise 2: Build a Minimal Worker Pool
+
+Implement a `WorkerPool` class that manages a fixed set of reusable workers:
+
+- Constructor accepts `(scriptPath, poolSize)` and pre-creates `poolSize` workers.
+- Track which workers are `idle` vs `busy` using a Map or array.
+- `pool.run(data)` returns a Promise — if a worker is free, dispatch immediately; otherwise queue the task.
+- When a worker completes its task (sends a message back), mark it idle and dequeue the next waiting task.
+- Test with a pool of 2 workers and 6 tasks. Workers should process tasks concurrently (2 at a time) without any being created more than once.
+- Log worker reuse: print `"Worker <id> picked up task <n>"` so the reuse is visible.
+
+**Interview question this tests**: "Why should you pool Worker Threads rather than creating one per request? How does a worker pool work internally?"
+
+### Exercise 3: SharedArrayBuffer and Atomics — Safe Counter
+
+Demonstrate safe cross-thread mutation using `SharedArrayBuffer` and `Atomics`:
+
+- Allocate a `SharedArrayBuffer` of 4 bytes and create an `Int32Array` view over it.
+- Spawn 4 workers, each incrementing the shared counter 100 times using a non-atomic `array[0]++`.
+- Run it and observe the final value is almost certainly **less than 400** due to race conditions.
+- Fix it: replace the increment with `Atomics.add(array, 0, 1)`.
+- Run again and verify the result is always exactly **400**.
+- Explain in comments _why_ the non-atomic version loses increments (read-modify-write race).
+
+**Interview question this tests**: "How does SharedArrayBuffer differ from postMessage for sharing data between threads? When do you need Atomics?"
+
+### Exercise 4: Measure Serialization Overhead
+
+Quantify the cost of `postMessage` serialization for large payloads:
+
+- Benchmark three cases, each passing data to a worker and back 10 times:
+  1. Small payload: `{ n: 42 }` (near-zero overhead).
+  2. Large object: an array of 1 million numbers (structured clone).
+  3. Large `ArrayBuffer` transferred with the **transferable** option (`worker.postMessage(buf, [buf.transferList])`).
+- Measure round-trip time using `performance.now()` for each case.
+- Print results in a table: `Case | Payload Size | Avg Round-trip (ms)`.
+- The transferred `ArrayBuffer` should be dramatically faster than the cloned array. Explain why in a comment (zero-copy vs. full copy).
+
+**Interview question this tests**: "What is the serialization cost of postMessage? When should you use transferable objects instead of structured clone?"
+
+### Exercise 5: Clustering for I/O-Bound Concurrency
+
+Build a clustered HTTP server and load-test it to see the concurrency benefit:
+
+- Implement `server.js` that handles `GET /`: waits 50ms (simulating a DB query with `setTimeout`) then responds with the worker's `process.pid`.
+- Implement `cluster.js` that forks `os.availableParallelism()` workers, each running `server.js`.
+- Write a `load-test.js` (pure Node.js, no external libraries) that fires 20 concurrent HTTP requests using `Promise.all` + `http.get`.
+- Run the load test against the **single-process** server first, then the **clustered** server.
+- Measure total elapsed time for 20 requests in both cases.
+- The clustered server should complete all 20 requests in ~50ms; the single-process server in ~1000ms (serial execution of the 50ms delay).
+
+**Interview question this tests**: "Clustering doesn't make individual requests faster — so what exactly does it improve and how do you prove it?"
+
+### Exercise 6: IPC Between Cluster Primary and Workers
+
+Use the cluster IPC channel to build a shared request counter across all workers:
+
+- Fork 4 workers. Each worker increments a local counter on every request and, every second, sends `process.send({ pid: process.pid, count: localCount })` to the primary.
+- The primary listens for these messages, aggregates them into a global map, and prints the total requests across all workers every second.
+- Fire 100 concurrent requests at the clustered server using `Promise.all`.
+- Verify the primary's total eventually matches 100 (requests may arrive in multiple seconds).
+- Explain in comments why you **cannot** just use a plain shared variable for this across processes, and why Redis is the production solution.
+
+**Interview question this tests**: "How does IPC work in a cluster? What are its limits compared to a shared in-memory store like Redis?"
+
+### Exercise 7: Combining Clustering and Worker Threads (Mixed Workload)
+
+Design a server that handles both I/O-bound and CPU-bound routes efficiently:
+
+- Create a clustered HTTP server (2 cluster workers).
+- Each cluster worker handles two routes:
+  - `GET /io`: responds after 50ms (simulated I/O). Should remain fast under load.
+  - `GET /cpu`: runs a 500ms heavy computation. **Must** offload this to a Worker Thread, not block the event loop.
+- In your Worker Thread handler for `/cpu`, create a reusable worker (or a minimal pool of 1) per cluster worker process.
+- Load-test both routes concurrently: 10 `/io` requests + 4 `/cpu` requests fired simultaneously with `Promise.all`.
+- Prove that the `/io` requests complete in ~50ms even while `/cpu` requests are running.
+- Log `[cluster pid] [thread] route handler` to show which process/thread is doing what.
+
+**Interview question this tests**: "How do you architect a Node.js service that must handle both high-concurrency I/O and occasional CPU-intensive operations without either blocking the other?"

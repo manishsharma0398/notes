@@ -1,11 +1,11 @@
 // Example 96: Shared memory with SharedArrayBuffer
 // This demonstrates shared memory between main thread and worker threads
 
-const { Worker } = require('worker_threads');
-const path = require('path');
+const { Worker } = require("node:worker_threads");
+const path = require("node:path");
 
-// Note: SharedArrayBuffer requires specific flags:
-// node --experimental-worker --harmony-sharedarraybuffer example-96-shared-memory.js
+// Note: SharedArrayBuffer is supported natively in Node.js v16+ without extra flags.
+// (In older Node.js < v12, --experimental-worker was required for worker_threads itself.)
 
 // Create shared buffer (1024 bytes)
 const sharedBuffer = new SharedArrayBuffer(1024);
@@ -14,16 +14,16 @@ const view = new Int32Array(sharedBuffer);
 // Initialize shared memory
 view[0] = 0; // Counter
 
-console.log('Initial value:', view[0]);
+console.log("Initial value:", view[0]);
 
 // Create worker
-const worker = new Worker(path.join(__dirname, 'worker-shared-memory.js'), {
-  workerData: { sharedBuffer }
+const worker = new Worker(path.join(__dirname, "worker-shared-memory.js"), {
+  workerData: { sharedBuffer },
 });
 
 // Wait a bit for worker to modify shared memory
 setTimeout(() => {
-  console.log('Value after worker modification:', view[0]);
+  console.log("Value after worker modification:", view[0]);
   worker.terminate();
 }, 1000);
 

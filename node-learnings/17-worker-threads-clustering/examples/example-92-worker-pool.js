@@ -1,66 +1,76 @@
 // Example 92: Worker pool pattern (reuse workers)
 // This demonstrates how to reuse workers to avoid creation overhead
 
-const { Worker } = require('worker_threads');
-const http = require('http');
-const path = require('path');
-const os = require('os');
+const { Worker } = require("node:worker_threads");
+const http = require("node:http");
+const path = require("node:path");
+const os = require("node:os");
 
 // Worker pool class
 class WorkerPool {
   constructor(size = os.cpus().length) {
     this.size = size;
-    this.workers = [];
-    this.queue = [];
-    this.activeWorkers = 0;
-    
+    this.freeWorkers = []; // Stack of idle workers
+    this.queue = []; // Pending { task, resolve, reject } items
+
     // Create worker pool
     for (let i = 0; i < size; i++) {
-      const worker = new Worker(path.join(__dirname, 'worker-compute.js'));
-      
-      worker.on('message', (result) => {
-        this.activeWorkers--;
-        
-        // Resolve pending promise
-        const { resolve } = this.queue.shift();
-        resolve(result);
-        
-        // Process next task in queue
-        this.processQueue();
-      });
-      
-      worker.on('error', (err) => {
-        console.error('Worker error:', err);
-        this.activeWorkers--;
-        this.processQueue();
-      });
-      
-      this.workers.push(worker);
+      this._createWorker();
     }
   }
-  
+
+  _createWorker() {
+    const worker = new Worker(path.join(__dirname, "worker-compute.js"));
+
+    // When a worker finishes, put it back on the free stack
+    worker.on("message", (result) => {
+      // The pending entry was already removed from the queue when the task was dispatched
+      const { resolve } = worker._currentResolve;
+      worker._currentResolve = null;
+      this.freeWorkers.push(worker);
+      resolve(result);
+      this._processQueue();
+    });
+
+    worker.on("error", (err) => {
+      console.error("Worker error:", err);
+      const { reject } = worker._currentResolve || {};
+      worker._currentResolve = null;
+      this.freeWorkers.push(worker);
+      if (reject) reject(err);
+      this._processQueue();
+    });
+
+    this.freeWorkers.push(worker);
+  }
+
   execute(task) {
     return new Promise((resolve, reject) => {
       this.queue.push({ task, resolve, reject });
-      this.processQueue();
+      this._processQueue();
     });
   }
-  
-  processQueue() {
-    if (this.queue.length === 0 || this.activeWorkers >= this.size) {
+
+  _processQueue() {
+    if (this.queue.length === 0 || this.freeWorkers.length === 0) {
       return;
     }
-    
-    // Find available worker
-    const worker = this.workers[this.activeWorkers];
-    const { task } = this.queue.shift();
-    
-    this.activeWorkers++;
-    worker.postMessage({ type: 'compute', iterations: task.iterations });
+
+    // Take a free worker and the next queued task
+    const worker = this.freeWorkers.pop();
+    const { task, resolve, reject } = this.queue.shift();
+
+    // Attach resolve/reject so the message handler can use them
+    worker._currentResolve = { resolve, reject };
+    worker.postMessage({ type: "compute", iterations: task.iterations });
   }
-  
+
+  get activeWorkers() {
+    return this.size - this.freeWorkers.length;
+  }
+
   terminate() {
-    this.workers.forEach(worker => worker.terminate());
+    this.freeWorkers.forEach((worker) => worker.terminate());
   }
 }
 
@@ -69,52 +79,56 @@ const pool = new WorkerPool(4); // 4 workers
 
 // HTTP server
 const server = http.createServer(async (req, res) => {
-  if (req.url === '/compute') {
+  if (req.url === "/compute") {
     console.log(`[${new Date().toISOString()}] Request received for /compute`);
-    
+
     const startTime = Date.now();
-    
+
     try {
       const result = await pool.execute({ iterations: 100000000 });
       const duration = Date.now() - startTime;
-      
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ 
-        result: result.result.toFixed(2),
-        duration: `${duration}ms`,
-        activeWorkers: pool.activeWorkers,
-        queueLength: pool.queue.length
-      }));
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          result: result.result.toFixed(2),
+          duration: `${duration}ms`,
+          activeWorkers: pool.activeWorkers,
+          queueLength: pool.queue.length,
+        }),
+      );
     } catch (err) {
       res.writeHead(500);
       res.end(JSON.stringify({ error: err.message }));
     }
-  } else if (req.url === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ 
-      status: 'ok', 
-      time: Date.now(),
-      poolSize: pool.size,
-      activeWorkers: pool.activeWorkers,
-      queueLength: pool.queue.length
-    }));
+  } else if (req.url === "/health") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        status: "ok",
+        time: Date.now(),
+        poolSize: pool.size,
+        activeWorkers: pool.activeWorkers,
+        queueLength: pool.queue.length,
+      }),
+    );
   } else {
     res.writeHead(404);
-    res.end('Not found');
+    res.end("Not found");
   }
 });
 
 server.listen(3000, () => {
-  console.log('Server listening on http://localhost:3000');
+  console.log("Server listening on http://localhost:3000");
   console.log(`Worker pool size: ${pool.size}`);
-  console.log('Try:');
-  console.log('  curl http://localhost:3000/compute');
-  console.log('  curl http://localhost:3000/health');
+  console.log("Try:");
+  console.log("  curl http://localhost:3000/compute");
+  console.log("  curl http://localhost:3000/health");
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('Shutting down...');
+process.on("SIGTERM", () => {
+  console.log("Shutting down...");
   pool.terminate();
   server.close(() => {
     process.exit(0);

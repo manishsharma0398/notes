@@ -1,52 +1,52 @@
 // Example 90: CPU-bound work blocks event loop
 // This demonstrates why CPU-bound work is a problem in Node.js
 
-const http = require('http');
+const http = require("node:http");
 
 // CPU-intensive function (simulates heavy computation)
 function heavyComputation() {
   let result = 0;
   const iterations = 100000000; // 100 million iterations
-  
-  console.log('Starting heavy computation...');
+
+  console.log("Starting heavy computation...");
   const start = Date.now();
-  
+
   for (let i = 0; i < iterations; i++) {
     result += Math.sqrt(i) * Math.sin(i);
   }
-  
+
   const duration = Date.now() - start;
   console.log(`Computation completed in ${duration}ms`);
-  
+
   return result;
 }
 
 // HTTP server
 const server = http.createServer((req, res) => {
-  if (req.url === '/compute') {
+  if (req.url === "/compute") {
     console.log(`[${new Date().toISOString()}] Request received for /compute`);
-    
+
     // This blocks the event loop!
     const result = heavyComputation();
-    
-    res.writeHead(200, { 'Content-Type': 'application/json' });
+
+    res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ result: result.toFixed(2) }));
-  } else if (req.url === '/health') {
+  } else if (req.url === "/health") {
     // Simple health check (should be fast)
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok', time: Date.now() }));
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "ok", time: Date.now() }));
   } else {
     res.writeHead(404);
-    res.end('Not found');
+    res.end("Not found");
   }
 });
 
 server.listen(3000, () => {
-  console.log('Server listening on http://localhost:3000');
-  console.log('Try:');
-  console.log('  1. curl http://localhost:3000/health (should be fast)');
-  console.log('  2. curl http://localhost:3000/compute (blocks for seconds)');
-  console.log('  3. While /compute is running, try /health again (will wait!)');
+  console.log("Server listening on http://localhost:3000");
+  console.log("Try:");
+  console.log("  1. curl http://localhost:3000/health (should be fast)");
+  console.log("  2. curl http://localhost:3000/compute (blocks for seconds)");
+  console.log("  3. While /compute is running, try /health again (will wait!)");
 });
 
 // What happens:

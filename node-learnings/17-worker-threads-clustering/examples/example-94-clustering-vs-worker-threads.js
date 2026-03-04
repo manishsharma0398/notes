@@ -1,11 +1,11 @@
 // Example 94: Clustering vs Worker Threads comparison
 // This demonstrates when clustering helps vs when it doesn't
 
-const cluster = require('cluster');
-const { Worker } = require('worker_threads');
-const http = require('http');
-const path = require('path');
-const os = require('os');
+const cluster = require("node:cluster");
+const { Worker } = require("node:worker_threads");
+const http = require("node:http");
+const path = require("node:path");
+const os = require("node:os");
 
 // CPU-intensive function
 function heavyComputation() {
@@ -16,76 +16,83 @@ function heavyComputation() {
   return result;
 }
 
-if (cluster.isMaster) {
-  console.log('=== Clustering Mode (I/O-bound) ===');
-  console.log('This demonstrates clustering for I/O-bound workloads');
-  console.log('Each worker can handle many concurrent requests\n');
-  
-  const numWorkers = os.cpus().length;
+if (cluster.isPrimary) {
+  console.log("=== Clustering Mode (I/O-bound) ===");
+  console.log("This demonstrates clustering for I/O-bound workloads");
+  console.log("Each worker can handle many concurrent requests\n");
+
+  const numWorkers = os.availableParallelism();
   for (let i = 0; i < numWorkers; i++) {
     cluster.fork();
   }
-  
-  cluster.on('exit', (worker) => {
+
+  cluster.on("exit", (worker) => {
     console.log(`Worker ${worker.process.pid} died, restarting...`);
     cluster.fork();
   });
-  
 } else {
   // Worker process
   const server = http.createServer((req, res) => {
-    if (req.url === '/io') {
+    if (req.url === "/io") {
       // I/O-bound work (clustering helps here)
       setTimeout(() => {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ 
-          type: 'io',
-          worker: process.pid,
-          message: 'I/O-bound work completed'
-        }));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            type: "io",
+            worker: process.pid,
+            message: "I/O-bound work completed",
+          }),
+        );
       }, 100);
-    } else if (req.url === '/cpu') {
+    } else if (req.url === "/cpu") {
       // CPU-bound work (clustering does NOT help here!)
       console.log(`Worker ${process.pid} starting CPU work...`);
       const start = Date.now();
       const result = heavyComputation();
       const duration = Date.now() - start;
-      
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ 
-        type: 'cpu',
-        worker: process.pid,
-        result: result.toFixed(2),
-        duration: `${duration}ms`,
-        warning: 'This blocks the worker! Clustering does not help with CPU-bound work.'
-      }));
-    } else if (req.url === '/cpu-worker') {
-      // CPU-bound work with worker thread (better approach)
-      const worker = new Worker(path.join(__dirname, 'worker-compute.js'), {
-        workerData: { iterations: 50000000 }
-      });
-      
-      worker.on('message', (result) => {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ 
-          type: 'cpu-worker',
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          type: "cpu",
           worker: process.pid,
-          result: result.result.toFixed(2),
-          message: 'CPU work completed in worker thread (does not block main thread)'
-        }));
+          result: result.toFixed(2),
+          duration: `${duration}ms`,
+          warning:
+            "This blocks the worker! Clustering does not help with CPU-bound work.",
+        }),
+      );
+    } else if (req.url === "/cpu-worker") {
+      // CPU-bound work with worker thread (better approach)
+      const worker = new Worker(path.join(__dirname, "worker-compute.js"), {
+        workerData: { iterations: 50000000 },
+      });
+
+      worker.on("message", (result) => {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            type: "cpu-worker",
+            worker: process.pid,
+            result: result.result.toFixed(2),
+            message:
+              "CPU work completed in worker thread (does not block main thread)",
+          }),
+        );
         worker.terminate();
       });
-      
-      worker.on('error', (err) => {
+
+      worker.on("error", (err) => {
         res.writeHead(500);
         res.end(JSON.stringify({ error: err.message }));
       });
     } else {
       res.writeHead(404);
-      res.end('Not found');
+      res.end("Not found");
     }
   });
-  
+
   server.listen(3000, () => {
     console.log(`Worker ${process.pid} ready`);
   });

@@ -1,6 +1,6 @@
 // Worker thread that modifies shared memory
 
-const { parentPort, workerData } = require('worker_threads');
+const { parentPort, workerData } = require("node:worker_threads");
 
 // Access shared buffer
 const sharedBuffer = workerData.sharedBuffer;

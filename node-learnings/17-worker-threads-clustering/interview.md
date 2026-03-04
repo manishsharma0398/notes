@@ -9,23 +9,24 @@
 **Use Both**:
 
 1. **Clustering for HTTP requests (I/O-bound)**:
+
 ```javascript
 // Cluster workers handle HTTP requests
-const cluster = require('cluster');
-const os = require('os');
+const cluster = require("cluster");
+const os = require("os");
 
-if (cluster.isMaster) {
+if (cluster.isPrimary) {
   for (let i = 0; i < os.cpus().length; i++) {
     cluster.fork();
   }
 } else {
   // Worker process handles HTTP requests
-  app.post('/api/process-image', async (req, res) => {
+  app.post("/api/process-image", async (req, res) => {
     // Use worker thread for CPU-bound work
-    const worker = new Worker('./image-processor.js');
+    const worker = new Worker("./image-processor.js");
     worker.postMessage({ imageData: req.body.image });
-    
-    worker.on('message', (result) => {
+
+    worker.on("message", (result) => {
       res.json({ processedImage: result });
       worker.terminate();
     });
@@ -34,6 +35,7 @@ if (cluster.isMaster) {
 ```
 
 **Why**:
+
 - **Clustering**: Increases concurrent request capacity (I/O-bound scaling)
 - **Worker threads**: Offloads CPU-bound image processing (doesn't block main thread)
 - **Combined**: Best of both worlds (concurrency + CPU offloading)
@@ -41,6 +43,7 @@ if (cluster.isMaster) {
 **Trap**: Don't use clustering alone for CPU-bound work. Clustering doesn't help with CPU-bound work (each worker still blocks). Use worker threads for CPU-bound work.
 
 **Alternative Answer (if only one choice)**:
+
 - **If primarily CPU-bound**: Use worker threads only (clustering doesn't help)
 - **If primarily I/O-bound**: Use clustering only (worker threads don't help with concurrency)
 
@@ -53,6 +56,7 @@ if (cluster.isMaster) {
 **Expected Answer**:
 
 **The Misconception**:
+
 ```javascript
 // WRONG: Clustering doesn't help here!
 function heavyComputation() {
@@ -64,7 +68,7 @@ function heavyComputation() {
 }
 
 // 4 workers, but each still blocks!
-app.get('/compute', (req, res) => {
+app.get("/compute", (req, res) => {
   const result = heavyComputation(); // Still blocks THIS worker!
   res.json({ result });
 });
@@ -78,22 +82,24 @@ app.get('/compute', (req, res) => {
 4. **But**: Each worker still blocks on CPU work individually
 
 **The Problem**:
+
 - **Clustering increases concurrent request capacity** (more workers = more concurrent requests)
 - **Clustering does NOT reduce CPU work time** (each worker still takes same time)
 - **If all workers get CPU-bound requests**: All workers block (no benefit)
 
 **Why Worker Threads Help**:
+
 ```javascript
 // CORRECT: Worker threads offload CPU work
-app.get('/compute', (req, res) => {
-  const worker = new Worker('./compute.js');
+app.get("/compute", (req, res) => {
+  const worker = new Worker("./compute.js");
   worker.postMessage({ iterations: 1000000000 });
-  
-  worker.on('message', (result) => {
+
+  worker.on("message", (result) => {
     res.json({ result });
     worker.terminate();
   });
-  
+
   // Main thread continues handling other requests!
 });
 ```
@@ -145,12 +151,14 @@ app.get('/compute', (req, res) => {
 **Decision Framework**:
 
 **Choose Worker Threads When**:
+
 - CPU-bound work (image processing, video encoding)
 - Need fast startup (dynamic worker creation)
 - Memory constrained (less overhead)
 - Need shared memory (SharedArrayBuffer)
 
 **Choose Clustering When**:
+
 - I/O-bound workloads (many concurrent HTTP requests)
 - Need process isolation (fault tolerance)
 - Need graceful restarts (rolling restarts)
@@ -169,28 +177,34 @@ app.get('/compute', (req, res) => {
 **Worker Thread Creation**:
 
 1. **OS Thread Creation**:
+
    ```c
    // C++ layer (Node.js internals)
    pthread_create(&thread, NULL, worker_thread_start, worker_data);
    ```
+
    - Creates new OS thread (~1-5ms)
    - Thread shares process memory space
 
 2. **V8 Isolate Creation**:
+
    ```c
    // V8 API
    v8::Isolate* isolate = v8::Isolate::New(create_params);
    ```
+
    - Creates new V8 isolate (separate JavaScript context)
    - Separate heap (memory for JavaScript objects)
    - Separate call stack
    - Separate global objects (`global`, `process`, etc.)
 
 3. **Node.js Runtime Setup**:
+
    ```javascript
    // Worker thread loads Node.js runtime
    // But minimal setup (faster than process fork)
    ```
+
    - Loads Node.js core modules (fs, http, etc.)
    - Sets up event loop (separate event loop per worker)
    - Sets up libuv (but shares thread pool with main thread)
@@ -198,8 +212,9 @@ app.get('/compute', (req, res) => {
 4. **Script Execution**:
    ```javascript
    // Worker script loaded and executed
-   require('./worker.js');
+   require("./worker.js");
    ```
+
    - Reads worker script from disk
    - Executes in worker's V8 isolate
    - Sets up message channel (IPC between main thread and worker)
@@ -207,6 +222,7 @@ app.get('/compute', (req, res) => {
 **Key Insight**: Worker threads create **separate V8 isolates** (separate JavaScript contexts) in the **same process**. This is different from clustering (separate processes).
 
 **Memory Layout**:
+
 ```
 ┌─────────────────────────────────────────┐
 │  Process Memory (Shared)                │
@@ -227,6 +243,7 @@ app.get('/compute', (req, res) => {
 ```
 
 **Message Passing**:
+
 ```javascript
 // Main thread
 worker.postMessage({ data: obj });
@@ -254,30 +271,36 @@ worker.postMessage({ data: obj });
 **Too Many Worker Threads**:
 
 1. **Memory Exhaustion**:
+
    ```javascript
    // Creating 1000 workers
    for (let i = 0; i < 1000; i++) {
-     const worker = new Worker('./worker.js');
+     const worker = new Worker("./worker.js");
      // Each worker uses ~10-50MB
      // Total: ~10-50GB memory!
    }
    ```
+
    - **Symptom**: Process runs out of memory, crashes
    - **Limit**: Depends on available memory (usually 100-1000 workers max)
 
 2. **Thread Pool Starvation**:
+
    ```javascript
    // Workers use libuv thread pool (shared with main thread)
    // Too many workers doing fs operations = thread pool starvation
    ```
+
    - **Symptom**: Workers waiting for thread pool (fs, dns, crypto operations)
    - **Limit**: Default thread pool size is 4 (can increase with `UV_THREADPOOL_SIZE`)
 
 3. **Context Switching Overhead**:
+
    ```javascript
    // 100 workers on 4 CPU cores
    // OS must context switch between threads (overhead)
    ```
+
    - **Symptom**: Performance degradation (context switching overhead)
    - **Limit**: Usually `os.cpus().length` workers (one per CPU core)
 
@@ -286,34 +309,41 @@ worker.postMessage({ data: obj });
    // Each worker can open file descriptors
    // Too many workers = FD exhaustion
    ```
+
    - **Symptom**: "EMFILE: too many open files" error
    - **Limit**: Depends on OS limits (usually 1024-65536)
 
 **Too Many Cluster Workers**:
 
 1. **Process Fork Overhead**:
+
    ```javascript
    // Forking 100 processes
    for (let i = 0; i < 100; i++) {
      cluster.fork(); // ~100-1000ms each!
    }
    ```
+
    - **Symptom**: Very slow startup (minutes)
    - **Limit**: Usually `os.cpus().length` workers (one per CPU core)
 
 2. **Memory Overhead**:
+
    ```javascript
    // Each worker uses ~50-200MB
    // 100 workers = ~5-20GB memory!
    ```
+
    - **Symptom**: System runs out of memory
    - **Limit**: Depends on available memory (usually 4-16 workers)
 
 3. **IPC Overhead**:
+
    ```javascript
    // Master process must communicate with all workers
    // Too many workers = IPC overhead
    ```
+
    - **Symptom**: Master process becomes bottleneck
    - **Limit**: Usually 4-16 workers (depends on workload)
 
@@ -322,17 +352,20 @@ worker.postMessage({ data: obj });
    // Master process must distribute requests
    // Too many workers = load balancing overhead
    ```
+
    - **Symptom**: Master process CPU usage high
    - **Limit**: Usually 4-16 workers (use external load balancer for more)
 
 **Best Practices**:
 
 1. **Worker Threads**: Use worker pools (reuse workers, limit count)
+
    ```javascript
    const pool = new WorkerPool(os.cpus().length);
    ```
 
 2. **Clustering**: Use `os.cpus().length` workers (one per CPU core)
+
    ```javascript
    for (let i = 0; i < os.cpus().length; i++) {
      cluster.fork();
@@ -356,9 +389,9 @@ worker.postMessage({ data: obj });
 **Worker Pool Implementation**:
 
 ```javascript
-const { Worker } = require('worker_threads');
-const path = require('path');
-const os = require('os');
+const { Worker } = require("worker_threads");
+const path = require("path");
+const os = require("os");
 
 class WorkerPool {
   constructor(size = os.cpus().length, workerScript) {
@@ -367,78 +400,78 @@ class WorkerPool {
     this.workers = [];
     this.queue = [];
     this.activeWorkers = 0;
-    
+
     // Create worker pool
     for (let i = 0; i < size; i++) {
       this.createWorker();
     }
   }
-  
+
   createWorker() {
     const worker = new Worker(this.workerScript);
-    
-    worker.on('message', (result) => {
+
+    worker.on("message", (result) => {
       this.activeWorkers--;
-      
+
       // Resolve pending promise
       const { resolve } = this.queue.shift();
       resolve(result);
-      
+
       // Process next task in queue
       this.processQueue();
     });
-    
-    worker.on('error', (err) => {
-      console.error('Worker error:', err);
+
+    worker.on("error", (err) => {
+      console.error("Worker error:", err);
       this.activeWorkers--;
-      
+
       // Reject pending promise
       const { reject } = this.queue.shift();
       reject(err);
-      
+
       // Restart worker
       this.createWorker();
       this.processQueue();
     });
-    
-    worker.on('exit', (code) => {
+
+    worker.on("exit", (code) => {
       if (code !== 0) {
         console.error(`Worker exited with code ${code}`);
         // Restart worker
         this.createWorker();
       }
     });
-    
+
     this.workers.push(worker);
   }
-  
+
   execute(task) {
     return new Promise((resolve, reject) => {
       this.queue.push({ task, resolve, reject });
       this.processQueue();
     });
   }
-  
+
   processQueue() {
     if (this.queue.length === 0 || this.activeWorkers >= this.size) {
       return;
     }
-    
+
     // Find available worker
     const worker = this.workers[this.activeWorkers];
     const { task } = this.queue.shift();
-    
+
     this.activeWorkers++;
     worker.postMessage(task);
   }
-  
+
   terminate() {
-    this.workers.forEach(worker => worker.terminate());
+    this.workers.forEach((worker) => worker.terminate());
   }
 }
 
 // Usage
-const pool = new WorkerPool(4, './worker.js');
+const pool = new WorkerPool(4, "./worker.js");
 
 async function processTask(data) {
   const result = await pool.execute({ data });
@@ -472,33 +505,41 @@ async function processTask(data) {
 
 **SharedArrayBuffer Limitations**:
 
-1. **Requires Specific Flags**:
-   ```bash
-   # Must run with these flags
-   node --experimental-worker --harmony-sharedarraybuffer app.js
-   ```
-   - Not enabled by default (security reasons)
-   - Requires specific Node.js flags
+**SharedArrayBuffer Requirements (Node.js v16+)**:
+
+```bash
+# No special CLI flags needed in Node.js v16+
+node app.js
+
+# In browsers, requires Cross-Origin-Opener-Policy and
+# Cross-Origin-Embedder-Policy response headers
+```
+
+- Available natively in Node.js v12+ (stable in v16+)
+- Browser environments still require COOP/COEP headers
 
 2. **Only Typed Arrays**:
+
    ```javascript
    // SharedArrayBuffer works with typed arrays only
    const sharedBuffer = new SharedArrayBuffer(1024);
    const view = new Int32Array(sharedBuffer); // OK
-   
+
    // Cannot use regular JavaScript objects
    const obj = { data: sharedBuffer }; // Doesn't work
    ```
 
 3. **No Automatic Synchronization**:
+
    ```javascript
    // Race conditions possible!
    // Thread 1
    view[0] = view[0] + 1; // Not atomic!
-   
+
    // Thread 2
    view[0] = view[0] + 1; // Race condition!
    ```
+
    - Must use `Atomics` for synchronization
    - Complex to use correctly
 
@@ -507,12 +548,14 @@ async function processTask(data) {
    // Spectre/Meltdown vulnerabilities
    // SharedArrayBuffer disabled in browsers by default
    ```
+
    - Security concerns (Spectre/Meltdown)
    - Disabled in browsers by default
 
 **When to Use SharedArrayBuffer**:
 
 1. **Large Data Structures**:
+
    ```javascript
    // Avoid serialization overhead for large arrays
    const largeArray = new SharedArrayBuffer(1000000 * 4); // 4MB
@@ -520,6 +563,7 @@ async function processTask(data) {
    ```
 
 2. **High-Performance Computing**:
+
    ```javascript
    // Parallel computation on shared data
    // Use Atomics for synchronization
