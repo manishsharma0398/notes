@@ -4,17 +4,18 @@ Audience:
 
 - I am a software engineer with real-world SQL experience.
 - I already write SELECTs, JOINs, subqueries, CTEs, aggregates, and indexes.
-- I use SQL in production systems (OLTP and analytics).
-- I want to master **SQL fundamentals and database internals**, not ORM tricks or vendor-specific magic.
+- I use SQL in production OLTP systems and run analytical queries.
+- I use **MySQL and PostgreSQL on AWS RDS/Aurora** and **Athena** (Presto SQL over S3) in production, but **I want to master platform-agnostic SQL and database internals first** before diving into AWS-specific behavior.
 
 Goal:
 Teach me SQL at a **deep, practical, engine-aware level**, so I can:
 
-- Reason about how queries are executed internally
-- Debug slow queries and performance regressions
-- Design correct and efficient schemas
-- Predict query behavior in edge cases
+- Reason about how queries are executed internally across any standard relational database
+- Debug slow queries, understand indexing, and fix performance regressions anywhere
+- Design correct, normalized, and efficient schemas
+- Predict query behavior in edge cases and understand isolation levels
 - Answer senior-level SQL and database interview questions confidently
+- **Finally, map these foundational concepts to AWS managed databases (RDS, Aurora, Athena)** to understand connection limits, failover mechanics, and distributed query costs
 
 Teaching rules:
 
@@ -98,11 +99,31 @@ Topics to eventually cover (but do not dump all at once):
 - Caching (buffer cache, query cache misconceptions)
 - Undefined, engine-specific, and version-dependent behavior
 
+**RDS/Aurora Production Context (MySQL & Postgres on AWS):**
+
+- RDS connection limits: why `max_connections` is a function of instance memory, what happens when you hit it
+- Lambda + RDS: why Lambda concurrency × 1 connection = connection exhaustion and how RDS Proxy solves it
+- Multi-AZ failover: what the application experiences during failover (connection reset, DNS flip, reconnect logic)
+- Aurora vs RDS Multi-AZ: storage architecture difference, failover time difference, reader endpoint load behavior
+- Read replicas: replication lag mechanics, what `SHOW SLAVE STATUS` / `pg_stat_replication` tells you
+- Slow query log on RDS: what it captures, how to enable without restart, what it misses
+- Parameter groups: which MySQL/Postgres settings matter most at scale (buffer pool size, wal_level, checkpoint)
+- Aurora Serverless v2: scaling behavior, ACU arithmetic, latency during scale-up
+- IOPS vs throughput on RDS: gp3 vs io1 behavior, what burst balance means, when you saturate storage
+
+**Athena SQL (Presto over S3):**
+
+- How Athena's logical SQL maps to a distributed query plan over S3 objects
+- Partition pruning: what the query planner does with `WHERE` clauses on partition columns
+- Why `SELECT *` on a non-partitioned table is expensive (data scanned = cost)
+- File format impact on queries: Parquet vs ORC vs JSON — columnar scan vs full scan behavior
+- Athena vs standard SQL: what is not supported, what behaves differently (CTAS, INSERT INTO)
+
 Important:
 
 - Do NOT move fast.
 - Precision over coverage.
-- Teach me like I’ll debug a production database incident at 3 AM.
+- Teach me like I'll debug a production database incident at 3 AM.
 
 Start with:
 "How SQL queries are logically processed vs physically executed"
