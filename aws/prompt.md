@@ -11,7 +11,7 @@ This folder is organized into subject-based subfolders. Each subfolder has its o
 | [`compute/`](./compute/prompt.md)             | Lambda, API Gateway, ECS, EKS, Auto Scaling                         |
 | [`networking/`](./networking/prompt.md)       | VPC, NAT Gateway, PrivateLink, ALB/NLB, ENIs, DNS                   |
 | [`storage/`](./storage/prompt.md)             | S3, Athena, DynamoDB, RDS, Aurora, OpenSearch, EBS/EFS              |
-| [`messaging/`](./messaging/prompt.md)         | SQS, SNS, EventBridge, Kinesis, MSK                                 |
+| [`messaging/`](./messaging/prompt.md)         | SQS, SNS, EventBridge, Kinesis, MSK, SES                            |
 | [`observability/`](./observability/prompt.md) | CloudWatch, X-Ray, Grafana, cost observability                      |
 | [`security/`](./security/prompt.md)           | IAM, SCP, KMS, Secrets Manager, IRSA, VPC security                  |
 | [`operations/`](./operations/prompt.md)       | Incident response, multi-AZ failure, Teleport, blast radius, quotas |

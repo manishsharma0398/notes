@@ -50,6 +50,14 @@ chapter-name/
 
 ---
 
+## Chapters
+
+| Folder                    | Status      |
+| ------------------------- | ----------- |
+| [`ses/`](./ses/README.md) | ✅ Complete |
+
+---
+
 ## Interview Readiness
 
 Each chapter includes questions like:
