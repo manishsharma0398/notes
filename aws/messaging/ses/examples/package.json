@@ -1,0 +1,12 @@
+{
+  "name": "ses-bulk-send-test",
+  "version": "1.0.0",
+  "description": "SES v2 bulk email throttle test — sandbox",
+  "type": "module",
+  "scripts": {
+    "test": "node bulk_send_test.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-sesv2": "^3.782.0"
+  }
+}
