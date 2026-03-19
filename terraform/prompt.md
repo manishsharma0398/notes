@@ -74,14 +74,19 @@ Each chapter includes questions like:
 
 ## Topics (Do Not Dump — One at a Time)
 
-### Core Architecture
+### 00 — How to Learn Terraform
+
+- Terraform Registry documentation: required vs optional arguments, output attributes
+- The ClickOps to IaC learning loop: understanding AWS concept before writing HCL
+
+### 01 — Terraform Execution Model
 
 - Terraform execution model: init → plan → apply — what happens at each phase internally
 - Provider protocol: how Terraform communicates with providers, what the provider binary actually does
 - Dependency graph: how Terraform builds the resource graph, what `depends_on` actually does vs implicit deps
 - Parallelism during apply: default parallelism, what can run in parallel, what cannot and why
 
-### HCL Language Fundamentals (The Syntax)
+### 02 — HCL Language Fundamentals (The Syntax)
 
 - Variables and Locals: when to use `variable` vs `local`, input validation, and type constraint blocks
 - Data Types: strings, numbers, lists, maps, objects, and tuples — how Terraform handles type conversions
@@ -90,7 +95,7 @@ Each chapter includes questions like:
 - Built-in Functions: string manipulation, collection filtering, and CIDR math (`cidrsubnet`, `merge`, `flatten`)
 - Data Sources: querying the existing environment vs reading local files/templates
 
-### State File
+### 03 — State File
 
 - State file as the source of truth: what it contains, what it cannot represent
 - State drift: what causes it (manual changes, AWS auto-modifications, out-of-band automation)
@@ -100,7 +105,7 @@ Each chapter includes questions like:
 - State file security: what secrets end up in state and why (RDS passwords, KMS key IDs)
 - State manipulation: `terraform state mv`, `terraform state rm` — when each is safe and what can go wrong
 
-### Plan and Apply Behavior
+### 04 — Plan and Apply Behavior
 
 - Create vs update vs replace: what determines each — the `ForceNew` schema attribute
 - Partial apply behavior: when apply fails halfway, what is and is not in state
@@ -108,6 +113,27 @@ Each chapter includes questions like:
 - `lifecycle { ignore_changes }`: what you are hiding from Terraform and the operational risk
 - `lifecycle { create_before_destroy }`: when to use it, what it protects against, what it cannot fix
 - `-target` flag: what it does, why it's dangerous as a habit
+
+### 05 — Modules
+
+- Module design: input/output contracts, what leaks through module boundaries
+- Version pinning: registry source vs git source, what `ref` guarantees
+- Module composition: when to nest modules, when it creates hidden coupling
+- Refactoring modules: how to move resources between modules without destroying them (`moved` block)
+
+### 06 — Multi-Environment and Multi-Account
+
+- Workspaces vs directory-per-environment: the real operational trade-offs
+- Remote state data sources: cross-stack dependencies, what breaks when a dependency's state changes
+- Terraform + AWS Organizations: per-account state, assume role patterns, provider aliasing
+- Backend config: how `backend` blocks work, what cannot be interpolated and why
+
+### 07 — Terraform in CI/CD (GitLab CI & GitHub Actions)
+
+- `terraform plan` in CI: how to store plan files safely between jobs/stages, why running apply from a stale plan is dangerous
+- OIDC credential injection: how GitHub Actions and GitLab CI securely authenticate to AWS without long-lived access keys
+- Plan review gates: how to present plan output for human approval (GitHub environments vs GitLab manual jobs)
+- Locking and concurrency: what happens when two pipeline runs attempt apply simultaneously and how to prevent it
 
 ### AWS-Specific Resource Behavior
 
@@ -121,26 +147,61 @@ Each chapter includes questions like:
 - **IAM**: eventual consistency after role/policy creation — why resources that depend on a new IAM role fail immediately
 - **API Gateway**: stage deployment model — why API GW changes require an explicit deployment resource
 
-### Modules
+### 08 — AWS IAM (Identity & Access)
 
-- Module design: input/output contracts, what leaks through module boundaries
-- Version pinning: registry source vs git source, what `ref` guarantees
-- Module composition: when to nest modules, when it creates hidden coupling
-- Refactoring modules: how to move resources between modules without destroying them (`moved` block)
+- Provider authentication and `default_tags`
+- Trust Policies vs Permission Policies
+- Breaking circular dependencies (e.g., Lambda ARN & IAM Role)
+- The Principle of Least Privilege in IaC
+- **IAM**: eventual consistency after role/policy creation — why resources that depend on a new IAM role fail immediately
 
-### Multi-Environment and Multi-Account
+### 09 — AWS S3 (Storage)
 
-- Workspaces vs directory-per-environment: the real operational trade-offs
-- Remote state data sources: cross-stack dependencies, what breaks when a dependency's state changes
-- Terraform + AWS Organizations: per-account state, assume role patterns, provider aliasing
-- Backend config: how `backend` blocks work, what cannot be interpolated and why
+- The Provider v4 Disaggregation (`aws_s3_bucket`, versioning, encryption, public_access_block)
+- Bucket Policies vs IAM Policies
+- Handle `force_destroy` and mitigating naming collisions
 
-### Terraform in CI/CD (GitLab CI & GitHub Actions)
+### 10 — AWS Lambda (Compute)
 
-- `terraform plan` in CI: how to store plan files safely between jobs/stages, why running apply from a stale plan is dangerous
-- OIDC credential injection: how GitHub Actions and GitLab CI securely authenticate to AWS without long-lived access keys
-- Plan review gates: how to present plan output for human approval (GitHub environments vs GitLab manual jobs)
-- Locking and concurrency: what happens when two pipeline runs attempt apply simultaneously and how to prevent it
+- Execution environments, deployment packages, and Layers
+- Handling Code Drift: `archive_file` vs CI/CD "Dummy Zip" deployments
+- **Lambda**: zip artifact hashing — why filename hash forces replacement, how to use `source_code_hash` correctly
+- **Lambda layers**: version pinning behavior, what happens on layer update, forced replacement triggers
+
+### 11 — AWS API Gateway (Routing)
+
+- HTTP APIs (v2) vs REST APIs (v1) architectural differences
+- Lambda Proxy Integrations and Stages
+- The critical `aws_lambda_permission` Resource Policy requirement
+- **API Gateway**: stage deployment model — why API GW changes require an explicit deployment resource
+
+### 12 — AWS DynamoDB (Data)
+
+- Table schema requirements (Partition key, Sort key, limits on non-key attributes)
+- Capacity Modes: `PROVISIONED` vs `PAY_PER_REQUEST` (On-Demand)
+- Global Secondary Indexes (GSIs)
+- Handling destructive changes (Why you cannot change a primary key)
+- **DynamoDB**: billing mode changes, GSI additions — what triggers table replacement vs in-place update
+
+### 13 — AWS Secrets Management
+
+- The State File vulnerability (Why `sensitive = true` does not encrypt state passwords)
+- AWS SSM Parameter Store (`SecureString`) vs Secrets Manager
+- Decoupling secret storage from infrastructure provisioning via data sources
+- Generating secure random passwords in memory
+
+### 14 — AWS VPC Networking
+
+- The 3-tier architecture: Public, Private, and Isolated Subnets
+- Route tables, Internet Gateways, and NAT Gateways
+- Stateful Security Groups vs Stateless NACLs
+
+### 15 — Advanced AWS Integration (ECS, EKS, RDS)
+
+- **ECS task definitions**: why every `terraform apply` creates a new revision even with no changes (and how to stop it)
+- **ECS services**: `force_new_deployment` behavior, what Terraform does vs what ECS does during deploy
+- **EKS**: Helm provider vs kubectl provider — what each owns in state, conflict risks
+- **RDS**: `apply_immediately` vs maintenance window — what each option costs you for running workloads
 
 ---
 
