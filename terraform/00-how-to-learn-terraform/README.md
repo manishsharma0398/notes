@@ -1,58 +1,200 @@
-# Chapter 00: How to Learn Terraform & AWS
+# Chapter 00: How to Learn Terraform
 
-The most important skill you can develop as a Cloud/DevOps/Platform Engineer is not memorizing Terraform syntax—it is understanding *how to find* the syntax you need.
+The most important skill you can develop as a Cloud/DevOps/Platform Engineer is not memorizing Terraform syntax — it is understanding _how to find_ what you need.
 
-The AWS Provider contains over 1,200 unique resources. No senior engineer memorizes them. Instead, they master the **Terraform Registry** and the **AWS Learning Loop**.
+The AWS Provider alone contains over 1,200 unique resources. No senior engineer memorises them. Instead, they master three tools: **the Terraform Registry**, **the AWS Console learning loop**, and **version pinning discipline**.
+
+---
+
+## Mental Model
+
+> Terraform is a thin translation layer between your intent (HCL) and cloud API calls. Before you can translate, you must understand what you are translating _to_.
+
+The correct learning order is:
+
+```
+AWS concept (what does this thing do?)
+  → Console (what knobs exist for it?)
+    → Registry (how do I spell those knobs in HCL?)
+      → Terraform (automate it)
+```
+
+Skipping the first two steps is why engineers get confused by Terraform: the HCL is not magic, it mirrors the AWS API surface almost exactly.
 
 ---
 
 ## 1. The Terraform Registry
 
-Whenever you need to build something new, your first stop is always the **Terraform Registry**:
+**First stop for every new resource:**
 👉 [registry.terraform.io/providers/hashicorp/aws/latest/docs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
 
-Use the filter box to search for the AWS service (e.g., "s3", "lambda", "dynamodb").
-Every resource documentation page follows the exact same three-part structure:
+Every resource page has the same three-section structure:
 
-### Part A: Example Usage
-At the very top, HashiCorp provides a basic, copy-pasteable example. This is your starting point. You copy it into your `main.tf` and begin modifying the names.
+### Part A — Example Usage
 
-### Part B: Argument Reference (Inputs)
-This is the most critical section. It lists every single configuration setting you can pass *into* the resource (e.g., `bucket`, `tags`, `name`).
-*   **`(Required)`:** If you don't provide these arguments, `terraform plan` will instantly fail and tell you what is missing.
-*   **`(Optional)`:** These are extra features. If you want to enable a specific AWS feature (like block public access or encryption), you look here to find the exact spelling of the HCL argument.
+A minimal, copy-pasteable block. Use it to understand the shape of the resource. Do not blindly copy it to production.
 
-### Part C: Attribute Reference (Outputs)
-This tells you what data the resource *produces* after it is successfully created by AWS. 
-For example, after creating an `aws_s3_bucket`, the documentation tells you it exports an `arn` and an `id`. That is how you know you can type `${aws_s3_bucket.my_bucket.arn}` in your IAM policies!
+### Part B — Argument Reference (Inputs)
+
+Every configuration argument the resource accepts.
+
+| Marker       | Meaning                                                                                    |
+| ------------ | ------------------------------------------------------------------------------------------ |
+| `(Required)` | Must be provided. Missing one → `terraform plan` fails immediately with an explicit error. |
+| `(Optional)` | Enables extra AWS features. If you saw a checkbox in the Console, it lives here.           |
+
+> **Trap**: Some arguments are technically optional but their absence has a security implication (e.g., `block_public_acls = false` on an S3 bucket). Always read the description, not just the marker.
+
+### Part C — Attribute Reference (Outputs)
+
+What the resource _exports_ after creation — the ARN, ID, DNS name, etc. These are how you wire one resource into another:
+
+```hcl
+# The attribute reference for aws_s3_bucket tells you `.arn` exists.
+# That is why this is valid:
+resource "aws_iam_policy" "example" {
+  policy = jsonencode({
+    Resource = aws_s3_bucket.my_bucket.arn
+  })
+}
+```
 
 ---
 
-## 2. Do You Need to Know the AWS Console First?
+## 1.5. Registry Left-Pane Categories
 
-**Yes and No.**
+On any provider page in the Registry, the left sidebar groups docs into four categories:
 
-Terraform does not magically make AWS easier; it simply automates it. If you do not know the architectural difference between an S3 Bucket and a DynamoDB table, or what a VPC Subnet is, Terraform syntax will just be confusing text. 
+| Category | HCL keyword | Creates real infra? | Tracked in state? | You own it? |
+|---|---|---|---|---|
+| **Resources** | `resource` | ✅ Yes | ✅ Yes | ✅ Yes |
+| **Data Sources** | `data` | ❌ No | Partially (cached) | ❌ No |
+| **List Resources** | `data` | ❌ No | ❌ No | ❌ No |
+| **Actions** | `action` | ❌ No | ❌ No | ❌ No |
 
-You must understand the underlying AWS concepts. Fortunately, manually clicking through the AWS Console is the best way to learn how to write Terraform.
+### Resources
+Create, manage, and destroy real infrastructure. Terraform *owns* the object — removing the block from config tells Terraform to destroy it.
+
+### Data Sources
+Read-only queries against existing infrastructure you do not own. Removing the `data` block does not touch the real resource. Use them to fetch values from:
+- Infrastructure another team created
+- AWS-managed values (current account ID, available AZs, latest AMI)
+- Another Terraform root module's outputs via `terraform_remote_state`
+
+### List Resources
+Data sources that return a **collection** rather than a single object. Example:
+```hcl
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+# Returns ["us-east-1a", "us-east-1b", "us-east-1c"]
+# Use: data.aws_availability_zones.available.names[count.index]
+```
+
+### Actions (Experimental)
+Imperative, one-shot operations — things that are inherently not "desired state". Example: sending a test email via SES, triggering a pipeline. Actions run on every apply, produce no state entry, and cannot be drift-detected. They are the proper replacement for the `null_resource` + `local-exec` provisioner hack.
+
+> **Lambda `invoke_arn` trap**: In the Resource Attribute Reference for `aws_lambda_function`, there are both `arn` and `invoke_arn`. API Gateway always needs `invoke_arn` — using the plain `arn` passes validation but causes a permissions error at runtime. Always check the Attribute Reference descriptions, not just the names.
 
 ---
 
-## 3. The "Senior Engineer" Learning Loop
+## 2. The AWS Console → Terraform Learning Loop
 
-When professional engineers are asked to build a new infrastructure component they have never used before, they do not just start typing Terraform. They follow this loop:
+When writing Terraform for a service you have never used before:
 
-### Step 1: The ClickOps Phase (Console)
-Log into the AWS Console. Try to create the resource manually using your mouse. Look closely at the UI. 
-*   What dropdowns are required? 
-*   What checkboxes exist? 
-*   *Understanding the UI helps you understand the architecture.*
+### Step 1 — ClickOps (Console)
 
-### Step 2: The Translation Phase (Registry)
-Go to the Terraform Registry documentation for that resource. You will notice a recurring theme: **The checkboxes and dropdowns you saw in the AWS console almost perfectly match the `(Optional)` arguments in the Terraform docs!** 
+Manually create the resource in the AWS Console. Pay attention to:
 
-### Step 3: The Automation Phase (Terraform)
-Now that you conceptually know *what* needs to be built (from Step 1) and *how* to spell the configuration (from Step 2), write the Terraform code to automate it.
+- What fields are _required_ before you can hit "Create"
+- What checkboxes and dropdowns exist (these are `(Optional)` arguments)
+- What the UI warns you about (naming rules, limits, consistency delays)
 
-### Step 4: The Cleanup
-Delete the manual resource you clicked together in Step 1, run `terraform apply`, and let Infrastructure-as-Code deploy the real, version-controlled architecture.
+### Step 2 — Translation (Registry)
+
+Open the Registry docs for the Terraform resource. You will find the AWS Console UI almost perfectly mirrored in the Argument Reference.
+
+> **Pattern**: Console checkbox = optional boolean argument. Console dropdown = `string` enum argument.
+
+### Step 3 — Automation (Terraform)
+
+Write the HCL. Now you know _what_ to build and _how to spell_ it.
+
+### Step 4 — Cleanup
+
+Destroy the console resource. Let `terraform apply` own it. The resource now lives in version control.
+
+---
+
+## 3. Version Pinning (`required_version`)
+
+Every Terraform root module should declare which Terraform CLI version it expects:
+
+```hcl
+terraform {
+  required_version = "~> 1.9"        # accept 1.9.x, reject 1.10+
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"             # accept 5.x, reject 6.x
+    }
+  }
+}
+```
+
+**Why this matters operationally:**
+
+- A provider upgrade can change schema defaults, rename arguments, or start marking previously-ignored attributes as `ForceNew`. Without pinning, a `terraform init -upgrade` during a CI run can suddenly produce a destructive plan.
+- Terraform itself introduces new plan behaviours across minor versions (e.g., ephemeral resources in 1.10, write-only attributes in 1.11). An unpinned version string means your plan/apply semantics can silently change with a CLI update.
+
+### The `.terraform.lock.hcl` File
+
+`terraform init` generates this file. It records the exact provider version and hash downloaded. **Commit it.** It ensures that every engineer and every CI runner uses bit-for-bit identical provider binaries.
+
+```bash
+# After changing version constraints, update the lock file:
+terraform init -upgrade
+git add .terraform.lock.hcl
+git commit -m "chore: bump aws provider to 5.45"
+```
+
+> **Gotcha**: If you delete `.terraform.lock.hcl` and re-init, Terraform resolves the "latest matching" version again. This can silently pull a provider with breaking schema changes.
+
+---
+
+## 4. Reading Plan Output
+
+Before writing any code, you must be able to read `terraform plan` output cold:
+
+```
+# aws_s3_bucket.example will be created
++ resource "aws_s3_bucket" "example" {
+  + bucket = "my-logs-bucket"
+  + id     = (known after apply)
+  + arn    = (known after apply)
+}
+```
+
+| Symbol                | Meaning                                             |
+| --------------------- | --------------------------------------------------- |
+| `+`                   | Will be **created**                                 |
+| `-`                   | Will be **destroyed**                               |
+| `~`                   | Will be **updated in-place**                        |
+| `-/+`                 | Will be **destroyed and recreated** (replacement)   |
+| `<=`                  | Data source will be **read**                        |
+| `(known after apply)` | Value is not available until the cloud API responds |
+
+The `-/+` symbol is the one to scrutinise. It means a `ForceNew` attribute changed. This is how you catch accidental database replacements in code review.
+
+---
+
+## Checkpoints
+
+Before moving to Chapter 01, you should be able to:
+
+- [ ] Open a Registry page and identify Required vs Optional arguments without the exercise feeling slow
+- [ ] Explain the difference between an argument and an attribute reference
+- [ ] Explain why `~> 5.0` and `>= 5.0` are different version constraints
+- [ ] Read a `terraform plan` diff and explain what `-/+` means for a stateful resource (like RDS)
+- [ ] Find `.terraform.lock.hcl` in a repo and explain why it should be committed

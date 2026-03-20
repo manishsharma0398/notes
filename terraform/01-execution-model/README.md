@@ -157,28 +157,97 @@ The walk respects the DAG edges: it will **not** plan `aws_lambda_function.presi
 
 **Concurrency**: Terraform walks the graph with **up to 10 concurrent goroutines** (the `-parallelism` flag, default: 10). If two vertices have no dependency between them, they can be planned simultaneously. In the graph above, `aws_iam_role.lambda_role` and `aws_api_gateway_rest_api.api` have no edges between them — they'd be planned concurrently.
 
----
+#### The Refresh Step and `-refresh=false`
 
-### How Terragrunt Changes the Execution Model
+By default, every `terraform plan` calls `ReadResource` on **every resource in state** before computing the diff. This is the **refresh step** — it reconciles your state file against the actual cloud.
 
-When using **Terragrunt**, the mental model for execution changes slightly. When you type `terragrunt plan`, Terragrunt acts as a wrapper that performs these steps *before* calling Terraform:
-
-1. **The `.terragrunt-cache` Directory**: Terragrunt downloads the remote Terraform module specified in `terraform { source = "..." }` into a hidden `.terragrunt-cache` directory.
-2. **Dynamic Generation**: It dynamically generates files like `backend.tf` based on global rules and writes them into that cache folder.
-3. **Execution Context**: It `cd`s into the `.terragrunt-cache` directory and runs `terraform init` and `terraform plan` *inside* that directory, passing your `inputs = {}` as environment variables (`TF_VAR_...`).
-
-Terragrunt also introduces the `--all` flag. While Terraform relies on one root module dependency graph, **Terragrunt can orchestrate multiple root modules**:
-```bash
-# Finds all terragrunt.hcl files in subdirectories, 
-# figures out their dependencies, and runs plan on all of them in parallel.
-terragrunt run --all plan
 ```
+Default plan flow:
+  1. Load config
+  2. Read state
+  3. Call ReadResource for EVERY resource in state → reconcile drift
+  4. Compute diff (desired vs refreshed actual)
+  5. Output plan
+```
+
+This is correct and safe, but it can be **slow** on large configurations (hundreds of resources × API roundtrip each).
+
+The `-refresh=false` flag skips step 3:
+
+```bash
+terraform plan -refresh=false
+```
+
+**When it is safe:**
+
+- You have just run `plan` moments ago and know nothing has changed in the cloud.
+- You are running plan in CI against a newly created environment where no manual changes are possible.
+- You are diagnosing a config change and want to isolate the plan from drift noise.
+
+**When it is dangerous:**
+
+- Your environment could have drift (manual console changes, AWS auto-modifications).
+- You are debugging unexpected behaviour — skipping refresh hides the actual cloud state.
+
+> **Operational rule**: Never use `-refresh=false` in production apply pipelines. It is a speed optimisation for local development iteration only.
+
+#### `depends_on` — Explicit vs Implicit Dependencies
+
+The `ReferenceTransformer` infers edges from **expression references** automatically. This covers ~95% of real-world dependencies:
+
+```hcl
+resource "aws_lambda_function" "fn" {
+  role = aws_iam_role.lambda_exec.arn  # ← implicit edge: lambda waits for role
+}
+```
+
+But there is a class of dependency that expression references **cannot capture**:
+
+> **Hidden side-effect dependencies** — resource A causes a cloud-side change that resource B depends on, but B does not reference any attribute of A in HCL.
+
+The classic example is IAM eventual consistency:
+
+```hcl
+resource "aws_iam_role_policy_attachment" "attach" {
+  role       = aws_iam_role.lambda_exec.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_lambda_function" "fn" {
+  role = aws_iam_role.lambda_exec.arn
+  # The Lambda references the ROLE, not the policy attachment.
+  # The ReferenceTransformer has NO edge from lambda → policy_attachment.
+  # Terraform may create the Lambda BEFORE the policy is attached.
+  # AWS's IAM control plane has eventual consistency — the policy may not
+  # be visible to the Lambda execution environment for several seconds.
+}
+```
+
+Fix with `depends_on`:
+
+```hcl
+resource "aws_lambda_function" "fn" {
+  role = aws_iam_role.lambda_exec.arn
+
+  depends_on = [
+    aws_iam_role_policy_attachment.attach  # explicit edge added to the graph
+  ]
+}
+```
+
+**What `depends_on` actually does**: it calls `dag.Connect()` to add an edge between two vertices in the dependency graph. The Lambda vertex will not be walked until the policy attachment vertex has completed.
+
+**The cost of `depends_on` on modules**: When `depends_on` is placed on a `module` block, Terraform cannot make any assumptions about which resources inside the module are actually needed. It forces the **entire module** to complete before any dependent resources start — even resources inside the module that have no real dependency. This is a common source of unexpectedly slow applies.
+
+> **Using Terragrunt?** Terragrunt wraps this same init → plan → apply flow — it downloads remote modules, generates `backend.tf`/`provider.tf` files, and can orchestrate multiple root modules with `run-all`. How it modifies Terraform's execution model is covered in **Chapter 20 — Terragrunt** after you understand state, modules, and multi-environment patterns.
 
 ---
 
 ### Phase 3: `terraform apply`
 
-Apply takes a plan (either from `terraform plan -out=plan.tfplan` or computed inline) and executes it.
+Apply takes a plan (either from a saved plan file or computed inline) and executes it.
+
+> **`terraform plan -out=plan.tfplan`**: saves the plan to a binary file. Passing this file to `terraform apply plan.tfplan` guarantees Terraform executes *exactly* that plan — no re-refresh, no re-diff. This is the correct pattern for CI/CD: plan in one job, human review, apply in the next job from the saved file. Without `-out`, `apply` re-runs plan internally (with a fresh refresh) — the plan the human reviewed and the plan that actually applies may differ if the cloud changed between the two steps.
 
 The apply phase **builds its own graph** — different from the plan graph. The apply graph is built from the changes described in the plan, not from the config directly.
 
@@ -191,10 +260,11 @@ This "write after each resource" behavior is critical:
 
 ```
 Apply sequence:
-  1. Create aws_iam_role.lambda_role     → SUCCESS → write to state ✓
-  2. Create aws_lambda_function.presign  → FAIL    → write partial state ✓
-  3. Create aws_api_gateway_rest_api.api → SKIPPED (independent, but
-                                          might have already started)
+  1. Create aws_iam_role.lambda_role     → SUCCESS → written to state ✓
+  2. Create aws_lambda_function.presign  → FAIL    → NOT written to state ✗
+                                                     (may partially exist in cloud)
+  3. Create aws_api_gateway_rest_api.api → may have already completed concurrently
+                                           (no dependency on Lambda) → in state ✓
 ```
 
 > **What this means**: If apply fails halfway, **your state file reflects exactly which resources were created and which were not**. Terraform will never "forget" a resource it created. The next `plan` will see the partial state and compute a plan that finishes the remaining work.
@@ -332,7 +402,7 @@ $ terraform apply
 | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Atomicity**                       | Apply is NOT atomic. If resource 5 out of 10 fails, resources 1-4 exist in the cloud. There is no "rollback."                                                                                            |
 | **Resource readiness**              | Terraform says "created" when the provider's API returns success. This does NOT mean the resource is ready to serve traffic. Lambda may need seconds to become invocable after `CreateFunction` returns. |
-| **Concurrent safety**               | Two engineers running `apply` simultaneously on the same state = disaster. There is no built-in lock with local state. (S3 backend with DynamoDB locking solves this.)                                   |
+| **Concurrent safety** | Two engineers running `apply` simultaneously on the same state = disaster. There is no built-in lock with local state. S3 backend with DynamoDB locking solves this — or with Terraform v1.11+, S3 native locking (`use_lockfile = true`) which deprecates the DynamoDB table entirely. See Chapter 03. |
 | **Drift detection without refresh** | If someone changes a resource in the console, Terraform doesn't know until it runs `plan` (which calls `ReadResource` to refresh). Between plans, Terraform is blind to drift.                           |
 
 ---

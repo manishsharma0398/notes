@@ -28,9 +28,8 @@
 - Default parallelism: **10 concurrent operations**. Independent resources are planned/applied simultaneously.
 - `depends_on` adds **explicit** edges. Most edges are **implicit** — inferred from expression references.
 
-## 5. Apply is NOT atomic — partial failure leaves partial state
+## 5. **Apply is NOT atomic — partial failure leaves partial state**: State is written **after each successful resource operation**, not at the end. If apply fails at resource 5/10: resources 1–4 are in state ✓, resource 5 is NOT in state, resources 6–10 were never attempted (if dependent on 5) or may have already completed (if independent). There is **no rollback**. The next `plan` will show the remaining work. "Resource created" ≠ "resource ready" — AWS API returning success does not mean the resource is serving traffic.
 
-- State is written **after each successful resource operation**, not at the end.
-- If apply fails at resource 5/10: resources 1–4 are in state ✓, resource 5 is NOT in state, resources 6–10 were never attempted (if dependent on 5) or may have already completed (if independent).
-- There is **no rollback**. The next `plan` will show the remaining work.
-- "Resource created" ≠ "resource ready" — AWS API returning success does not mean the resource is serving traffic.
+6. **`-refresh=false` skips cloud reconciliation — use only locally**: By default, `plan` calls `ReadResource` for every resource in state to detect drift. `-refresh=false` skips this entirely. Safe for fast local iteration where no console changes are possible. **Never use in production CI apply** — it hides drift and can cause Terraform to apply a plan based on stale state.
+
+7. **`depends_on` adds an explicit graph edge for hidden side-effect dependencies**: Expression references (`role = aws_iam_role.fn.arn`) create implicit edges automatically. Use `depends_on` only when resource B depends on a **cloud-side side-effect** of resource A that no HCL attribute captures — e.g., Lambda waiting for a policy attachment to propagate through IAM's eventually-consistent control plane. `depends_on` on a `module` block forces the **entire module** to complete before dependents start — use it only at the resource level when possible.
