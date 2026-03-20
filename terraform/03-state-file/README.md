@@ -2,48 +2,35 @@
 
 ## Mental Model
 
-The state file is **Terraform's memory**. It is a JSON file that records what Terraform has created, what those resources look like, and what config created them.
+The state file is **Terraform's memory** — a JSON record of every resource Terraform manages, mapping HCL addresses to real cloud IDs and their full attribute set.
 
-Think of it this way:
+Without state, Terraform can't answer: *"Which AWS Lambda function corresponds to `aws_lambda_function.presign` in my config?"* The cloud has no concept of Terraform resource addresses. State is the bridge.
 
-> The state file is a **map** from your HCL resource addresses (`aws_lambda_function.presign`) to the real cloud resource IDs (`arn:aws:lambda:ap-south-1:123456:function:prasaarit-presign-stg`). Without this map, Terraform has no idea which real resource corresponds to which block in your config.
-
-Here's the critical triangle that Terraform reasons about during every `plan`:
+During every `terraform plan`, Terraform reasons about **three sources of truth simultaneously**:
 
 ```
-            ┌──────────────────────┐
-            │    YOUR .tf CONFIG   │
-            │    (desired state)   │
-            └──────────┬───────────┘
-                       │
-          "what do     │        "what did I
-           you want?"  │         last record?"
-                       │
-                       ▼
-              ┌─────────────┐           ┌──────────────────┐
-              │    PLAN     │◄──────────│   STATE FILE     │
-              │  (the diff) │           │  (recorded state)│
-              └─────────────┘           └──────────────────┘
-                       ▲
-          "what does   │
-           the cloud   │
-           actually    │
-           look like?" │
-                       │
-            ┌──────────┴───────────┐
-            │     CLOUD REALITY    │
-            │  (actual state via   │
-            │   provider refresh)  │
-            └──────────────────────┘
+┌──────────────────────┐
+│    YOUR .tf CONFIG   │     ← desired state: what you declared
+└──────────┬───────────┘
+           │
+           ▼
+  ┌─────────────────┐      ┌──────────────────────┐
+  │   PLAN (diff)   │◄─────│   STATE FILE         │← recorded state: last apply result
+  └─────────────────┘      └──────────────────────┘
+           ▲
+           │
+┌──────────┴───────────┐
+│   CLOUD REALITY      │     ← actual state: fetched via provider ReadResource at plan time
+└──────────────────────┘
 ```
 
-**Three sources of truth. Terraform diffs all three.**
+The plan is the diff of all three. Terraform treats your config as the source of truth — drift from cloud is planned to be reverted.
 
 ---
 
 ## What the State File Contains
 
-The state is a JSON file (by default `terraform.tfstate`). Here's what's inside, with a real example from your Prasaarit project:
+The state file is `terraform.tfstate`, a JSON file with this structure:
 
 ```json
 {
@@ -70,20 +57,12 @@ The state is a JSON file (by default `terraform.tfstate`). Here's what's inside,
             "arn": "arn:aws:lambda:ap-south-1:123456789012:function:prasaarit-presign-stg",
             "function_name": "prasaarit-presign-stg",
             "handler": "handler.lambda_handler",
-            "id": "prasaarit-presign-stg",
             "runtime": "python3.12",
             "timeout": 10,
             "memory_size": 128,
             "role": "arn:aws:iam::123456789012:role/prasaarit-stg-lambda-exec",
             "source_code_hash": "abc123def456...",
-            "environment": [
-              {
-                "variables": {
-                  "BUCKET_NAME": "prasaarit-uploads-stg",
-                  "ALLOWED_ORIGIN": "*"
-                }
-              }
-            ],
+            "environment": [{"variables": {"BUCKET_NAME": "prasaarit-uploads-stg"}}],
             "last_modified": "2026-03-19T14:30:00.000+0000"
           }
         }
@@ -93,181 +72,119 @@ The state is a JSON file (by default `terraform.tfstate`). Here's what's inside,
 }
 ```
 
-### Key Fields
+**Key fields:**
 
 | Field | What it is | Why it matters |
-|-------|-----------|----------------|
-| `version` | State format version (currently 4) | Terraform versions may not be able to read older/newer formats |
-| `serial` | Incrementing counter | Bumped on every write. Used for optimistic locking with remote backends. |
-| `lineage` | UUID generated on first `init` | Identifies this specific state. Prevents accidentally applying one project's state to another. |
-| `outputs` | Output values from your config | Stored here so `terraform output` works without re-running plan |
-| `resources` | Array of every managed resource | Each entry maps resource address → cloud resource attributes |
-| `resources[].instances[].attributes` | **Every attribute** of the resource | ARN, ID, name, settings — everything the provider returned from the last apply |
+|---|---|---|
+| `serial` | Incrementing write counter | Bumped on every state write; used for optimistic concurrency detection by remote backends |
+| `lineage` | UUID generated at first `init` | Prevents accidentally applying one project's state to a different backend |
+| `outputs` | Output values after apply | Stored so `terraform output` works without re-running plan |
+| `resources[].instances[].attributes` | **Every attribute** the provider returned | ARN, ID, runtime, settings — everything from the last `ApplyResourceChange` or `ReadResource` |
 
----
+### What the State File Cannot Represent
 
-## What the State File Cannot Represent
-
-The state file has critical blind spots:
-
-**1. It does NOT track resources Terraform didn't create.**
-If you created an S3 bucket in the AWS console, Terraform has no idea it exists. The state only contains resources Terraform created via `apply` or added via `import`.
-
-**2. It does NOT capture the full cloud state.**
-The provider's `ReadResource` returns a subset of the resource's configuration. Some cloud-side attributes (AWS-internal metadata, service-linked configurations) are not represented. The state is an approximation, not a perfect mirror.
-
-**3. It does NOT track dependencies between runs.**
-If module A's output feeds into module B's input via `terraform_remote_state`, and module A changes, module B's state doesn't know until you re-run plan on module B.
-
-**4. It goes stale the moment it's written.**
-The state records what the cloud looked like at the time of the last `apply`. Between applies, anything can change in the cloud. Terraform is blind to drift until the next `plan` refresh.
+- **Resources Terraform didn't create** — console-created resources are invisible until `import`ed
+- **The full cloud surface** — provider `ReadResource` returns only attributes the schema tracks; some AWS-internal metadata is omitted
+- **Cross-stack awareness** — stack A's state knows nothing about stack B; if A changes an output that B depends on via `terraform_remote_state`, B doesn't know until it re-plans
+- **Real-time truth** — state is a snapshot from the last apply. Between runs, the cloud can diverge silently.
 
 ---
 
 ## State Drift
 
-State drift is when the cloud reality diverges from what the state file records. This is the #1 source of unexpected Terraform behavior.
+Drift is when cloud reality diverges from what the state file records. It is the #1 source of unexpected Terraform behavior.
 
 ### What Causes Drift
 
-```
-Drift Source                         │ How it happens
-─────────────────────────────────────┼──────────────────────────────────────
-Manual console changes               │ Someone changed Lambda timeout in the
-                                     │ AWS console from 10s → 30s
-                                     │
-AWS auto-modifications               │ AWS automatically added default tags,
-                                     │ modified security group rules, or
-                                     │ upgraded RDS minor version
-                                     │
-Out-of-band automation               │ A different Terraform stack, a script,
-                                     │ or AWS Config remediation modified the
-                                     │ resource
-                                     │
-Eventual consistency                 │ AWS API returned success but the change
-                                     │ hadn't propagated. Next refresh reads a
-                                     │ stale value.
-```
+| Source | Example |
+|---|---|
+| Manual console change | Someone changed Lambda timeout from 10s → 30s in the AWS console |
+| AWS auto-modification | AWS automatically upgraded RDS minor version, added default tags, modified security group rules |
+| Out-of-band automation | A different Terraform stack, a script, or AWS Config remediation changed the resource |
+| Eventual consistency | AWS API returned success but the change hadn't propagated; the next refresh reads a stale value |
 
-### How Terraform Detects Drift
+### How Terraform Detects and Handles Drift
 
-During `terraform plan`, Terraform calls the provider's `ReadResource` RPC for every resource in state. This is the **refresh** step. It compares:
+During `terraform plan`, Terraform calls each provider's `ReadResource` RPC — the **refresh step**. It compares:
 
 ```
-State says:    timeout = 10
-Cloud says:    timeout = 30     ← drift detected!
-Config says:   timeout = 10
+State says:   timeout = 10
+Cloud says:   timeout = 30   ← drift detected via ReadResource
+Config says:  timeout = 10
 
-Plan output:   ~ timeout: 30 → 10    (Terraform plans to revert the drift)
+Plan output:  ~ timeout: 30 → 10  (Terraform will revert the drift on apply)
 ```
 
-Terraform will plan to **revert** the cloud to match your config. It doesn't adopt the console change — it treats your `.tf` config as the source of truth.
+Terraform treats your config as the source of truth and plans to **revert** the cloud to match. Between plan runs, Terraform is completely blind to drift — there is no continuous monitoring, only point-in-time detection.
 
-### The Danger: Silent Drift on Attributes You Don't Manage
+### Silent Drift on Unmanaged Attributes
 
 ```hcl
 resource "aws_lambda_function" "presign" {
   function_name = "prasaarit-presign-stg"
   runtime       = "python3.12"
-  handler       = "handler.lambda_handler"
-  # ... but you didn't specify 'description'
+  # ... but 'description' is not specified
 }
 ```
 
-If someone adds a description in the console, Terraform's behavior depends on the provider:
-- Some providers **ignore** attributes not in your config (Terraform won't revert the description)
-- Some providers **revert** them to empty/default on the next apply
-
-This is provider-specific behavior and a common source of surprises. Always check the `plan` output carefully.
+If someone adds a description in the console, behavior depends on the provider: some will revert it to empty on the next apply, others ignore it. Always read `terraform plan` output carefully — attributes you don't manage can still appear in the diff.
 
 ---
 
-## `terraform refresh` vs `terraform plan -refresh-only`
+## `terraform plan -refresh-only` and `terraform refresh`
 
-### The Old Way: `terraform refresh` (Deprecated in Practice)
-
-```bash
-terraform refresh
-```
-
-This command calls `ReadResource` for every resource and **directly updates the state file** to match cloud reality. It does NOT compare against your config. It does NOT ask for confirmation.
-
-**Problem**: If someone deleted your Lambda in the console, `terraform refresh` silently removes it from state. Now Terraform doesn't know the Lambda should exist. The next `plan` will show **nothing to do** — even though your config says the Lambda should exist.
-
-### The Modern Way: `terraform plan -refresh-only`
+### `terraform plan -refresh-only` — The Modern Approach
 
 ```bash
-terraform plan -refresh-only
+terraform plan -refresh-only     # shows what state WOULD become after refresh — no changes
+terraform apply -refresh-only    # actually updates state to match cloud — no infrastructure changes
 ```
 
-This shows you what the state **would** change to after refreshing against the cloud — but doesn't modify anything. You review the diff and then decide:
+Use this when manual changes were intentional and you want to **accept them into state** without reverting. After the `-refresh-only` apply, update your config to match so future plans are clean.
+
+### `terraform refresh` — Deprecated in Practice
 
 ```bash
-terraform apply -refresh-only    # If you want to adopt the cloud changes into state
+terraform refresh    # directly updates state to match cloud. No review. No confirmation.
 ```
 
-**When to use `-refresh-only`**: After someone made legitimate manual changes in the console that you want to accept into state without reverting them.
+Avoid this. If someone deleted your Lambda in the console, `terraform refresh` silently removes it from state. The next `plan` shows nothing to do — even though your config says the Lambda should exist.
 
-### The Default: Refresh During Normal Plan
-
-By default, `terraform plan` **always refreshes** (calls `ReadResource` for every resource) before computing the plan. You can skip this with:
+### `-refresh=false` During Normal Plan
 
 ```bash
-terraform plan -refresh=false    # Uses stale state. Faster, but won't detect drift.
+terraform plan -refresh=false    # skips ReadResource calls; uses stale state
 ```
 
-**When to skip refresh**: Large stacks with hundreds of resources where refresh takes minutes and you're confident the cloud hasn't changed. Otherwise, always refresh.
+Faster for large stacks, but will not detect drift. Safe only when you're confident the cloud hasn't changed (e.g., CI pipeline against a freshly created environment). Never use in production apply pipelines.
 
 ---
 
 ## `terraform import` — Adopting Existing Resources
 
-`import` tells Terraform: "this resource already exists in the cloud — add it to my state."
+`import` tells Terraform: *"this resource already exists in the cloud — add it to my state."*
 
-### How It Works
+### CLI Import (Classic)
 
 ```bash
 terraform import aws_s3_bucket.uploads prasaarit-uploads-stg
-#                ^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
-#                resource address in .tf     real cloud identifier
+#                ─────────────────────  ─────────────────────
+#                resource address       cloud resource identifier
 ```
 
-**What `import` does:**
-1. Calls the provider's `ReadResource` for the given cloud ID
-2. Writes the result into the state file under the given resource address
-3. That's it.
+**What import does:**
+1. Calls provider `ReadResource` for the given cloud ID
+2. Writes the full result into state at the given address
+3. Done — no HCL is generated, no AWS changes are made
 
-**What `import` does NOT do:**
-- It does NOT generate HCL config. You must write the `resource "aws_s3_bucket" "uploads" { ... }` block yourself.
-- It does NOT verify your config matches the imported state. If your config differs from reality, the next `plan` will show changes.
+**What import does NOT do:**
+- Does not write HCL — you must write the `resource` block yourself
+- Does not verify your config matches reality — the next `plan` will show all the differences
 
-### The Workflow
-
-```bash
-# Step 1: Write the resource block in your .tf file (even if incomplete)
-# s3.tf
-resource "aws_s3_bucket" "uploads" {
-  bucket = "prasaarit-uploads-stg"
-}
-
-# Step 2: Import the existing cloud resource into state
-terraform import aws_s3_bucket.uploads prasaarit-uploads-stg
-
-# Step 3: Run plan to see if your config matches reality
-terraform plan
-# Output might show:
-#   ~ force_destroy: true → false
-#   ~ tags: { "Environment" = "stg" } → {}
-# This means your config is missing some attributes that exist on the real bucket.
-
-# Step 4: Update your config to match reality (or accept the diff)
-```
-
-### Import Blocks (Terraform 1.5+)
-
-Modern Terraform supports declarative import in config:
+### `import` Block (Terraform 1.5+) — The Better Way
 
 ```hcl
+# Declare the import in config — reviewable in Git, runs as part of normal plan/apply
 import {
   to = aws_s3_bucket.uploads
   id = "prasaarit-uploads-stg"
@@ -279,210 +196,194 @@ resource "aws_s3_bucket" "uploads" {
 ```
 
 ```bash
-terraform plan    # Shows the import as part of the plan
-terraform apply   # Performs the import and any needed changes
+terraform plan    # shows the import as a planned action
+terraform apply   # executes the import AND any config drift fixes
 ```
 
-This is better because:
-- The import is **in code** (reviewable in Git)
-- It happens during normal `plan`/`apply` flow
-- You can generate the config with `terraform plan -generate-config-out=generated.tf`
+**Bonus**: auto-generate the HCL from the imported resource:
+```bash
+terraform plan -generate-config-out=generated.tf
+# Writes a complete HCL block from the cloud resource's actual attributes.
+# Review it carefully — it includes every attribute the provider tracks.
+```
 
-### For Your Prasaarit Project
+**Config-driven import is always preferred** over CLI import because it is code-reviewed, works in CI/CD without manual steps, and is idempotent.
 
-You said you'll build fresh, so you won't need `import` now. But if you later want to bring the console-created S3 bucket under Terraform in your core infra repo, `import` is how you'd do it.
+### After Any Import: Reconcile Config
+
+```bash
+terraform plan
+# Output might show:
+#   ~ force_destroy: true → false
+#   ~ tags: { "Environment" = "stg" } → {}
+# Your config is incomplete. Iteratively add missing attributes until plan shows 0 changes.
+```
 
 ---
 
-## Remote State — S3 + DynamoDB Locking
+## Remote State — S3 Backend
 
-Local state (`terraform.tfstate` on disk) has problems:
-1. **No locking** — two engineers can `apply` simultaneously and corrupt state
-2. **Not shared** — your teammate can't see or work with the same state
-3. **No versioning** — if you corrupt the state, you can't roll back
-4. **Secrets in plaintext** — state is unencrypted on your laptop
+Local state (`terraform.tfstate` on disk) has fatal problems at team scale:
+
+| Problem | Impact |
+|---|---|
+| No locking | Two concurrent applies corrupt state |
+| Not shared | Team members see different state |
+| No versioning | Corrupted state cannot be rolled back |
+| Secrets on disk | Plaintext JSON with passwords on every developer's laptop |
 
 ### S3 Backend Configuration
 
 ```hcl
-# main.tf — backend config
 terraform {
   backend "s3" {
-    bucket         = "prasaarit-terraform-state"
-    key            = "upload-service/terraform.tfstate"
-    region         = "ap-south-1"
+    bucket  = "prasaarit-terraform-state"
+    key     = "upload-service/terraform.tfstate"
+    region  = "ap-south-1"
+    encrypt = true
+
+    # Option A: DynamoDB locking (pre-v1.11, still widely used)
     dynamodb_table = "prasaarit-terraform-locks"
-    encrypt        = true
+
+    # Option B: S3 native locking (v1.11+, replaces DynamoDB)
+    # use_lockfile = true
   }
 }
 ```
-
-### What Each Setting Does
-
-| Setting | Purpose | What Happens Without It |
-|---------|---------|------------------------|
-| `bucket` | S3 bucket where state is stored | State stays local |
-| `key` | Path within the bucket | Allows multiple stacks in one bucket |
-| `region` | Where the S3 bucket lives | Provider region is used (may differ) |
-| `dynamodb_table` | Lock table for concurrent access | **No locking!** Two applies can run simultaneously |
-| `encrypt` | Server-side encryption | State is stored in plaintext in S3 |
 
 ### DynamoDB Locking — How It Works
 
+DynamoDB uses a **conditional `PutItem`** with `attribute_not_exists` — an atomic operation:
+
 ```
 Engineer A: terraform apply
-  → Writes a lock record to DynamoDB: { LockID: "upload-service/terraform.tfstate" }
-  → Reads state from S3
-  → Builds plan, applies changes
-  → Writes new state to S3
-  → Deletes the lock record from DynamoDB
+  → Writes lock record to DynamoDB: { LockID: "upload-service/terraform.tfstate" }
+  → Reads state from S3 → applies → writes new state → deletes lock
 
-Engineer B: terraform apply (while A is still running)
-  → Tries to write lock record to DynamoDB
-  → DynamoDB: "Lock already exists!"
-  → Terraform: "Error: Error acquiring the state lock"
-  → B must wait until A finishes.
+Engineer B: terraform apply (while A is running)
+  → Tries to write lock record → DynamoDB: "Item already exists"
+  → Error: "Error acquiring the state lock"
+  → B must wait until A finishes and releases the lock
 ```
 
-DynamoDB uses a **conditional write** (`PutItem` with `attribute_not_exists`). This is an atomic operation — two simultaneous lock attempts cannot both succeed. The `serial` field in state provides an optimistic concurrency check on the state itself.
+The `serial` field in state provides an **optimistic concurrency check**: if two processes somehow both write, the one with the stale serial is rejected.
 
-### The Chicken-and-Egg Problem
+### S3 Native Locking — `use_lockfile` (v1.11+)
 
-**Problem**: You need an S3 bucket and DynamoDB table to store your state — but those resources need to be created too. Who manages them?
-
-**Solutions:**
-
-```
-Option A: Create them manually (AWS console or CLI)
-  → Most common for bootstrapping.
-  → Create the S3 bucket and DynamoDB table once by hand.
-  → Then configure your backend to use them.
-
-Option B: Separate bootstrap Terraform config with local state
-  → A tiny Terraform project that ONLY creates the state bucket + lock table.
-  → This project uses local state (it manages itself).
-  → Your actual project then uses those resources as its backend.
-
-Option C: Start local, migrate later
-  → Start with local state.
-  → When ready, create the S3 bucket + DynamoDB table.
-  → Add the backend config to your .tf.
-  → Run `terraform init -migrate-state` to move local state to S3.
-```
-
-**For your Prasaarit project**, Option C is the right call. Start local now. When you add CI/CD with GitHub Actions (Phase 3), migrate to S3 backend.
-
-### Migrating Local State to Remote State
-
-1. Create the S3 bucket and DynamoDB table manually or in a separate Terraform "bootstrap" stack.
-2. Add the `backend "s3" {}` block.
-3. Run `terraform init`.
-4. Terraform asks: *"Do you want to copy existing state to the new backend?"* Say yes.
-
-### How Terragrunt Solves the "Chicken and Egg" State Problem
-
-In native Terraform, you must create the S3 bucket and DynamoDB table *before* you can use the S3 backend. This creates a chicken-and-egg problem: How do you provision the infrastructure that holds your infrastructure state?
-
-**Terragrunt** solves this natively using the `remote_state` block in your root `terragrunt.hcl`:
+Terraform v1.11 introduced native S3-based locking via a `.tflock` file written to the same S3 bucket as the state. This **deprecates the DynamoDB table requirement**.
 
 ```hcl
-remote_state {
-  backend = "s3"
-  generate = {
-    path      = "backend.tf"
-    if_exists = "overwrite_terragrunt"
-  }
-  config = {
-    bucket         = "tf-creoate-states"
-    key            = "business-services/core/${path_relative_to_include()}/terraform.tfstate"
-    region         = "eu-west-2"
-    encrypt        = true
-    dynamodb_table = "terraform-locks"
+terraform {
+  backend "s3" {
+    bucket       = "prasaarit-terraform-state"
+    key          = "upload-service/terraform.tfstate"
+    region       = "ap-south-1"
+    encrypt      = true
+    use_lockfile = true   # ← no dynamodb_table needed
   }
 }
 ```
 
-When you run `terragrunt init`, Terragrunt automatically checks if the S3 bucket and DynamoDB table exist. **If they don't, Terragrunt uses the AWS API to create them on the spot**, and *then* configures Terraform to use them. No manual bootstrapping required.
+How it works: a conditional `s3:PutObject` with `If-None-Match: *` acts as the atomic lock — the same atomic guarantee as DynamoDB, without the additional service. S3 versioning on the bucket should be enabled so the lock file's history is auditable.
+
+**Migration from DynamoDB to native locking** requires `terraform init -reconfigure` after updating the backend block. The DynamoDB table can be decommissioned once all applies use the new lock.
+
+### The Chicken-and-Egg Problem
+
+You need an S3 bucket to store your state — but who creates the bucket?
+
+**Option A** (most common): Create the S3 bucket and DynamoDB table manually (AWS console or CLI) once as a bootstrap step, then configure your backend to use them.
+
+**Option B**: A tiny separate Terraform config with **local state** creates only the state bucket and lock table. Your actual project then uses those as its backend.
+
+**Option C** (start simple): Begin with local state. When ready for teams and CI/CD, create the bucket, add the `backend "s3"` block, and run `terraform init -migrate-state`. Terraform will copy local state to S3.
+
+For your Prasaarit project: use Option C — start local now, migrate when you add GitHub Actions CI/CD in Chapter 07.
+
+### `terraform_remote_state` — Reading Outputs Across Stacks
+
+When stack B depends on an output from stack A (e.g., a VPC ID created by a networking stack):
+
+```hcl
+# Stack B — reading networking outputs from stack A's state
+data "terraform_remote_state" "networking" {
+  backend = "s3"
+  config = {
+    bucket = "prasaarit-terraform-state"
+    key    = "networking/terraform.tfstate"
+    region = "ap-south-1"
+  }
+}
+
+locals {
+  vpc_id = data.terraform_remote_state.networking.outputs.vpc_id
+}
+```
+
+**The operational risk**: if stack A removes or renames the `vpc_id` output, stack B's next plan fails. Outputs in shared stacks are a public API — treat them with the same stability guarantee. Consider SSM Parameter Store as a looser coupling mechanism for cross-stack values.
 
 ---
 
-## State File Security — Secrets in State
+## State File Security
 
-**Critical**: The state file contains **sensitive values in plaintext**.
-
-What ends up in state:
-- RDS master passwords (if set via Terraform)
-- API keys passed as environment variables
-- KMS key IDs
-- Private keys and certificates
-- Any value marked as `sensitive` in your config — it's still in state, just hidden from `plan` output
+The state file contains **sensitive values in plaintext**, always:
 
 ```json
-// In your state file, your Lambda environment variables are visible:
-"environment": [{
-  "variables": {
-    "BUCKET_NAME": "prasaarit-uploads-stg",
-    "API_SECRET": "sk_live_abc123..."     // ← plaintext in state!
+{
+  "attributes": {
+    "password": "super-secret-db-password",   ← plaintext in state
+    "environment": [{
+      "variables": { "API_SECRET": "sk_live_abc123" }  ← plaintext in state
+    }]
   }
-}]
+}
 ```
+
+`sensitive = true` on a variable or output **only hides the value from plan/apply terminal output**. It does not remove it from, or encrypt it in, the state file.
 
 ### Protections
 
 | Protection | How |
-|-----------|-----|
-| **Encrypt state at rest** | S3 backend with `encrypt = true` (AES-256 or KMS) |
-| **Restrict state access** | S3 bucket policy limiting who can read the state |
-| **Don't commit local state** | Add `*.tfstate` and `*.tfstate.backup` to `.gitignore` |
-| **Use Secrets Manager** | Don't pass secrets as Lambda env vars via Terraform. Use AWS Secrets Manager and have Lambda read secrets at runtime. Terraform only stores the secret's ARN, not the value. |
-| **`sensitive = true` on variables** | Hides the value from `plan`/`apply` output. Does NOT hide it from state. |
-
-```hcl
-# .gitignore — ALWAYS include these
-*.tfstate
-*.tfstate.*
-.terraform/
-```
+|---|---|
+| Encrypt state at rest | S3 backend with `encrypt = true` (AES-256 or KMS-managed key) |
+| Restrict state access | S3 bucket policy: only CI/CD role and infra engineers can read/write |
+| Gitignore local state | `*.tfstate`, `*.tfstate.*`, `.terraform/` always in `.gitignore` |
+| Enable S3 versioning | Recoverable on state corruption or accidental deletion |
+| Avoid secrets in state | Use Secrets Manager for DB passwords, API keys. Pass the **ARN** to Lambda, not the secret value. State stores only the ARN. |
 
 ---
 
 ## State Manipulation Commands
 
-These are the "break glass" tools. You rarely need them, but when you do, misusing them can orphan or destroy resources.
+These are break-glass tools. Misuse can orphan resources or cause unintended destroys.
 
-### `terraform state list` — See What's in State
+### Read-Only: `list` and `show`
 
 ```bash
 terraform state list
 # aws_iam_role.lambda_exec
-# aws_iam_role_policy.lambda_s3
 # aws_lambda_function.presign
 # aws_api_gateway_rest_api.api
-# aws_api_gateway_resource.presign_route
-# ...
-```
 
-### `terraform state show` — Inspect One Resource
-
-```bash
 terraform state show aws_lambda_function.presign
-# Shows all attributes of that resource as Terraform knows them.
-# Useful for debugging: "what does Terraform think this Lambda looks like?"
+# Prints all attributes as Terraform knows them.
+# Useful for: "what does Terraform THINK this resource looks like right now?"
 ```
 
-### `terraform state mv` — Rename a Resource in State
+### `terraform state mv` — Rename or Move a Resource
 
-When you refactor your config (rename a resource or move it to a module), Terraform sees "old name deleted, new name created." `state mv` tells Terraform "it's the same resource, just with a new address."
+When you rename a resource in config, Terraform sees "old address deleted, new address created." `state mv` tells Terraform it's the same resource.
 
 ```bash
-# You renamed the resource in your .tf file:
-#   resource "aws_lambda_function" "presign" → resource "aws_lambda_function" "generate_url"
+# Before: resource "aws_lambda_function" "presign" { ... }
+# After:  resource "aws_lambda_function" "generate_url" { ... }
 
 terraform state mv aws_lambda_function.presign aws_lambda_function.generate_url
-# Now Terraform knows they're the same resource. No destroy+create.
 ```
 
-**Modern alternative**: `moved` block (Terraform 1.1+):
+**Problem with this approach**: it's a manual CLI command. It bypasses code review, doesn't work in CI/CD without special handling, and if forgotten before running plan, Terraform destroys and recreates the resource.
+
+**Preferred: `moved` block (v1.1+)**
 
 ```hcl
 moved {
@@ -491,88 +392,75 @@ moved {
 }
 ```
 
-This is better because it's **in code** (reviewable, works in CI/CD, doesn't require manual CLI).
+Add this to your config. The next `plan` shows the move, and `apply` updates state automatically. The `moved` block is in version control, works in CI/CD, and can be removed once applied across all environments.
 
-### `terraform state rm` — Remove from State (Without Destroying)
+### `terraform state rm` — Remove from State Without Destroying
 
 ```bash
 terraform state rm aws_lambda_function.presign
-# Removes the Lambda from state. Terraform "forgets" it.
-# The Lambda still exists in AWS — it's just unmanaged now.
-# Next plan shows nothing about this Lambda (Terraform doesn't know it exists).
+# Removes Lambda from state. Terraform "forgets" it.
+# The Lambda still exists in AWS — just unmanaged.
+# Next plan: nothing about this Lambda (Terraform doesn't know it exists).
 ```
 
-**When to use**: You want to stop managing a resource with Terraform without destroying it. For example, handing a resource to another team's Terraform project.
+**When to use**: handing a resource to another team's Terraform config without destroying it.
 
-**Danger**: If you `state rm` and then run `apply`, Terraform will try to create a NEW resource with the same config — and fail with a conflict because the old one already exists in the cloud.
+**Danger**: if you `state rm` and run `apply` without removing the resource block from config, Terraform will try to create a new resource — and fail with a conflict because the original still exists in AWS.
 
-### `terraform taint` / `terraform untaint` (Deprecated)
+**Preferred: `removed` block (v1.7+)**
 
-These marked a resource for forced replacement on the next apply. Replaced by:
+```hcl
+removed {
+  from = aws_lambda_function.presign
+
+  lifecycle {
+    destroy = false    # forget it (don't destroy the real resource)
+    # destroy = true   # would destroy it on the next apply
+  }
+}
+```
+
+Like `moved`, this is declarative: it's in version control, goes through code review, and applies through the normal plan/apply flow. The `removed` block is the right way to signal that a resource is intentionally being dropped from Terraform management.
+
+### `-replace` Flag — Force Rebuild a Specific Resource
 
 ```bash
 terraform apply -replace=aws_lambda_function.presign
+# Destroys and recreates the Lambda even if config hasn't changed.
+# Use when a resource is in a bad AWS state and needs to be rebuilt.
 ```
 
-This tells Terraform to destroy and recreate the Lambda on the next apply, even if the config hasn't changed. Use it when you know a resource is in a bad state and needs to be rebuilt.
+This replaced the deprecated `terraform taint` command.
 
 ---
 
-## Grounding: State Commands for Your Prasaarit Project
+## Guarantees and Failure Modes
 
-Here's a real scenario you might hit:
+### What Terraform Guarantees About State
 
-```bash
-# 1. You deployed everything via Terraform. All good.
-# 2. You decide to rename your Lambda resource in the .tf file:
-#    Before: resource "aws_lambda_function" "presign" { ... }
-#    After:  resource "aws_lambda_function" "generate_presigned_url" { ... }
-# 3. You run terraform plan:
-#    - aws_lambda_function.presign will be DESTROYED
-#    + aws_lambda_function.generate_presigned_url will be CREATED
-#    This destroys your Lambda and creates a new one! New ARN, new logs,
-#    API GW integration breaks temporarily.
-# 4. Fix: Add a moved block FIRST, then rename:
+| Guarantee | Detail |
+|---|---|
+| **Write-after-each-resource** | State is updated after each successful resource apply (Chapter 01). A crash leaves state reflecting exactly what succeeded. |
+| **Serial counter** | Every write increments `serial`. Remote backends use it for optimistic conflict detection between concurrent applies. |
+| **Lineage check** | Terraform refuses a state file with a different `lineage` — prevents cross-project state corruption. |
+| **Atomic locking** | With DynamoDB or `use_lockfile`, two simultaneous applies cannot both acquire the lock. |
 
-moved {
-  from = aws_lambda_function.presign
-  to   = aws_lambda_function.generate_presigned_url
-}
-
-resource "aws_lambda_function" "generate_presigned_url" { ... }
-
-# Now terraform plan shows:
-#    aws_lambda_function.presign has moved to
-#    aws_lambda_function.generate_presigned_url
-#    No changes. Infrastructure is up-to-date.
-```
-
----
-
-## What Terraform Guarantees About State
-
-| Guarantee | Details |
-|-----------|---------|
-| **Write-after-each-resource** | State is updated after each successful resource operation during `apply` (Chapter 01) |
-| **Serial counter** | Every state write increments `serial`. Remote backends use this for conflict detection. |
-| **Lineage check** | Terraform refuses to use a state file with a different `lineage` than expected — prevents cross-project state corruption |
-| **Lock acquisition before modify** | With DynamoDB locking, state cannot be modified by two processes simultaneously |
-
-## What Terraform Does NOT Guarantee About State
+### What Terraform Does NOT Guarantee About State
 
 | Non-guarantee | Why it matters |
-|--------------|----------------|
-| **State ≠ reality** | State is a snapshot. Between applies, the cloud can change without Terraform's knowledge. |
-| **No secret protection** | Sensitive values are stored plaintext in state. `sensitive = true` only hides them from output, not from the file. |
-| **No automatic recovery** | If state is corrupted or deleted, Terraform cannot reconstruct it automatically. You must `import` each resource manually. |
-| **No cross-stack awareness** | State for stack A knows nothing about stack B. If B depends on A's outputs via `terraform_remote_state`, A doesn't know and can break B by changing outputs. |
+|---|---|
+| **State ≠ reality** | State is a snapshot. Between applies, the cloud can diverge silently. There is no push-based drift notification. |
+| **`sensitive = true` protects state** | It does not. The value is still plaintext in the state file. |
+| **Automatic recovery** | If state is deleted or corrupted, you must re-import every resource manually. No auto-reconstruction. |
+| **Cross-stack safety** | Stack A doesn't know stack B depends on its outputs. A can break B by removing an output. |
 
 ---
 
 ## Source References
 
 - [Terraform State](https://developer.hashicorp.com/terraform/language/state) — official docs
-- [State File Format (v4)](https://developer.hashicorp.com/terraform/internals/json-format) — JSON schema
-- [Backend Configuration](https://developer.hashicorp.com/terraform/language/backend) — S3 and other backends
-- [Import](https://developer.hashicorp.com/terraform/language/import) — import blocks (1.5+)
+- [S3 Backend](https://developer.hashicorp.com/terraform/language/backend/s3) — S3 backend config, `use_lockfile`
+- [Import Blocks](https://developer.hashicorp.com/terraform/language/import) — config-driven import (v1.5+)
 - [Moved Blocks](https://developer.hashicorp.com/terraform/language/modules/develop/refactoring) — refactoring without destroy
+- [Removed Block](https://developer.hashicorp.com/terraform/language/resources/syntax#removing-resources) — declarative state rm (v1.7+)
+- [State File JSON Format](https://developer.hashicorp.com/terraform/internals/json-format) — v4 schema

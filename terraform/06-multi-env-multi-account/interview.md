@@ -1,157 +1,151 @@
 # Chapter 06 — Multi-Environment and Multi-Account — Interview Questions
 
----
-
-## Q1: "Why do you recommend directory-per-environment over workspaces? Isn't DRY better?"
-
-### The Trap
-Tests whether you can weigh DRY against operational safety.
-
-### What a Senior Engineer Says
-
-Workspaces optimize for DRY — one config, multiple states. But they sacrifice **blast radius isolation**:
-
-1. **Wrong-workspace risk**: `terraform workspace select prod && terraform destroy` is one typo away. With directory-per-env, you'd need to `cd prod/` — a physical action that's harder to accidentally combine with a destructive command.
-
-2. **Conditional config rot**: Real environments diverge. Prod needs CloudWatch alarms, WAF rules, larger instances, different IAM policies. With workspaces, every divergence becomes `count = terraform.workspace == "prod" ? 1 : 0`. After 20 such conditionals, the config is unreadable and untestable.
-
-3. **No access separation**: Both workspaces use the same backend credentials. `terraform workspace select prod` doesn't require prod permissions — just workspace knowledge. With directory-per-env, each directory can use different backend credentials and provider `assume_role` configs.
-
-4. **CI/CD clarity**: A pipeline job that runs `cd environments/stg && terraform apply` is self-documenting. A job that runs `terraform workspace select stg && terraform apply` requires understanding workspace mechanics.
-
-The ~50 lines of duplication per environment is cheap insurance against production incidents. The module code (hundreds of lines) is still shared — only the thin root module config is duplicated.
+Questions progress from approach tradeoffs → workspace mechanics → backend internals → multi-account security → cross-stack design. The traps reveal whether you have real operational experience choosing and operating multi-env architectures.
 
 ---
 
-## Q2: "Your upload-service's Terraform needs the S3 bucket ARN from the core-infra Terraform. How do you share it?"
+## Q1: "Why would you choose directory-per-environment over workspaces? Isn't DRY better?"
 
-### The Trap
-Tests knowledge of cross-stack communication patterns and their trade-offs.
+**Trap**: Tests whether you can weigh DRY against operational safety — and whether you know both approaches' real failure modes.
 
-### What a Senior Engineer Says
+DRY is valuable, but workspaces sacrifice **blast radius isolation** in three ways:
 
-Three options, in order of preference:
+1. **Wrong-workspace risk**: `terraform workspace select prod && terraform destroy` is one command mistake away. `cd environments/prod && terraform destroy` requires a physical directory navigation — harder to accidentally combine with a destructive command. Physical structure slows you down at exactly the right moment.
 
-**Option 1: SSM Parameter Store (recommended)**
+2. **Conditional config rot**: Real environments diverge. Prod needs WAF, CloudWatch alarms, larger instances, and different IAM policies. With workspaces, each divergence becomes `count = terraform.workspace == "prod" ? 1 : 0`. After 10 such conditionals, the config is unreadable, untestable, and every `plan` output is cluttered with "0 to add" noise.
 
-Core-infra publishes the bucket ARN to SSM:
-```hcl
-resource "aws_ssm_parameter" "bucket_arn" {
-  name  = "/prasaarit/stg/upload-bucket-arn"
-  value = aws_s3_bucket.uploads.arn
-}
-```
+3. **No access isolation**: Both workspaces share the same backend credentials. `terraform workspace select prod` doesn't require prod permissions — just the bucket credentials. Directory-per-env can wire each directory to a different `assume_role` ARN targeting a different AWS account. Developer laptops can never touch prod.
 
-Upload-service reads it:
-```hcl
-data "aws_ssm_parameter" "bucket_arn" {
-  name = "/prasaarit/stg/upload-bucket-arn"
-}
-```
+The ~50 lines of duplication per environment (root module calls + values) is cheap insurance. The module code (hundreds of lines) is still shared.
 
-Advantages: No state file access needed. Any tool (Terraform, scripts, Lambda) can read SSM. Explicit contract.
-
-**Option 2: `terraform_remote_state`**
-```hcl
-data "terraform_remote_state" "core" {
-  backend = "s3"
-  config = { bucket = "...", key = "core/stg/tfstate" }
-}
-```
-
-Disadvantages: Requires read access to core's state file (exposes ALL secrets). Output renames break consumers silently. Tight coupling between stacks.
-
-**Option 3: Variable + manual coordination**
-```hcl
-variable "upload_bucket_arn" { type = string }
-# terraform.tfvars: upload_bucket_arn = "arn:aws:s3:::prasaarit-uploads-stg"
-```
-
-Advantages: Zero coupling. Disadvantages: Manual sync — if core-infra changes the bucket, someone must remember to update the variable.
-
-**For Prasaarit now**: Option 3 is fine (you're a solo developer). Move to Option 1 when you have multiple stacks or team members.
+**The practical decision**: use workspaces while you're single-account and environments are nearly identical. Switch to directory-per-env when environments diverge significantly or you need multi-account access control.
 
 ---
 
-## Q3: "You write `backend 's3' { bucket = var.state_bucket }` and get an error. Why?"
+## Q2: "What is the `default` workspace in Terraform, and why is it operationally dangerous?"
 
-### The Trap
-Tests understanding of Terraform's initialization order.
+**Trap**: Tests knowledge of a workspace gotcha that trips up even experienced engineers.
 
-### What a Senior Engineer Says
+Every Terraform installation starts in the `default` workspace. If anyone on the team runs `terraform plan` or `terraform apply` without explicitly selecting a workspace, they interact with `default` — a completely separate state from `stg` and `prod`.
 
-Backend blocks **cannot use variables, locals, or any expressions**. Only literal string values.
+**What goes wrong:**
+- Resources applied in `default` are untracked by your pipeline. They exist in AWS but your CI/CD never manages them.
+- If someone `apply`s in `default` accidentally, Terraform creates duplicate resources (since `default` state doesn't know about `stg` state). These orphaned resources consume cost and remain unmanaged.
+- A `terraform destroy` in `default` shows "nothing to destroy" (it's empty) — giving false confidence while the real stg/prod resources are untouched.
 
-**Why**: The backend is configured during `terraform init` — before the config is fully parsed, before variables are resolved, before any expression evaluation happens. Terraform needs the backend information to **locate the state file**, and it needs the state to evaluate expressions. It's a chicken-and-egg: you need state before you can evaluate, but you need to evaluate to know where state is.
+**Guards:**
 
-**The init → plan ordering:**
-1. `terraform init` reads the backend block → connects to S3 → downloads state
-2. `terraform plan` reads state → evaluates variables/locals/expressions → builds graph
+```hcl
+# Guard 1: fail fast in locals
+locals {
+  _workspace_guard = (
+    contains(["stg", "prod"], terraform.workspace)
+    ? null
+    : tobool("ERROR: Invalid workspace '${terraform.workspace}'. Use 'stg' or 'prod'.")
+  )
+}
+```
 
-Step 1 cannot wait for step 2, so backend values must be literal.
+```bash
+# Guard 2: CI/CD always selects explicitly
+terraform workspace select stg
+terraform plan -out=stg.tfplan
+# Never allow a job to run without workspace selection
+```
+
+The `env_config` map also acts as an implicit guard — `local.env_config[terraform.workspace]` will throw a key error if the workspace isn't in the map, failing fast before any changes occur.
+
+---
+
+## Q3: "You write `backend 's3' { bucket = var.state_bucket }` and get an error. Why? How do you work around it?"
+
+**Trap**: Tests understanding of Terraform's initialization order — one of the most frequently hit surprises.
+
+The `backend` block **cannot use variables, locals, or any expressions**. Only literal string values. The error is: `Variables may not be used here`.
+
+**Why**: Terraform's evaluation order is:
+
+```
+terraform init  → reads backend block (literals only) → connects to S3 → loads state
+terraform plan  → loads state → evaluates var.x, local.y, data sources → builds graph
+```
+
+The backend must be resolved during `init` because Terraform needs the state location before it can evaluate anything. Variables and locals require expression evaluation, which happens during `plan` — after the backend is already connected. It's a fundamental chicken-and-egg: you need state to evaluate, but you need to evaluate to know where state is.
 
 **Workarounds:**
-- `-backend-config="bucket=my-bucket"` CLI flag (used in CI/CD scripts)
-- `-backend-config=stg.backend.hcl` config file
-- Hardcoding in each environment directory (simplest with directory-per-env)
+
+**A) CLI flags** — cleanest for CI/CD scripts where the environment is known at runtime:
+```bash
+terraform init \
+  -backend-config="bucket=prasaarit-terraform-state" \
+  -backend-config="key=upload-service/stg/terraform.tfstate" \
+  -backend-config="region=ap-south-1"
+```
+
+**B) Backend config file** — keeps credentials out of the main `.tf` files:
+```bash
+# environments/stg/backend.hcl
+bucket       = "prasaarit-terraform-state"
+key          = "upload-service/stg/terraform.tfstate"
+region       = "ap-south-1"
+use_lockfile = true
+```
+```bash
+terraform init -backend-config=environments/stg/backend.hcl
+```
+
+**C) Hardcode per directory** — with directory-per-env, each environment has its own `backend.tf` with hardcoded values. The 6-line duplication is readable, diff-able, and not worth abstracting.
 
 ---
 
-## Q4: "Your CI/CD pipeline deploys to both staging and production. What's the security model for each?"
+## Q4: "Your CI/CD deploys to both staging and production. How do you secure the production deployment?"
 
-### The Trap
-Tests understanding of assume-role, least-privilege, and environment isolation in CI/CD.
-
-### What a Senior Engineer Says
+**Trap**: Tests understanding of assume-role, least-privilege, and access isolation across environments.
 
 **Staging:**
-- CI/CD runner uses an IAM role with broad permissions (or OIDC federation with a stg-scoped role).
-- Deploys automatically after PR merge. No manual approval gate.
-- State is readable by the dev team (faster debugging).
+- CI/CD runner uses an IAM role (or OIDC federation) with staging-scoped permissions.
+- Deploys automatically after PR merge. No manual gate.
+- State readable by the dev team for fast debugging.
 
 **Production:**
-- CI/CD runner's base role has NO direct access to prod resources.
-- The pipeline **assumes a deployment role** in the production account via `sts:AssumeRole`.
-- The deployment role has scoped permissions (only the specific resources this service manages).
-- A **manual approval gate** is required between `plan` and `apply` (GitHub Environment protection rules).
-- The plan output is published as a PR comment for review.
-- State access is restricted (only the CI/CD service role can read/write).
+- CI/CD runner's base role has **no direct access** to production resources.
+- The pipeline assumes a deployment role in the production account via `sts:AssumeRole`:
 
 ```hcl
-# environments/prod/main.tf
 provider "aws" {
   assume_role {
-    role_arn = "arn:aws:iam::PROD_ACCT:role/UploadServiceDeployRole"
+    role_arn     = "arn:aws:iam::PROD_ACCOUNT_ID:role/UploadServiceDeployRole"
+    session_name = "terraform-prod-deploy"
+    external_id  = "prasaarit-terraform"   # prevents confused deputy attack
   }
 }
 ```
 
-The deploy role's trust policy limits WHO can assume it:
+- The role's trust policy restricts who can assume it:
+
 ```json
 {
   "Effect": "Allow",
-  "Principal": { "AWS": "arn:aws:iam::CICD_ACCT:role/GitHubActionsRole" },
+  "Principal": { "AWS": "arn:aws:iam::SHARED_ACCT:role/GitHubActionsRole" },
   "Action": "sts:AssumeRole",
-  "Condition": {
-    "StringEquals": { "sts:ExternalId": "prasaarit-terraform" }
-  }
+  "Condition": { "StringEquals": { "sts:ExternalId": "prasaarit-terraform" } }
 }
 ```
 
-Developer laptops **cannot** assume the prod deployment role. Only the CI/CD pipeline can.
+- `external_id` prevents confused deputy: a third party cannot trick the CI/CD runner into assuming the role on their behalf.
+- A **manual approval gate** sits between `plan` and `apply` (GitHub Environment protection rules, or an explicit `when: manual` in GitLab CI).
+- The plan output is published as a PR comment so reviewers see exactly what will change before approving.
+- Developer laptops can never assume the prod role — only the CI/CD pipeline's IAM identity is in the trust policy.
 
 ---
 
-## Q5: "Team A changes an output name in their Terraform module. Team B's Terraform references that output via `terraform_remote_state`. How does the failure manifest, and how do you prevent it?"
+## Q5: "Team A changes an output name in their Terraform stack. Team B reads it via `terraform_remote_state`. How does the failure manifest? How do you prevent it?"
 
-### The Trap
-Tests understanding of the remote state contract fragility.
-
-### What a Senior Engineer Says
+**Trap**: Tests understanding of cross-stack contract fragility — `terraform_remote_state` has no compile-time enforcement.
 
 **How it fails:**
 
-Team A renames `output "upload_bucket_name"` to `output "bucket_name"`. Team B runs `terraform plan`:
+Team A renames `output "upload_bucket_name"` to `output "bucket_name"` and applies. Team B runs `terraform plan` later:
 
 ```
 Error: Unsupported attribute
@@ -159,71 +153,43 @@ Error: Unsupported attribute
   This object does not have an attribute named "upload_bucket_name".
 ```
 
-It's a **runtime error during plan** — not a compile-time error. There's no static analysis that catches this across separate Terraform stacks. Team B discovers the break only when they run `plan`, which could be days or weeks after Team A's change was applied.
+It's a **runtime error discovered at plan time** — not a compile error, not a code review warning. Team B's pipeline breaks silently until someone runs a plan, which could be days after Team A's change went live.
 
 **Prevention strategies:**
 
-1. **Output stability policy**: Treat outputs like a public API. Renaming/removing an output is a breaking change. Add new outputs, deprecate old ones, remove only after consumers migrate.
+1. **Output stability policy**: treat state outputs depended on by other stacks as a public API. Adding new outputs is safe. Renaming or removing is a breaking change. Add the new name, keep the old name with a deprecation comment, coordinate the migration.
 
-2. **SSM Parameter Store**: Publish values to SSM instead of relying on state outputs. The parameter name (`/prasaarit/stg/upload-bucket-name`) becomes the contract — which is easier to search for and track across repos.
+2. **SSM Parameter Store instead of `terraform_remote_state`**: publish cross-stack values as SSM parameters. The parameter path (`/prasaarit/stg/upload-bucket-arn`) becomes the contract — searchable across repos, no state file access required, any tool can consume it.
 
-3. **CI/CD cross-validation**: Run `terraform plan` for downstream stacks as part of upstream stack's CI pipeline. If Team A's PR breaks Team B's plan, the CI pipeline catches it before merge.
+3. **Cross-stack CI validation**: Team A's CI pipeline runs `terraform plan` for downstream consumers as part of the PR. If the rename breaks Team B's plan, CI catches it before merge.
 
-4. **Documentation**: Document which outputs are consumed by which downstream stacks. A `CONSUMERS.md` in each module listing who depends on which outputs.
-
----
-
-## Q6: "Why might a team choose Terragrunt over native Terraform Workspaces or Directory-per-Environment?"
-
-### The Trap
-Tests understanding of the severe limitations in native Terraform's DRYness, specifically around backend configuration.
-
-### What a Senior Engineer Says
-
-Native Terraform forces a trade-off: 
-- With **Workspaces**, you get DRY code, but lose physical state isolation (one bad command applies to prod).
-- With **Directory-per-Env**, you get physical isolation, but you must copy-paste the `backend.tf` and `main.tf` root module into every environment folder. 
-
-Native Terraform does not allow variables inside the `backend "s3" {}` block. You cannot do `bucket = var.env_bucket`.
-
-**Terragrunt solves this by acting as a pre-processor.** It allows you to use the Directory-per-Env structure (giving you perfect physical isolation) but eliminates the duplication. A single `terragrunt.hcl` file dynamically generates the `backend.tf` based on the folder path, and uses an `include` block to inherit global settings. It gives you 100% DRY code *with* 100% physically separated environments.
+4. **`terraform_remote_state` read access exposes all secrets**: the downstream stack needs read access to the upstream state file, which contains every sensitive attribute (DB passwords, API keys) in plaintext. SSM avoids this entirely.
 
 ---
 
-## Q7: "How does Terragrunt's `.terragrunt-cache` work, and why can it cause issues in CI/CD pipelines?"
+## Q6: "You start with workspaces. Prod now has 15 `count = workspace == 'prod' ? 1 : 0` conditionals for WAF rules, alarms, and different instance sizes. When do you migrate to directory-per-env, and how?"
 
-### The Trap
-Tests practical operational experience with Terragrunt under the hood.
+**Trap**: Tests pragmatic judgment on when to make the migration and how to do it safely.
 
-### What a Senior Engineer Says
+**When**: the tipping point is usually around 5–10 prod-only resources. At that point, every `terraform plan` for staging shows "0 to add, 0 to change, 0 to destroy" for 15 resources cluttering the output. The config is harder to read and test. A new engineer can't tell which resources actually exist in which environment without tracing all the conditionals.
 
-When you run `terragrunt apply`, Terragrunt doesn't run Terraform in your current directory. It reads your `terragrunt.hcl` `source` variable, downloads that module into a hidden `.terragrunt-cache/` directory, copies over your generated backend and inputs, and runs `terraform apply` *inside that cache folder*.
+**How to migrate safely:**
 
-**In CI/CD, this causes two major issues:**
-1. **Plan/Apply Disconnect**: If Job A runs `terragrunt plan -out=tfplan`, the plan is saved *inside* the `.terragrunt-cache` directory. If Job B runs `apply`, it will likely create a *new* `.terragrunt-cache` directory due to how pipelines provision runners, and it won't find the plan file. You must explicitly output the plan file to an absolute path outside the cache (e.g., `-out=$CI_PROJECT_DIR/tfplan`).
-2. **Disk Space**: If you are using `terragrunt run --all`, Terragrunt creates a separate cache folder and downloads the AWS provider (~400MB) for *every single module*. A repository with 10 modules will consume 4GB of disk space just for provider binaries, vastly slowing down pipeline execution unless you configure a shared `plugin_cache_dir`.
+1. **Create the directory structure**: `environments/stg/` and `environments/prod/` with `backend.tf`, `variables.tf`, `terraform.tfvars`.
 
----
+2. **Wire up the backend**: use the existing workspace state paths as the initial keys, then migrate. For prod: `key = "upload-service/prod/terraform.tfstate"`.
 
-## Q8: "You have a VPC module and a Database module. The Database needs the VPC ID. In native Terraform, you use `module.vpc.id`. How do you handle this in a Terragrunt repository where VPC and Database are separate root directories?"
+3. **State migration per environment**:
+   ```bash
+   # Staging
+   cd environments/stg
+   terraform init   # new backend config
+   # Terraform asks: copy state from old backend? → Yes
+   terraform plan   # should show 0 changes if done correctly
+   ```
 
-### The Trap
-Tests understanding of how Terragrunt handles dependencies between completely isolated root modules using `dependency` blocks.
+4. **Decommission the workspace state**: after both environments are verified in their directories, the old workspace state files can be archived.
 
-### What a Senior Engineer Says
+5. **Update CI/CD**: replace `terraform workspace select stg` with `cd environments/stg`. One job per directory. Cleaner, more explicit.
 
-Because Terragrunt treats the VPC and the Database as entirely separate root modules (each with their own state file), you cannot use native Terraform intra-module references.
-
-Instead, in the Database's `terragrunt.hcl`, you use a **`dependency` block**:
-
-```hcl
-dependency "vpc" {
-  config_path = "../vpc"
-}
-
-inputs = {
-  vpc_id = dependency.vpc.outputs.vpc_id
-}
-```
-
-When Terragrunt runs, it parses this block, navigates to the `../vpc` directory, runs `terraform output` (or reads its remote state), extracts the `vpc_id`, and passes it as an input to the Database module. It also uses this information to build an execution graph so `terragrunt run --all apply` knows to deploy the VPC before the Database.
+**Do not try to do both environments simultaneously.** Migrate stg first, verify, then prod. The state migration is reversible — if stg migration fails, you still have the workspace state intact.

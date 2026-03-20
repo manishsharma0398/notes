@@ -46,6 +46,8 @@ locals {
     }
   }
 
+  # Guard: fail fast if run in the 'default' workspace or an unknown one.
+  # local.env_config[terraform.workspace] throws a key error if workspace is not in the map.
   config = local.env_config[terraform.workspace]
   prefix = "${var.project_name}-${terraform.workspace}"
 
@@ -64,11 +66,11 @@ locals {
 
 terraform {
   backend "s3" {
-    bucket         = "prasaarit-terraform-state"
-    key            = "upload-service/terraform.tfstate"
-    region         = "ap-south-1"
-    dynamodb_table = "prasaarit-terraform-locks"
-    encrypt        = true
+    bucket       = "prasaarit-terraform-state"
+    key          = "upload-service/terraform.tfstate"  # workspace auto-prefixes
+    region       = "ap-south-1"
+    use_lockfile = true   # native S3 locking (v1.11+) — no DynamoDB needed
+    encrypt      = true
   }
 }
 
@@ -231,6 +233,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
   }
 }
 
-# If you have more than 3-4 such toggles, consider whether
-# directory-per-env would be cleaner for your use case.
+# If you accumulate more than 3-4 such toggles:
+# → Consider migrating to directory-per-environment.
+# → Each env has its own main.tf — prod resources are explicit, not conditionally hidden.
 ```

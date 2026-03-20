@@ -2,30 +2,27 @@
 
 ## Mental Model
 
-Every real project runs in multiple environments: dev, staging, production. The question is not _whether_ to separate them — it's **how**. Terraform offers two approaches, and choosing wrong causes real operational pain.
+Every real project runs in multiple environments. The question is not whether to separate them — it's **how**. Terraform offers two native approaches, a third via tooling, and an access-isolation layer via AWS Organizations. The core tension:
 
-The core tension:
-
-> **Code duplication vs blast radius.** Sharing code between environments is DRY. But sharing _state_ between environments means a bad `apply` in staging can corrupt production's state. The right architecture balances code reuse with state isolation.
+> **Code duplication vs blast radius.** Sharing code is DRY. But sharing state between environments means a bad apply in staging can corrupt production's state. The right architecture balances code reuse with state isolation.
 
 ```
-             SHARED CODE                    ISOLATED STATE
-           ┌───────────┐              ┌──────────────────────┐
-           │  modules/  │              │  stg/terraform.tfstate│
-           │  (reused)  │──────┐       │  (only staging)       │
-           └───────────┘      │       └──────────────────────┘
-                              │
-                              │       ┌──────────────────────┐
-                              └──────►│  prod/terraform.tfstate│
-                                      │  (only production)    │
-                                      └──────────────────────┘
+           SHARED CODE              ISOLATED STATE
+          ┌───────────┐        ┌──────────────────────┐
+          │  modules/  │        │  stg/terraform.tfstate│
+          │  (reused)  │───┐    │  (only staging)       │
+          └───────────┘   │    └──────────────────────┘
+                          │    ┌──────────────────────┐
+                          └───►│  prod/terraform.tfstate│
+                               │  (only production)    │
+                               └──────────────────────┘
 ```
 
 ---
 
-## Approach 1: Terraform Workspaces (Your Prasaarit Approach)
+## Approach 1 — Terraform Workspaces
 
-Workspaces let you maintain **multiple state files** for the **same configuration**. This is the DRY approach — one codebase, environment differences expressed through a config map.
+Workspaces maintain **multiple state files** for the **same configuration directory**. One codebase, environment differences expressed through a config map.
 
 ```bash
 terraform workspace new stg
@@ -35,26 +32,21 @@ terraform workspace list
 #   stg
 #   prod
 
-terraform workspace select stg
-terraform apply              # uses stg state
-
-terraform workspace select prod
-terraform apply              # uses prod state — same config, different state
+terraform workspace select stg && terraform apply   # uses stg state
+terraform workspace select prod && terraform apply  # uses prod state
 ```
 
-### How Workspaces Work Internally
+### How State Is Stored
 
-Each workspace gets its own state file. With a local backend:
+Local backend:
 
 ```
 terraform.tfstate.d/
-├── stg/
-│   └── terraform.tfstate
-└── prod/
-    └── terraform.tfstate
+├── stg/terraform.tfstate
+└── prod/terraform.tfstate
 ```
 
-With an S3 backend:
+S3 backend (workspace auto-prefixes the key):
 
 ```
 s3://prasaarit-terraform-state/
@@ -62,9 +54,30 @@ s3://prasaarit-terraform-state/
 └── env:/prod/upload-service/terraform.tfstate
 ```
 
-### The `env_config` Map Pattern — Clean Per-Environment Values
+Configure the backend with the base key only — Terraform adds the `env:/workspace/` prefix automatically.
 
-Instead of scattering `terraform.workspace == "prod"` ternaries throughout your config, centralize all per-environment differences into one map:
+### The `default` Workspace — A Hidden Risk
+
+Terraform always starts in the `default` workspace. If someone on the team runs `terraform apply` without explicitly selecting a workspace, they hit `default` — a completely separate state from `stg` and `prod`. Resources created in `default` are orphaned from your pipeline and untracked.
+
+**Guard against this:**
+
+```hcl
+locals {
+  # Fail fast if someone applies in the wrong workspace
+  _workspace_guard = (
+    contains(["stg", "prod"], terraform.workspace)
+    ? null
+    : tobool("ERROR: Invalid workspace '${terraform.workspace}'. Use 'stg' or 'prod'.")
+  )
+}
+```
+
+Or in CI/CD: always call `terraform workspace select stg` before any plan/apply. Never let the pipeline run in `default`.
+
+### The `env_config` Map Pattern — Centralize All Per-Environment Differences
+
+Instead of scattering `terraform.workspace == "prod"` ternaries throughout your config, centralize all per-environment values into one map:
 
 ```hcl
 locals {
@@ -74,562 +87,18 @@ locals {
       memory          = 128
       allowed_origins = ["*"]
       s3_bucket       = "prasaarit-uploads-stg"
+      log_retention   = 7
     }
     prod = {
       timeout         = 30
       memory          = 256
       allowed_origins = ["https://prasaarit.com"]
       s3_bucket       = "prasaarit-uploads-prod"
+      log_retention   = 90
     }
   }
 
-  config = local.env_config[terraform.workspace]
-  prefix = "${var.project_name}-${terraform.workspace}"
-}
-```
-
-Now your resources are clean — no conditionals:
-
-```hcl
-resource "aws_lambda_function" "presign" {
-  function_name = "${local.prefix}-presign"
-  timeout       = local.config.timeout         # ← reads from the map
-  memory_size   = local.config.memory
-  # ...
-
-  environment {
-    variables = {
-      BUCKET_NAME    = local.config.s3_bucket
-      ALLOWED_ORIGIN = join(",", local.config.allowed_origins)
-    }
-  }
-}
-```
-
-All environment differences live in one place. The rest of the config is workspace-agnostic.
-
-### When Workspaces Work Well
-
-| Scenario | Why it works |
-|----------|------------|
-| **CI/CD enforces workspace selection** | Pipeline jobs always `terraform workspace select stg` — no human error risk |
-| **Environments are nearly identical** | Same config, differences captured in `env_config` map |
-| **Same account, same region** | Your Prasaarit setup — single account, single region |
-| **Small-to-medium infra** | < 50 resources, manageable config size |
-
-### Known Limitations of Workspaces
-
-| Limitation | Mitigation |
-|---------|-------------|
-| **Wrong-workspace risk on local CLI** | Mitigated by CI/CD enforcement. For local runs, always check `terraform workspace show` before applying. |
-| **Config divergence** | Keep it contained in the `env_config` map. If prod-only resources grow beyond a few `count` toggles, consider splitting. |
-| **Shared backend credentials** | Both workspaces share backend access. For strict access isolation, multi-account with separate backends is needed. |
-| **Per-environment tfvars** | Use workspace-keyed `.tfvars` files: `terraform apply -var-file="${terraform.workspace}.tfvars"` or use the `env_config` map. |
-
----
-
-## Approach 2: Directory-Per-Environment (Alternative for Large Teams)
-
-Each environment gets its **own directory** with its own backend config, variables, and state:
-
-```
-prasaarit-upload-service/
-├── modules/                          # shared module code
-│   └── lambda_function/
-│       ├── main.tf
-│       ├── variables.tf
-│       └── outputs.tf
-├── environments/
-│   ├── stg/                          # staging root module
-│   │   ├── main.tf                   # calls modules, stg-specific config
-│   │   ├── variables.tf
-│   │   ├── terraform.tfvars          # stg values
-│   │   └── backend.tf                # stg state location
-│   └── prod/                         # production root module
-│       ├── main.tf                   # calls modules, prod-specific config
-│       ├── variables.tf
-│       ├── terraform.tfvars          # prod values
-│       └── backend.tf                # prod state location
-└── src/
-```
-
-### How It Works
-
-Each environment is a **separate root module** that calls shared modules:
-
-```hcl
-# ─── environments/stg/backend.tf ──────────────────────────────
-
-terraform {
-  backend "s3" {
-    bucket         = "prasaarit-terraform-state"
-    key            = "upload-service/stg/terraform.tfstate"  # ← unique per env
-    region         = "ap-south-1"
-    dynamodb_table = "prasaarit-terraform-locks"
-    encrypt        = true
-  }
-}
-```
-
-```hcl
-# ─── environments/stg/main.tf ─────────────────────────────────
-
-provider "aws" {
-  region = "ap-south-1"
-  # In stg, use default credentials (your personal AWS profile)
-}
-
-module "presign_lambda" {
-  source = "../../modules/lambda_function"
-
-  function_name = "prasaarit-stg-presign"
-  role_arn      = aws_iam_role.lambda_exec.arn
-  source_path   = "${path.root}/../../lambda_payload.zip"
-  timeout       = 10       # ← stg-specific
-  memory_size   = 128      # ← stg-specific
-
-  environment_variables = {
-    BUCKET_NAME = "prasaarit-uploads-stg"
-  }
-}
-```
-
-```hcl
-# ─── environments/prod/main.tf ────────────────────────────────
-
-provider "aws" {
-  region = "ap-south-1"
-
-  # In prod, assume a deployment role (least privilege)
-  assume_role {
-    role_arn = "arn:aws:iam::PROD_ACCOUNT_ID:role/TerraformDeployRole"
-  }
-}
-
-module "presign_lambda" {
-  source = "../../modules/lambda_function"
-
-  function_name = "prasaarit-prod-presign"
-  role_arn      = aws_iam_role.lambda_exec.arn
-  source_path   = "${path.root}/../../lambda_payload.zip"
-  timeout       = 30       # ← prod-specific
-  memory_size   = 256      # ← prod-specific
-
-  environment_variables = {
-    BUCKET_NAME = "prasaarit-uploads-prod"
-  }
-}
-```
-
-### Why This Is Better
-
-| Benefit | How |
-|---------|-----|
-| **Physical isolation** | You `cd environments/stg` and run `terraform apply`. You cannot accidentally apply to prod from the stg directory. |
-| **Different backend configs** | Each env has its own state file, lock table, and (optionally) backend credentials. |
-| **Different provider configs** | Prod can use `assume_role` to a production AWS account. Stg uses your personal creds. |
-| **Per-env variables** | Each directory has its own `terraform.tfvars`. No conditionals needed. |
-| **Config divergence is explicit** | Prod has a WAF? Add it to `environments/prod/main.tf`. No `count = workspace == "prod"` conditionals. |
-| **CI/CD is simple** | Pipeline runs `cd environments/stg && terraform apply` for stg. Separate job for prod. Clear pipeline structure. |
-
-### The Cost: Some Duplication
-
-The `main.tf` in each environment will have similar structure — calling the same modules with different inputs. This is **intentional duplication**. The module code is shared; only the root module config (which is small) is duplicated.
-
-```
-environments/stg/main.tf  →  ~50 lines (module calls + stg values)
-environments/prod/main.tf →  ~50 lines (module calls + prod values)
-modules/lambda_function/  →  ~100 lines (shared, written once)
-```
-
-The 50 lines of duplication buy you complete state isolation and zero risk of cross-environment contamination.
-
----
-
-## Approach 3: Terragrunt (The "Best of Both Worlds" Approach)
-
-Terragrunt is a third-party wrapper around Terraform (created by Gruntwork). It takes the **Directory-per-Environment** approach but completely eliminates the 50 lines of duplication mentioned above.
-
-Instead of writing `.tf` files in your environment folders, you write a single `terragrunt.hcl` file that points to your actual Terraform code.
-
-### The Terragrunt Folder Structure
-
-```
-iac/
-├── terragrunt.hcl              # Global settings (backend, shared inputs)
-├── resources/                  # The ACTUAL Terraform code (*.tf)
-│   ├── main.tf
-│   ├── variables.tf
-│   └── outputs.tf
-├── dev/                        # Dev environment
-│   └── terragrunt.hcl          # Points to ../resources, provides dev inputs
-├── stg/                        # Staging environment
-│   └── terragrunt.hcl          # Points to ../resources, provides stg inputs
-└── prd/                        # Prod environment
-    └── terragrunt.hcl          # Points to ../resources, provides prd inputs
-```
-
-### How It Works (The Magic)
-
-1. **Global Configuration (`iac/terragrunt.hcl`)**: 
-   You write a `generate "backend"` block here. Terragrunt will automatically generate the `backend.tf` for every environment, dynamically setting the S3 `key` based on the folder path (e.g., `key = "upload-service/stg/terraform.tfstate"`). You also define `inputs = { ... }` for variables shared across all environments (like the AWS account ID).
-
-2. **Environment Configuration (`iac/dev/terragrunt.hcl`)**:
-   Inside the `dev` folder, the `terragrunt.hcl` file does three things:
-   - `include "root"`: Inherits all the global settings from the parent directory.
-   - `terraform { source = "..//resources" }`: Tells Terragrunt where the actual `.tf` code lives.
-   - `inputs = { ... }`: Defines the variables specific to this environment (e.g., `timeout = 10`, `bucket_name = "dev-bucket"`).
-
-3. **Execution**:
-   You `cd iac/dev/` and run `terragrunt plan`.
-   Behind the scenes, Terragrunt:
-   - Copies the `.tf` files from `iac/resources/` into a temporary hidden folder (`.terragrunt-cache/`).
-   - Generates the `backend.tf` file.
-   - Converts your `inputs` into a dynamically generated `terraform.tfvars` file.
-   - Finally, executes `terraform plan` inside that temporary folder.
-
-### Why Terragrunt is popular for Enterprise
-
-| Benefit | How |
-|---------|-----|
-| **100% DRY** | Environment folders have exactly one file (`terragrunt.hcl`) containing only the variables. Zero duplication of `main.tf` or `backend.tf`. |
-| **Physical state isolation** | Just like directory-per-env, `stg` and `prod` are separate directories. You cannot accidentally `apply` prod from the `stg` folder. |
-| **Dynamic Backends** | Native Terraform doesn't let you use variables in `backend "s3"`. Terragrunt lets you dynamically generate the backend configuration. |
-
-**Summary**: Terragrunt provides the **DRYness of Workspaces** combined with the **Safety and physical isolation of Directory-per-Environment**.
-
----
-
-## Multi-Account with AWS Organizations
-
-At scale, each environment runs in a **separate AWS account**:
-
-```
-AWS Organization
-├── Management Account (root)        ← org-level config, billing
-├── Shared Services Account          ← Terraform state bucket, CI/CD
-├── Dev Account                      ← dev environment
-├── Staging Account                  ← staging environment
-└── Production Account               ← production environment
-```
-
-### Assume Role Pattern
-
-Your CI/CD pipeline or local developer runs in one account (e.g., Shared Services) and **assumes a role** in the target account:
-
-```hcl
-# environments/prod/main.tf
-
-provider "aws" {
-  region = "ap-south-1"
-
-  assume_role {
-    role_arn     = "arn:aws:iam::PROD_ACCOUNT_ID:role/TerraformDeployRole"
-    session_name = "terraform-prod-deploy"
-    external_id  = "prasaarit-terraform"   # optional but recommended
-  }
-}
-```
-
-**How `assume_role` works internally:**
-
-1. Terraform (running as the CI/CD user or your local IAM identity) calls `sts:AssumeRole`
-2. AWS STS validates:
-   - Does the calling identity have permission to assume this role?
-   - Does the target role's trust policy allow this identity?
-   - Is the `external_id` correct (if required)?
-3. STS returns temporary credentials (access key, secret key, session token)
-4. The AWS provider uses these temporary credentials for all subsequent API calls
-5. Temporary credentials expire (default: 1 hour)
-
-```
-┌──────────────────┐    sts:AssumeRole    ┌──────────────────┐
-│ Shared Services  │ ─────────────────►   │ Prod Account     │
-│ Account          │                      │                  │
-│ (CI/CD runner)   │  ◄─────────────────  │ TerraformDeploy  │
-│                  │  temp credentials    │ Role             │
-└──────────────────┘                      └──────────────────┘
-       │
-       │ uses temp creds
-       ▼
-  AWS API calls in prod account
-  (lambda:CreateFunction, etc.)
-```
-
-### Provider Aliases for Multi-Account Resources
-
-Sometimes one config needs to manage resources in multiple accounts:
-
-```hcl
-# Default provider — stg account
-provider "aws" {
-  region = "ap-south-1"
-}
-
-# Aliased provider — shared services account (for state bucket, etc.)
-provider "aws" {
-  alias  = "shared"
-  region = "ap-south-1"
-
-  assume_role {
-    role_arn = "arn:aws:iam::SHARED_ACCOUNT_ID:role/TerraformRole"
-  }
-}
-
-# Use the alias on specific resources
-resource "aws_s3_bucket" "state" {
-  provider = aws.shared
-  bucket   = "prasaarit-terraform-state"
-}
-
-# Resources without `provider` use the default (stg account)
-resource "aws_lambda_function" "presign" {
-  function_name = "prasaarit-stg-presign"
-  # ...
-}
-```
-
-### For Your Prasaarit Project Now
-
-You're using a single AWS account with workspaces. Multi-account `assume_role` can be layered on later by adding workspace-keyed role ARNs to your `env_config` map:
-
-```hcl
-locals {
-  env_config = {
-    stg = {
-      # ... other values ...
-      assume_role_arn = null    # use default credentials
-    }
-    prod = {
-      # ... other values ...
-      assume_role_arn = "arn:aws:iam::PROD_ACCOUNT:role/TerraformDeployRole"
-    }
-  }
-}
-```
-
-When you grow to multi-account, add `assume_role` to the provider with a dynamic block — no structural change needed.
-
----
-
-## Remote State Data Sources — Cross-Stack Dependencies
-
-When infrastructure is split across multiple Terraform stacks (e.g., core-infra repo vs upload-service repo), one stack may need outputs from another.
-
-```hcl
-# ─── In your core-infra repo (outputs the S3 bucket) ──────────
-
-output "upload_bucket_name" {
-  value = aws_s3_bucket.uploads.bucket
-}
-
-output "upload_bucket_arn" {
-  value = aws_s3_bucket.uploads.arn
-}
-```
-
-```hcl
-# ─── In your upload-service repo (reads those outputs) ─────────
-
-data "terraform_remote_state" "core" {
-  backend = "s3"
-
-  config = {
-    bucket = "prasaarit-terraform-state"
-    key    = "core-infra/stg/terraform.tfstate"
-    region = "ap-south-1"
-  }
-}
-
-# Use the outputs:
-resource "aws_iam_role_policy" "lambda_s3" {
-  policy = jsonencode({
-    Statement = [{
-      Effect   = "Allow"
-      Action   = "s3:PutObject"
-      Resource = "${data.terraform_remote_state.core.outputs.upload_bucket_arn}/*"
-    }]
-  })
-}
-```
-
-### What Can Go Wrong
-
-| Problem | What happens |
-|---------|-------------|
-| **Team A renames an output** | Team B's plan fails: `output "upload_bucket_name" is not defined`. No compile-time check across stacks. |
-| **Team A removes an output** | Same — breaks downstream consumers with a runtime error on plan. |
-| **State file access** | Team B needs read access to Team A's state file in S3. This leaks all of Team A's state (including secrets). |
-| **Circular dependencies** | Stack A outputs feed into Stack B, and Stack B outputs feed into Stack A. `terraform_remote_state` doesn't prevent cycles. |
-| **Refresh timing** | `terraform_remote_state` reads the state as it was at the time of plan. If Team A applies between your plan and apply, you get stale data. |
-
-### Alternative: SSM Parameter Store or Terraform Cloud Outputs
-
-Instead of cross-referencing state files directly, publish values to a shared registry:
-
-```hcl
-# Core infra: publish to SSM
-resource "aws_ssm_parameter" "upload_bucket" {
-  name  = "/prasaarit/stg/upload-bucket-name"
-  value = aws_s3_bucket.uploads.bucket
-  type  = "String"
-}
-
-# Upload service: read from SSM
-data "aws_ssm_parameter" "upload_bucket" {
-  name = "/prasaarit/stg/upload-bucket-name"
-}
-
-locals {
-  upload_bucket = data.aws_ssm_parameter.upload_bucket.value
-}
-```
-
-**Advantages**: No direct state file access needed. Parameters are an explicit contract. Any tool (not just Terraform) can read them.
-
----
-
-## Backend Config Limitations
-
-The `backend` block has a critical limitation that surprises everyone:
-
-### You CANNOT Use Variables or Locals in Backend Config
-
-```hcl
-# THIS DOES NOT WORK:
-terraform {
-  backend "s3" {
-    bucket = var.state_bucket       # ← ERROR: Variables not allowed
-    key    = "${var.project}/tfstate" # ← ERROR: Interpolation not allowed
-    region = local.region            # ← ERROR: Locals not allowed
-  }
-}
-```
-
-**Why**: The backend is initialized during `terraform init`, BEFORE the config is fully evaluated. Variables and locals require expression evaluation, which happens during plan — after the backend is already configured.
-
-**The order is:**
-1. `init` → read backend block (literal values only) → connect to state
-2. `plan` → load state → evaluate variables and locals → build graph
-
-### Workarounds
-
-**Option 1: `-backend-config` flag (most common)**
-
-```hcl
-# backend.tf — partial config
-terraform {
-  backend "s3" {
-    encrypt = true
-  }
-}
-```
-
-```bash
-# Pass the rest via CLI flags
-terraform init \
-  -backend-config="bucket=prasaarit-terraform-state" \
-  -backend-config="key=upload-service/stg/terraform.tfstate" \
-  -backend-config="region=ap-south-1" \
-  -backend-config="dynamodb_table=prasaarit-terraform-locks"
-```
-
-**Option 2: Backend config file**
-
-```hcl
-# environments/stg/backend.hcl
-bucket         = "prasaarit-terraform-state"
-key            = "upload-service/stg/terraform.tfstate"
-region         = "ap-south-1"
-dynamodb_table = "prasaarit-terraform-locks"
-```
-
-```bash
-terraform init -backend-config=backend.hcl
-```
-
-**Option 3: Hardcode per environment (simplest with directory-per-env)**
-
-Since each environment has its own directory, just hardcode the backend:
-
-```hcl
-# environments/stg/backend.tf
-terraform {
-  backend "s3" {
-    bucket         = "prasaarit-terraform-state"
-    key            = "upload-service/stg/terraform.tfstate"
-    region         = "ap-south-1"
-    dynamodb_table = "prasaarit-terraform-locks"
-    encrypt        = true
-  }
-}
-```
-
-This is the simplest approach with directory-per-environment. The "duplication" of backend config across env directories is 6 lines — it's not worth abstracting.
-
----
-
-## Putting It Together — Your Prasaarit Project (Workspace Approach)
-
-Here's the structure using workspaces:
-
-```
-prasaarit-upload-service/
-├── infra/                       # single root module (workspaces handle envs)
-│   ├── main.tf                  # provider, module calls
-│   ├── variables.tf             # input variables
-│   ├── locals.tf                # env_config map + derived values
-│   ├── backend.tf               # S3 backend (workspaces auto-separate state)
-│   ├── outputs.tf
-│   ├── iam.tf                   # IAM roles and policies
-│   └── api_gateway.tf           # API Gateway resources
-├── modules/
-│   ├── lambda_function/         # reusable Lambda module
-│   └── api_route/               # reusable API GW route module
-├── src/
-│   └── generate_presigned_url/
-│       └── handler.py
-└── scripts/
-    └── package_lambda.sh
-```
-
-```hcl
-# ─── infra/backend.tf ──────────────────────────────────────────
-
-terraform {
-  backend "s3" {
-    bucket         = "prasaarit-terraform-state"
-    key            = "upload-service/terraform.tfstate"  # workspace auto-prefixes
-    region         = "ap-south-1"
-    dynamodb_table = "prasaarit-terraform-locks"
-    encrypt        = true
-  }
-}
-# State paths created automatically:
-#   env:/stg/upload-service/terraform.tfstate
-#   env:/prod/upload-service/terraform.tfstate
-```
-
-```hcl
-# ─── infra/locals.tf ───────────────────────────────────────────
-
-locals {
-  env_config = {
-    stg = {
-      timeout         = 10
-      memory          = 128
-      allowed_origins = ["*"]
-      s3_bucket       = "prasaarit-uploads-stg"
-    }
-    prod = {
-      timeout         = 30
-      memory          = 256
-      allowed_origins = ["https://prasaarit.com"]
-      s3_bucket       = "prasaarit-uploads-prod"
-    }
-  }
-
-  config = local.env_config[terraform.workspace]
+  config = local.env_config[terraform.workspace]   # always the current env's values
   prefix = "${var.project_name}-${terraform.workspace}"
 
   common_tags = {
@@ -640,99 +109,413 @@ locals {
 }
 ```
 
-**Workflow:**
+Resources are clean — no inline conditionals:
 
-```bash
-# Deploying to staging:
-cd infra
-terraform workspace select stg
-terraform plan -out=stg.tfplan
-terraform apply stg.tfplan
+```hcl
+resource "aws_lambda_function" "presign" {
+  function_name = "${local.prefix}-presign"
+  timeout       = local.config.timeout
+  memory_size   = local.config.memory
 
-# Deploying to production:
-terraform workspace select prod
-terraform plan -out=prod.tfplan
-# Review carefully...
-terraform apply prod.tfplan
+  environment {
+    variables = {
+      BUCKET_NAME    = local.config.s3_bucket
+      ALLOWED_ORIGIN = join(",", local.config.allowed_origins)
+    }
+  }
+}
 ```
 
-**In CI/CD (GitLab CI):**
+All environment differences live in one table. The rest of the config is workspace-agnostic.
 
-```yaml
-# .gitlab-ci.yml
-stages:
-  - plan
-  - deploy
+### When Workspaces Work Well
 
-.terraform_base:
-  image: hashicorp/terraform:1.9
-  before_script:
-    - cd infra
-    - terraform init
+| Scenario | Why |
+|---|---|
+| Same account, same region, similar resources | One config covers both envs with just the `env_config` map |
+| CI/CD always selects the workspace | Eliminates human workspace-selection error |
+| < 50 resources, low env divergence | Config stays manageable |
 
-plan-stg:
-  extends: .terraform_base
-  stage: plan
-  script:
-    - terraform workspace select stg
-    - terraform plan -out=stg.tfplan
-  artifacts:
-    paths: [infra/stg.tfplan]
+### Workspace Limitations
 
-deploy-stg:
-  extends: .terraform_base
-  stage: deploy
-  script:
-    - terraform workspace select stg
-    - terraform apply stg.tfplan
-  needs: [plan-stg]
-  only: [main]
+| Limitation | Impact |
+|---|---|
+| **Wrong-workspace risk** | One `workspace select prod` + `apply` mistake can destroy production. Mitigate: CI/CD enforces selection; never apply locally to prod. |
+| **No access isolation** | Both workspaces share the same backend credentials. To truly prevent stg engineers from accessing prod, use multi-account. |
+| **Config divergence** | If prod needs resources that stg doesn't (WAF, CloudWatch alarms), you accumulate `count = workspace == "prod" ? 1 : 0` conditionals. After ~10 of these, switch to directory-per-env. |
 
-plan-prod:
-  extends: .terraform_base
-  stage: plan
-  script:
-    - terraform workspace select prod
-    - terraform plan -out=prod.tfplan
-  artifacts:
-    paths: [infra/prod.tfplan]
+---
 
-deploy-prod:
-  extends: .terraform_base
-  stage: deploy
-  script:
-    - terraform workspace select prod
-    - terraform apply prod.tfplan
-  needs: [plan-prod]
-  when: manual          # manual approval gate for production
-  only: [main]
+## Approach 2 — Directory-Per-Environment
+
+Each environment gets its own root module directory with its own backend, provider config, and tfvars:
+
+```
+prasaarit-upload-service/
+├── modules/
+│   ├── lambda_function/
+│   └── api_route/
+└── environments/
+    ├── stg/
+    │   ├── backend.tf      # stg state location
+    │   ├── main.tf         # module calls with stg values
+    │   ├── variables.tf
+    │   └── terraform.tfvars
+    └── prod/
+        ├── backend.tf      # prod state location
+        ├── main.tf         # module calls with prod values
+        ├── variables.tf
+        └── terraform.tfvars
+```
+
+```hcl
+# ─── environments/stg/backend.tf ─────────────────────────────────
+terraform {
+  backend "s3" {
+    bucket         = "prasaarit-terraform-state"
+    key            = "upload-service/stg/terraform.tfstate"
+    region         = "ap-south-1"
+    use_lockfile   = true   # native locking (v1.11+)
+    encrypt        = true
+  }
+}
+```
+
+```hcl
+# ─── environments/prod/backend.tf ────────────────────────────────
+terraform {
+  backend "s3" {
+    bucket         = "prasaarit-terraform-state"
+    key            = "upload-service/prod/terraform.tfstate"
+    region         = "ap-south-1"
+    use_lockfile   = true
+    encrypt        = true
+  }
+}
+
+# ─── environments/prod/main.tf ────────────────────────────────────
+provider "aws" {
+  region = "ap-south-1"
+  assume_role {
+    role_arn     = "arn:aws:iam::PROD_ACCOUNT_ID:role/TerraformDeployRole"
+    session_name = "terraform-prod-deploy"
+  }
+}
+
+module "presign_lambda" {
+  source              = "../../modules/lambda_function"
+  function_name       = "prasaarit-prod-presign"
+  lambda_role_arn     = aws_iam_role.lambda_exec.arn
+  source_path         = "${path.root}/../../lambda.zip"
+  timeout             = 30
+  memory_size         = 256
+  environment_variables = { BUCKET_NAME = "prasaarit-uploads-prod" }
+}
+```
+
+**Benefits:**
+- Physical isolation: you `cd environments/stg`. You cannot accidentally apply to prod from the stg directory.
+- Each directory has a separately configured provider — prod uses `assume_role`, stg uses your local creds.
+- Per-env `terraform.tfvars` — no conditionals, no shared config map.
+- CI/CD maps directly: one job does `cd environments/stg && terraform apply`.
+- Prod can have resources stg doesn't — add them to `environments/prod/main.tf` explicitly, no `count` toggles.
+
+**The cost**: ~50 lines of root module config per environment (module calls + values). This is intentional duplication. The module code (hundreds of lines) is still shared.
+
+### Workspace vs Directory-Per-Env — When to Use Which
+
+| | Workspaces | Directory-per-env |
+|---|---|---|
+| Code duplication | None | ~50 lines per env (root module only) |
+| State isolation | Yes (separate files) | Yes (separate files + directories) |
+| Access isolation | No — shared credentials | Yes — each dir can use different `assume_role` |
+| Config divergence | Ternaries accumulate | Explicit, different files |
+| `default` workspace risk | Yes | Not applicable |
+| Best for | Single account, low env divergence, CI/CD-enforced | Team scale, multi-account, significant env divergence |
+
+**For your Prasaarit project**: Start with workspaces (single account, nearly identical envs). Migrate to directory-per-env when you add multi-account or when prod-only resources accumulate.
+
+---
+
+## Multi-Account with AWS Organizations
+
+At team scale, each environment runs in a **separate AWS account**. This is the gold standard for blast radius isolation:
+
+```
+AWS Organization
+├── Management Account      ← billing, org-level controls
+├── Shared Services Account ← Terraform state bucket, CI/CD runner
+├── Dev Account             ← dev environment
+├── Staging Account         ← staging
+└── Production Account      ← production
+```
+
+### The `assume_role` Pattern
+
+The CI/CD runner (in Shared Services) assumes a role in the target account:
+
+```hcl
+provider "aws" {
+  region = "ap-south-1"
+
+  assume_role {
+    role_arn     = "arn:aws:iam::PROD_ACCOUNT_ID:role/TerraformDeployRole"
+    session_name = "terraform-prod-deploy"
+    external_id  = "prasaarit-terraform"   # prevents confused deputy attack
+  }
+}
+```
+
+**How it works internally:**
+
+1. Terraform calls `sts:AssumeRole` as the CI/CD runner's identity
+2. AWS STS validates: does the caller's identity have permission to assume this role? Does the target role's trust policy allow this caller?
+3. STS returns temporary credentials (access key, secret key, session token) — valid for 1 hour by default
+4. The AWS provider uses these credentials for all subsequent API calls (Lambda, IAM, API GW, etc.)
+
+```
+┌──────────────────┐   sts:AssumeRole   ┌────────────────────┐
+│ Shared Services  │ ─────────────────► │ Prod Account       │
+│ (CI/CD runner)   │ ◄───────────────── │ TerraformDeploy    │
+│                  │   temp credentials │ Role               │
+└──────────────────┘                    └────────────────────┘
+         │
+         │ uses temp creds for all AWS API calls
+         ▼
+   lambda:CreateFunction, iam:PutRolePolicy, etc.
+```
+
+**The trust policy** on `TerraformDeployRole` in the prod account restricts who can assume it:
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": { "AWS": "arn:aws:iam::SHARED_ACCT:role/GitHubActionsRole" },
+  "Action": "sts:AssumeRole",
+  "Condition": {
+    "StringEquals": { "sts:ExternalId": "prasaarit-terraform" }
+  }
+}
+```
+
+Developer laptops cannot assume this role — only the CI/CD pipeline can. This is the access isolation workspaces can't provide.
+
+### Provider Aliases for Cross-Account Resources
+
+When a single config needs to touch multiple accounts:
+
+```hcl
+provider "aws" { region = "ap-south-1" }          # default — stg account
+
+provider "aws" {
+  alias  = "shared"
+  region = "ap-south-1"
+  assume_role { role_arn = "arn:aws:iam::SHARED_ACCT:role/TerraformRole" }
+}
+
+resource "aws_s3_bucket" "state" {
+  provider = aws.shared   # ← lands in shared services account
+  bucket   = "prasaarit-terraform-state"
+}
+
+resource "aws_lambda_function" "presign" {
+  # No provider = ... → uses default → lands in stg account
+}
 ```
 
 ---
 
-## What the Workspace Architecture Guarantees
+## Backend Block Limitation — No Variables Allowed
 
-| Guarantee | Details |
-|-----------|---------|
-| **State isolation** | Each workspace has its own state file. Impossible to corrupt prod state from stg workspace. |
-| **Single source of truth** | One config. Changes are applied to stg first, then promoted to prod by switching workspace. |
-| **DRY code** | No config duplication. Environment differences are centralized in `env_config` map. |
-| **CI/CD-enforced safety** | Pipeline jobs always select the correct workspace. No human error on workspace selection. |
+```hcl
+# THIS DOES NOT WORK:
+terraform {
+  backend "s3" {
+    bucket = var.state_bucket          # ERROR: variables not allowed
+    key    = "${var.project}/tfstate"  # ERROR: interpolation not allowed
+  }
+}
+```
 
-## What the Workspace Architecture Does NOT Guarantee
+**Why**: the backend is configured during `terraform init` — before variables are parsed, before expressions are evaluated. Terraform needs the backend to locate state, and needs state before it can evaluate expressions. Chicken-and-egg.
+
+**The init → plan order:**
+```
+terraform init  → reads backend block (literals only) → connects to S3
+terraform plan  → loads state → evaluates var.x, local.y → builds graph
+```
+
+### Workarounds
+
+**Option A: `-backend-config` CLI flags** (cleanest for CI/CD scripts)
+
+```bash
+terraform init \
+  -backend-config="bucket=prasaarit-terraform-state" \
+  -backend-config="key=upload-service/stg/terraform.tfstate" \
+  -backend-config="region=ap-south-1"
+```
+
+**Option B: Partial backend config file** (cleanest for directory-per-env)
+
+```hcl
+# environments/stg/backend.hcl
+bucket       = "prasaarit-terraform-state"
+key          = "upload-service/stg/terraform.tfstate"
+region       = "ap-south-1"
+use_lockfile = true
+```
+
+```bash
+terraform init -backend-config=backend.hcl
+```
+
+**Option C: Hardcode directly in each directory** (simplest, works with directory-per-env):
+
+The 6-line backend block is duplicated across each environment directory. This "duplication" buys you a simple, readable, diff-able backend config per environment. It is not worth abstracting.
+
+---
+
+## Cross-Stack Dependencies
+
+When infrastructure is split across stacks (core-infra creates the S3 bucket; upload-service needs its ARN):
+
+### Option A: SSM Parameter Store (Recommended)
+
+```hcl
+# Core-infra stack: publish to SSM
+resource "aws_ssm_parameter" "bucket_arn" {
+  name  = "/prasaarit/stg/upload-bucket-arn"
+  value = aws_s3_bucket.uploads.arn
+  type  = "String"
+}
+
+# Upload-service stack: read from SSM
+data "aws_ssm_parameter" "bucket_arn" {
+  name = "/prasaarit/stg/upload-bucket-arn"
+}
+
+locals { upload_bucket_arn = data.aws_ssm_parameter.bucket_arn.value }
+```
+
+Advantages: no state file access needed; any tool can read SSM; the parameter path is an explicit, searchable contract; secrets can use `SecureString` type.
+
+### Option B: `terraform_remote_state` (Tightly Coupled — Use with Caution)
+
+```hcl
+data "terraform_remote_state" "core" {
+  backend = "s3"
+  config = {
+    bucket = "prasaarit-terraform-state"
+    key    = "core-infra/stg/terraform.tfstate"
+    region = "ap-south-1"
+  }
+}
+
+locals { upload_bucket_arn = data.terraform_remote_state.core.outputs.upload_bucket_arn }
+```
+
+Risks: requires read access to core's entire state file (exposes all secrets). If core renames or removes the output, upload-service's plan fails at runtime — no compile-time check. Treat outputs depended on by other stacks as a public API: never rename or remove them without coordinating downstream consumers.
+
+### Option C: Variable + Manual Coordination (Simple Solo Projects)
+
+```hcl
+variable "upload_bucket_arn" { type = string }
+# terraform.tfvars: upload_bucket_arn = "arn:aws:s3:::prasaarit-uploads-stg"
+```
+
+Zero coupling. Manual sync required when the upstream value changes. Fine for solo projects or early-stage teams.
+
+---
+
+## Your Prasaarit Project — Workspace Approach Configuration
+
+```hcl
+# ─── infra/backend.tf
+terraform {
+  backend "s3" {
+    bucket       = "prasaarit-terraform-state"
+    key          = "upload-service/terraform.tfstate"  # workspace auto-prefixes
+    region       = "ap-south-1"
+    use_lockfile = true
+    encrypt      = true
+  }
+}
+# Resulting paths:
+#   env:/stg/upload-service/terraform.tfstate
+#   env:/prod/upload-service/terraform.tfstate
+```
+
+```hcl
+# ─── infra/locals.tf
+locals {
+  env_config = {
+    stg = {
+      timeout         = 10
+      memory          = 128
+      allowed_origins = ["*"]
+      s3_bucket       = "prasaarit-uploads-stg"
+    }
+    prod = {
+      timeout         = 30
+      memory          = 256
+      allowed_origins = ["https://prasaarit.com"]
+      s3_bucket       = "prasaarit-uploads-prod"
+    }
+  }
+
+  config = local.env_config[terraform.workspace]
+  prefix = "${var.project_name}-${terraform.workspace}"
+  common_tags = {
+    Project   = var.project_name
+    Stage     = terraform.workspace
+    ManagedBy = "terraform"
+  }
+}
+```
+
+**Deploy workflow:**
+
+```bash
+# Staging
+cd infra
+terraform workspace select stg
+terraform plan  -out=stg.tfplan
+terraform apply stg.tfplan
+
+# Production
+terraform workspace select prod
+terraform plan  -out=prod.tfplan
+# Review plan carefully...
+terraform apply prod.tfplan
+```
+
+---
+
+## Guarantees and Failure Modes
+
+### What the Workspace Approach Guarantees
+
+| Guarantee | Detail |
+|---|---|
+| State isolation | Each workspace has its own state file. Impossible to corrupt prod state from the stg workspace. |
+| DRY code | One config. All env differences in the `env_config` map. |
+| CI/CD-enforced safety | Pipeline always selects the correct workspace. |
+
+### What the Workspace Approach Does NOT Guarantee
 
 | Non-guarantee | Why it matters |
-|--------------|----------------|
-| **Access isolation** | Both workspaces share the same backend credentials. Engineer with stg access can `workspace select prod`. Use multi-account + assume_role for strict separation. |
-| **Cross-stack output stability** | `terraform_remote_state` outputs are a handshake agreement. No compile-time contract enforcement. |
-| **Unlimited config divergence** | If prod needs many resources stg doesn't, `count` toggles accumulate. If this grows significantly, consider splitting to directory-per-env. |
-| **No automatic promotion** | There's no built-in "promote stg → prod" mechanism. CI/CD pipeline controls the promotion flow via workspace selection. |
+|---|---|
+| Access isolation | Both workspaces share backend credentials. An engineer with stg credentials can `workspace select prod`. Multi-account + assume_role is required for strict separation. |
+| Config divergence safety | As prod-only resources accumulate (WAF, alarms), `count` conditionals grow. Switch to directory-per-env when this becomes unmanageable. |
+| Cross-stack output stability | `terraform_remote_state` output breaks are only detected at plan time, not at commit time. |
 
 ---
 
 ## Source References
 
 - [Workspaces](https://developer.hashicorp.com/terraform/language/state/workspaces) — official docs
-- [Backend Configuration](https://developer.hashicorp.com/terraform/language/backend) — backend blocks and limitations
+- [Backend Configuration](https://developer.hashicorp.com/terraform/language/backend) — backend block and `-backend-config` flag
 - [terraform_remote_state](https://developer.hashicorp.com/terraform/language/state/remote-state-data) — cross-stack data source
 - [AWS Provider assume_role](https://registry.terraform.io/providers/hashicorp/aws/latest/docs#assume-role) — multi-account pattern
+- [AWS Organizations](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_accounts.html) — multi-account structure

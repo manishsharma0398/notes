@@ -1,183 +1,211 @@
 # Chapter 05 — Modules — Interview Questions
 
+Questions progress from module mechanics → encapsulation traps → composition judgment → provider inheritance. The traps reveal whether you understand modules as contracts, not just as directories.
+
 ---
 
-## Q1: "You have a module that creates a Lambda function. A colleague wants to change the internal resource name from `aws_lambda_function.this` to `aws_lambda_function.main`. What happens?"
+## Q1: "A colleague renames `aws_lambda_function.this` to `aws_lambda_function.fn` inside a module. What happens to all callers?"
 
-### The Trap
-Tests understanding of how module internals affect state and callers.
+**Trap**: Tests understanding of how internal resource names affect state across all callers.
 
-### What a Senior Engineer Says
+The resource address in state for every caller is `module.<name>.aws_lambda_function.this`. Renaming to `.fn` means:
 
-Two concerns: **state** and **callers**.
+```
+Plan for every caller:
+  - module.presign_lambda.aws_lambda_function.this   ← DESTROY (old name gone)
+  + module.presign_lambda.aws_lambda_function.fn     ← CREATE  (new name not in state)
+```
 
-**State**: The resource address in state is `module.presign_lambda.aws_lambda_function.this`. Renaming to `.main` means Terraform sees:
-- `module.presign_lambda.aws_lambda_function.this` → DESTROY (old name gone from config)
-- `module.presign_lambda.aws_lambda_function.main` → CREATE (new name not in state)
+Every Lambda function is destroyed and recreated: new ARN, broken API Gateway integrations, potential downtime. This is a **breaking change to internal implementation** that propagates externally through state.
 
-The Lambda is destroyed and recreated. New ARN, broken integrations, potential downtime.
+**Fix**: add a `moved` block **inside the module** before renaming:
 
-**Fix**: Add a `moved` block inside the module:
 ```hcl
+# modules/lambda_function/main.tf
 moved {
   from = aws_lambda_function.this
-  to   = aws_lambda_function.main
+  to   = aws_lambda_function.fn
 }
 ```
 
-**Callers**: If callers access outputs (e.g., `module.presign_lambda.arn`), and the output definition is updated to reference `aws_lambda_function.main.arn`, callers are unaffected — they reference the output name, not the internal resource.
+All callers' next `plan` shows "moved" — no destroys. Callers don't need to change any code.
 
-If callers were incorrectly reaching into internals (`module.presign_lambda.aws_lambda_function.this.arn`), they'd break. But Terraform doesn't allow this syntax — it's a compile error. This is why encapsulation matters.
+**What callers see via outputs**: callers access `module.presign_lambda.arn` (an output name). If the output definition is updated to reference `aws_lambda_function.fn.arn`, callers are completely unaffected — they depend on the output name, not the internal address. This is exactly why encapsulation matters.
 
 ---
 
-## Q2: "Your module declares `provider 'aws' { region = 'us-east-1' }` inside it. The root module uses `ap-south-1`. What happens?"
+## Q2: "You declare `provider "aws" { region = "us-east-1" }` inside a child module. The root module uses `ap-south-1`. What happens?"
 
-### The Trap
-Tests understanding of provider inheritance and the most common module mistake.
+**Trap**: Tests the most common module mistake — provider blocks in child modules.
 
-### What a Senior Engineer Says
+**You get two separate provider instances.** The root module's `aws` provider uses `ap-south-1`. The child module's `aws` provider uses `us-east-1`. Resources inside the module are created in `us-east-1`; resources in the root are in `ap-south-1`.
 
-**You get two provider instances.** The root module creates an `aws` provider in `ap-south-1`. The child module creates a **separate** `aws` provider in `us-east-1`.
+Consequences:
+- Your Lambda lands in `us-east-1`, but your API Gateway integration is in `ap-south-1`. Cross-region invocations require explicit configuration; the integration fails silently or with a confusing error.
+- `terraform plan` shows two provider initializations — a red flag.
 
-Resources inside the module use the module's provider → they're created in `us-east-1`. Resources in the root use the root's provider → they're in `ap-south-1`.
-
-If the module's Lambda is in `us-east-1` and the root's API Gateway integration references that Lambda, the integration might fail (cross-region invocation requires explicit configuration).
-
-**The fix**: _Never_ declare a `provider` block inside a child module. Modules should inherit the provider from their caller:
+**The fix**: never declare `provider` blocks in child modules that are meant to be reusable. Modules **automatically inherit** the caller's providers:
 
 ```hcl
-# Root module configures the provider
+# Root module configures the provider once
 provider "aws" { region = "ap-south-1" }
 
-# Module inherits it automatically
+# Module inherits it — no provider block needed inside
 module "lambda" {
   source = "../modules/lambda_function"
-  # No provider config needed — inherits from root
 }
 ```
 
-If a module truly needs a _different_ provider (multi-region), pass it explicitly:
+**When a module genuinely needs a different provider** (e.g., ACM certificate in `us-east-1` for CloudFront), pass it explicitly:
 
 ```hcl
+# Root module — second provider with alias
 provider "aws" {
   alias  = "us_east"
   region = "us-east-1"
 }
 
+# Explicitly pass aliased provider to the module
 module "cdn_cert" {
-  source = "../modules/acm_cert"
-  providers = {
-    aws = aws.us_east    # ← explicitly pass the aliased provider
+  source    = "../modules/acm_cert"
+  providers = { aws = aws.us_east }
+}
+```
+
+Inside `modules/acm_cert/versions.tf`, declare the requirement (no alias needed — the module calls it `aws`):
+
+```hcl
+terraform {
+  required_providers {
+    aws = { source = "hashicorp/aws", version = ">= 5.0" }
   }
 }
 ```
 
 ---
 
-## Q3: "When should you NOT use a module? Your team has started wrapping every single resource in its own module."
+## Q3: "When should you NOT use a module? Your team wraps every single AWS resource in its own module."
 
-### The Trap
-Tests pragmatic judgment — not just "modules are good."
+**Trap**: Tests pragmatic judgment — knowing when abstraction hurts.
 
-### What a Senior Engineer Says
+Modules add indirection and cognitive overhead. They're worth it when encapsulation benefit > complexity cost. Your team's approach is an anti-pattern when:
 
-Wrapping every resource in a module is an anti-pattern. Modules add **indirection and cognitive overhead**. They're only worth it when the encapsulation benefit exceeds the complexity cost.
+1. **The module wraps a single resource.** A module for one `aws_s3_bucket` that takes `bucket_name` as input and returns `arn` as output provides zero abstraction. Just use the resource directly. A module earns its existence by collapsing **multiple related resources** into one declarative block.
 
-**Don't use a module when:**
+2. **The module has as many inputs as the resource has arguments.** If `variables.tf` looks like a copy of the resource's argument reference, you're wrapping, not abstracting. The caller still needs to know every detail.
 
-1. **It wraps a single resource.** A module for one `aws_s3_bucket` that exposes the bucket name as input and ARN as output adds a layer of indirection that provides zero abstraction. Just use the resource directly.
+3. **It's used exactly once.** Module value comes from reuse. A single-use module is indirection with no payoff.
 
-2. **It has more inputs than the resource has attributes.** If your module's `variables.tf` looks like a copy of the resource's argument reference, you're not abstracting — you're wrapping. The caller still needs to know every detail.
+4. **The design is still fluid.** Modules lock in a contract (input/output names and types). Changing a required variable is a breaking change for every caller. Extract modules after the pattern stabilises, not during exploration.
 
-3. **You're still iterating on the design.** Modules lock in a contract (inputs + outputs). Changing a module's interface affects every caller. If you're still experimenting, keep resources flat and extract later.
-
-4. **The module is used exactly once.** A module's value comes from reuse. A single-use module adds indirection without benefit.
-
-**Do use a module when:**
-
-1. **It encapsulates a pattern of multiple related resources.** A "Lambda API Route" module that creates the Lambda + API GW resource + method + integration + permission? That's 5 resources collapsed into one declarative block. That's valuable.
-
-2. **You find yourself copy-pasting the same resource group.** The second time you duplicate is when you extract.
-
-3. **Different teams need the same infrastructure pattern.** A shared module repo with versioned releases ensures consistency across teams.
+**Do extract a module when**: you find yourself duplicating a group of resources (Lambda + IAM permission + API Gateway integration + route) for a second instance. The copy-paste is the signal. The module collapses those 5-6 resources into 10 lines for each new instance.
 
 ---
 
-## Q4: "You use `for_each` on a module to create 5 Lambda functions from a map. You remove one entry from the map. What happens?"
+## Q4: "You use `for_each` on a module to create 4 Lambda functions from a map. You remove one entry. What does Terraform plan?"
 
-### The Trap
-Tests understanding that module `for_each` follows the same identity rules as resource `for_each` (Chapter 02).
+**Trap**: Tests that module `for_each` follows the same identity rules as resource `for_each`.
 
-### What a Senior Engineer Says
-
-Because `for_each` uses **key-based identity**, removing one entry only destroys that specific module instance.
+Because `for_each` uses **key-based identity**, removing one entry only destroys that specific module instance — and everything inside it:
 
 ```hcl
 module "lambda" {
   source   = "../modules/lambda_function"
-  for_each = var.lambdas     # map keyed by function name
-
-  function_name = "${local.prefix}-${each.key}"
+  for_each = var.lambdas   # map: presign, metadata, delete, list
   # ...
 }
 ```
 
-State contains:
-- `module.lambda["presign"]` → presign Lambda + all internal resources
-- `module.lambda["metadata"]` → metadata Lambda
-- `module.lambda["delete"]` → delete Lambda
+State:
+```
+module.lambda["presign"]  → aws_lambda_function.this + all internal resources
+module.lambda["metadata"] → aws_lambda_function.this + all internal resources
+module.lambda["delete"]   → aws_lambda_function.this + all internal resources
+module.lambda["list"]     → aws_lambda_function.this + all internal resources
+```
 
-If I remove `"delete"` from the map:
+Remove `"delete"` from the map:
 - `module.lambda["presign"]` → unchanged ✅
 - `module.lambda["metadata"]` → unchanged ✅
-- `module.lambda["delete"]` → **destroyed** (all resources inside the module instance)
+- `module.lambda["list"]` → unchanged ✅
+- `module.lambda["delete"]` → **DESTROY** — every resource the module created internally
 
-Terraform destroys **everything inside** `module.lambda["delete"]` — the Lambda function, any permissions, any associated resources that the module creates internally.
+**The cascading risk**: any resource outside the module that references `module.lambda["delete"].arn` (e.g., an API Gateway integration) becomes a dangling reference. Terraform plans to update or destroy those referencing resources too. Plan carefully.
 
-**The risk**: If other resources outside the module reference `module.lambda["delete"].arn` (e.g., an API Gateway integration), those references become invalid. Terraform will show those referencing resources need to be updated or destroyed too.
+**The `for_each` keys-at-plan-time constraint applies to modules too**: if `var.lambdas` is derived from a resource output that is `(known after apply)`, the plan fails. Always derive `for_each` keys for modules from variables or locals.
 
 ---
 
-## Q5: "You move an existing `aws_lambda_function` from the root module into a child module. How do you avoid destroy and recreate?"
+## Q5: "You move an existing Lambda from the root module into a child module. How do you avoid destroy and recreate?"
 
-### The Trap
-Tests real-world refactoring workflow — critical skill for growing projects.
+**Trap**: Tests real-world refactoring — one of the most common operations on a growing codebase.
 
-### What a Senior Engineer Says
-
-Without any migration strategy, Terraform sees:
+Without a migration strategy, Terraform sees:
 - `aws_lambda_function.presign` disappeared from root → **DESTROY**
 - `module.api.aws_lambda_function.presign` appeared → **CREATE**
 
-The Lambda is destroyed and recreated. New ARN, broken references, downtime.
+New ARN, broken API Gateway integration, downtime.
 
-**Solution**: Use a `moved` block:
+**Solution**: `moved` block:
 
 ```hcl
-# In the root module (or wherever the resource was originally):
+# In the root module — tells Terraform the resource just changed address
 moved {
   from = aws_lambda_function.presign
   to   = module.api.aws_lambda_function.presign
 }
 ```
 
-On the next `plan`, Terraform shows: "has moved to `module.api.aws_lambda_function.presign`" — no destroy, no create, just a state address update.
+`terraform plan` shows: `aws_lambda_function.presign has moved to module.api.aws_lambda_function.presign` — no destroy, no create.
 
-**Checklist for refactoring into modules:**
+**Full refactoring checklist:**
 
-1. Write the module code (variables, resources, outputs)
-2. Replace the inline resources in root with a `module` block
-3. Add `moved` blocks for EVERY resource that's moving
-4. Run `terraform plan` — should show only "moved" and zero creates/destroys
-5. Apply
-6. The `moved` blocks can be removed after all environments have applied (but are harmless to keep)
+1. Write the module (`variables.tf`, `main.tf`, `outputs.tf`)
+2. Replace the inline resource block in root with a `module {}` block
+3. Add a `moved` block for **every** resource moving addresses
+4. `terraform plan` — verify zero creates/destroys, only "moved" messages
+5. `terraform apply`
+6. Remove `moved` blocks after all environments have applied (harmless to keep)
 
-**Common gotcha**: If the module renames internal resources (e.g., `aws_lambda_function.presign` inside the module becomes `aws_lambda_function.this`), you need a two-hop move:
+**Common two-hop case**: if the resource is renamed inside the module at the same time (e.g., root has `aws_lambda_function.presign`, module uses `aws_lambda_function.this`), one `moved` block handles both the namespace change and the rename:
 
 ```hcl
 moved {
-  from = aws_lambda_function.presign
-  to   = module.api.aws_lambda_function.this    # root → module with new name
+  from = aws_lambda_function.presign               # root address, old name
+  to   = module.api.aws_lambda_function.this       # module address, new name
 }
 ```
+
+---
+
+## Q6: "Your team wants to share a Terraform module across 5 services. How do you version it? What breaks when you make a change?"
+
+**Trap**: Tests understanding of module versioning strategy and how to communicate breaking vs non-breaking changes.
+
+**The versioning strategy**: treat the shared module like a software library. Release tagged versions in a Git repository:
+
+```hcl
+# Each service pins to a specific tag
+module "lambda" {
+  source = "git::https://github.com/your-org/terraform-modules.git//modules/lambda_function?ref=v2.1.0"
+}
+```
+
+A tag (not a branch) makes the source deterministic. `?ref=main` means every `terraform init` can get a different version.
+
+**What constitutes a breaking change:**
+
+| Change | Breaking? | Why |
+|---|---|---|
+| Adding an **optional** variable with a default | No | Existing callers omit it — they get the default |
+| Adding a **required** variable (no default) | **Yes** | All callers must add it or plan fails |
+| Removing or renaming an **output** | **Yes** | All callers referencing that output get a compile error |
+| Renaming an **internal resource** without `moved` | **Yes** | All callers get destroy+create in their next plan |
+| Changing an output's type | **Yes** | Callers may pass it to a resource expecting a different type |
+| Adding a new resource inside the module | No | Adds to callers' plans (`+`) but doesn't break anything |
+
+**Versioning discipline:**
+- Bump major version (v1 → v2) for breaking changes
+- Bump minor version (v1.1 → v1.2) for new optional features
+- Provide a migration guide in the release notes for major bumps
+- Never force-push a tag — it silently changes what existing callers receive on their next `terraform init`

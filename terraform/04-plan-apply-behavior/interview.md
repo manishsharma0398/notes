@@ -1,146 +1,232 @@
 # Chapter 04 — Plan and Apply Behavior — Interview Questions
 
+Questions progress from plan mechanics → lifecycle controls → failure recovery → runtime assertions. The traps reveal whether you read plan output carefully, know which lifecycle tool to reach for, and understand Terraform's failure model.
+
 ---
 
 ## Q1: "You need to rename an RDS database identifier. What does Terraform plan, and how do you mitigate the risk?"
 
-### The Trap
-Tests understanding of ForceNew on critical infrastructure.
+**Trap**: Tests understanding of ForceNew on stateful infrastructure, and the layered defenses available.
 
-### What a Senior Engineer Says
-
-`identifier` on `aws_db_instance` is `ForceNew: true`. Changing it causes Terraform to plan a **replace** — destroy the old database and create a new one.
+`identifier` on `aws_db_instance` is `ForceNew: true`. Changing it triggers a **replace**:
 
 ```
 Plan:
   -/+ resource "aws_db_instance" "main" {
-      ~ identifier = "old-name" → "new-name"   (forces replacement)
-      ~ arn        = "..." → (known after apply)
-      ...
+      ~ identifier = "prasaarit-db-old" → "prasaarit-db-new"  (forces replacement)
+      ~ arn        = "arn:..." → (known after apply)
     }
 ```
 
-**This destroys your production database.** All data is gone unless you have snapshots.
+This destroys your production database. All data is lost unless you have snapshots.
 
-**Mitigation layers:**
+**Layered mitigations:**
 
-1. **`prevent_destroy`** — The first line of defense. If set, Terraform refuses to plan the destruction:
-   ```hcl
-   lifecycle { prevent_destroy = true }
-   ```
-   This catches the rename in `plan` with a clear error message.
+1. **`prevent_destroy`** (first line of defense): Terraform refuses the plan with a clear error if the database has `lifecycle { prevent_destroy = true }`. The rename is caught before any apply runs — you can't accidentally skip it.
 
-2. **Manual migration** — If you genuinely need to rename:
-   - Create a snapshot manually
-   - Change the identifier in config
+2. **If renaming is genuinely needed**:
+   - Take a manual RDS snapshot
    - Remove `prevent_destroy` temporarily
-   - Apply (destroys old, creates new)
-   - Restore data from snapshot
-   - Or better: create new DB from snapshot, migrate traffic, destroy old
+   - Apply (destroys old, creates new from scratch — NOT from your snapshot)
+   - Restore data from snapshot into the new DB
 
-3. **AWS supports renaming via API** — but the Terraform provider marks it ForceNew because the provider authors chose safety over convenience. You could use `aws rds modify-db-instance --new-db-instance-identifier` manually, then `terraform state mv` to update the address.
+3. **Better approach**: use AWS directly for the rename — `aws rds modify-db-instance --new-db-instance-identifier`. Then `terraform state mv aws_db_instance.old aws_db_instance.new` to update the state address without destroying anything.
 
----
-
-## Q2: "Your `terraform apply` created 6 out of 10 resources, then failed on resource 7. You fix the config and re-run `apply`. Does it recreate resources 1-6?"
-
-### The Trap
-Tests understanding of idempotent state reconciliation.
-
-### What a Senior Engineer Says
-
-**No.** Terraform does NOT recreate resources 1–6.
-
-After the first partial apply, resources 1–6 are in state. When you re-run `plan`:
-
-1. Terraform refreshes all resources in state (1–6) against the cloud
-2. For 1–6: config matches cloud → no changes planned
-3. For 7–10: not in state → planned as creates
-
-The second apply only creates 7–10. This is the benefit of "write to state after each resource" — Terraform always knows exactly where it left off.
-
-**Exception**: If the fix you made to the config also affects resources 1–6 (e.g., you changed a variable used by all resources), then those 6 resources will show updates in the plan too.
+**The lesson**: `ForceNew` exists because the provider authors decided the AWS API's rename path isn't safe enough to expose through Terraform. Always check ForceNew attributes before making identifier-level config changes.
 
 ---
 
-## Q3: "You add `ignore_changes = [tags]` to a resource. Six months later, a security audit finds the resource is missing mandatory compliance tags. What happened?"
+## Q2: "`terraform apply` created 6 of 10 resources then failed. You fix the error and re-run `apply`. Does it recreate resources 1–6?"
 
-### The Trap
-Tests understanding of `ignore_changes` as config drift.
+**Trap**: Tests understanding of how write-after-each-resource enables idempotent recovery.
 
-### What a Senior Engineer Says
+**No.** Resources 1–6 are in state. The second `plan` refreshes them against the cloud, finds no diff, and plans them as no-op. Only resources 7–10 (absent from state) are planned as creates.
 
-`ignore_changes` told Terraform to **never diff** the `tags` attribute. Here's the timeline:
+This is the direct benefit of Terraform's "write state after each successful resource" design: after any partial failure, state precisely reflects what exists — not what was attempted.
 
-1. Month 0: You deploy with `tags = { Environment = "stg" }`. Tags are correct.
-2. Month 2: Your organization adds a mandatory `CostCenter` tag via AWS Config. AWS Config adds the tag to the resource in the cloud.
-3. Month 3: Someone runs `terraform apply`. Normally, Terraform would revert the `CostCenter` tag (it's not in config). But `ignore_changes = [tags]` prevents this — Terraform ignores the drift. Tags in the cloud now include `CostCenter`. Good so far.
-4. Month 5: Someone recreates the resource (changes a ForceNew attribute). Terraform creates a **new** resource from the config — which only has `Environment = "stg"`. The `CostCenter` tag is gone because it was never in the config. `ignore_changes` only suppresses drift detection — it doesn't carry cloud-side tags to new resources.
+**Nuances:**
 
-**The lesson**: `ignore_changes` creates a lie — your config no longer represents reality. When the resource is recreated for any reason, the ignored attributes revert to whatever's in config. Use it sparingly, and document WHY it exists with a comment.
+- If the fix you made also changes config that affects resources 1–6 (e.g., a shared variable), those resources will appear as updates in the second plan. That's expected and correct.
 
-**Better alternative for tags**: Add the `CostCenter` tag to your config (or use `default_tags` in the AWS provider block).
+- **Edge case**: AWS API returned "created" but Terraform crashed before writing state. Resource exists in AWS but not in state. Next plan: plans to create it. Next apply: AWS says "already exists" → error. Fix: `terraform import <address> <cloud-id>`.
 
 ---
 
-## Q4: "You use `create_before_destroy` on a Lambda function. You change the `function_name`. What happens?"
+## Q3: "You add `ignore_changes = [tags]` to a Lambda function. Eighteen months later, the resource is replaced due to a runtime upgrade. The compliance tags are missing from the new Lambda. Why?"
 
-### The Trap
-Tests understanding of the naming conflict with create-before-destroy.
+**Trap**: Tests the subtle distinction between "suppressing drift" and "persisting cloud state across replacement."
 
-### What a Senior Engineer Says
+`ignore_changes` tells Terraform to **skip the listed attributes during diff computation**. It does not store the cloud value anywhere. Here's the full timeline:
 
-`create_before_destroy` changes the replace order to: create new → destroy old.
+1. Month 0: Deploy Lambda with `tags = { Environment = "stg" }`. Correct.
+2. Month 3: AWS Config compliance rule adds `CostCenter = "engineering"` to the Lambda. Terraform sees the drift, but `ignore_changes = [tags]` suppresses it. `terraform plan` says "No changes." Good — the tag stays.
+3. Month 18: Runtime upgrade. `runtime` is ForceNew — the Lambda is replaced. Terraform creates a new Lambda from config. Config says `tags = { Environment = "stg" }` only. The new Lambda never gets `CostCenter` — `ignore_changes` doesn't copy cloud tags to new resources. Compliance audit fails.
 
-But `function_name` is what we changed, and Lambda function names must be unique within an account+region. So:
+**The root cause**: `ignore_changes` makes your config a lie — it no longer reflects reality. Any replacement or recreation creates a resource that matches the config (the lie), not the cloud (the truth).
 
-1. Terraform tries to CREATE the new Lambda with the new name → **this might succeed** (new unique name)
-2. Terraform DESTROYS the old Lambda with the old name → success
+**Correct approaches:**
+- Add `CostCenter` to your Terraform `tags` config — no need to ignore it
+- Use AWS provider `default_tags` block to apply org-wide tags to all resources automatically
+- Reserve `ignore_changes` for attributes where cloud drift is genuinely intentional AND you accept the replacement risk (e.g., `desired_capacity` on an Auto Scaling Group)
 
-Actually, if the name **changed**, both old and new names are different, so there's no collision. `create_before_destroy` works fine here.
+---
 
-**Where it fails**: When the `ForceNew` attribute is NOT the unique identifier. Example:
+## Q4: "`create_before_destroy` is set on a Lambda function. You change its `function_name`. What happens? When does `create_before_destroy` fail?"
+
+**Trap**: Tests understanding of when CBD works vs when name collisions cause it to fail.
+
+`function_name` is what changed, so `function_name` is the ForceNew attribute driving the replacement. With `create_before_destroy`:
+
+1. CREATE new Lambda with the **new** name → succeeds (new unique name)
+2. DESTROY old Lambda with the **old** name → succeeds
+
+CBD works perfectly here because both function names are different — they can coexist. No collision.
+
+**When CBD fails**: when the ForceNew attribute is NOT the unique identifier:
 
 ```hcl
 resource "aws_lambda_function" "presign" {
-  function_name = "prasaarit-presign-stg"    # ← same name
-  runtime       = "python3.11"               # ← changed from 3.12 (hypothetically ForceNew)
+  function_name = "prasaarit-presign-stg"   # same — the unique identifier (unchanged)
+  # some_other_forcenew_attr changed
 
   lifecycle { create_before_destroy = true }
 }
 ```
 
-If `runtime` were ForceNew (it isn't in practice, but hypothetically):
-1. CREATE new Lambda with name "prasaarit-presign-stg" → **FAILS** — name already exists
-2. DESTROY old Lambda → never reached
+Step 1: CREATE new Lambda with same name → **FAILS** — `function_name` already exists.
 
-**The fix**: Use name suffixes (e.g., with `random_id`) so old and new resources have different unique identifiers and can coexist during the transition.
+**The fix**: use name suffixes so old and new resources always have different unique identifiers:
+
+```hcl
+resource "random_id" "suffix" {
+  byte_length = 4
+  keepers = { version = "v2" }
+}
+
+resource "aws_lambda_function" "presign" {
+  function_name = "prasaarit-presign-stg-${random_id.suffix.hex}"
+  lifecycle { create_before_destroy = true }
+}
+```
+
+**Secondary trap**: `create_before_destroy` propagates up the dependency graph. Any resource that depends on this Lambda also gets implicitly set to CBD — potentially causing cascading replacements you didn't expect.
 
 ---
 
-## Q5: "Your teammate has been using `-target` for weeks because 'the full apply takes too long.' Is this a problem?"
+## Q5: "Your colleague has been using `-target` exclusively for three weeks because 'full apply is too slow.' What are the risks, and what's the real fix?"
 
-### The Trap
-Tests understanding of state divergence from targeted applies.
+**Trap**: Tests understanding of state divergence from targeted applies and how to address the root cause.
 
-### What a Senior Engineer Says
+**The risks:**
 
-**Yes, this is a serious problem.**
+1. **Partial state**: resources in config that were never targeted have never been applied. State only contains whatever was in scope of historical targets.
 
-`-target` creates partial state. After weeks of targeted applies:
+2. **Silent drift accumulation**: untargeted resources aren't refreshed during targeted plans. Console changes, policy drifts, and external modifications are never detected.
 
-1. **State doesn't match config.** Some resources in config have never been applied. State only contains whatever was targeted.
+3. **Unreliable plans**: a targeted `plan` on resource A shows "no changes" even while 20 other resources in the same config need creating or updating.
 
-2. **Dependencies are broken.** If resource A was applied targeting only A, and resource B depends on A but was never applied, the state has A but not B. Adding B later works, but any resources between A and B might have stale references.
+4. **Dependency breakage**: if A was applied and B (which depends on A's output) was never applied, B's reference to A may be stale if A was later changed via a different target.
 
-3. **Drift accumulates silently.** Resources that aren't targeted don't get refreshed. Someone could have changed them in the console — you'd never know.
+**The root cause**: if full apply takes too long, the problem is stack architecture — not the apply command.
 
-4. **Plan output becomes unreliable.** A targeted plan shows "no changes" for the target, but a full plan might show 15 changes across untargeted resources.
+Real fixes:
+- **Split the stack**: `networking/`, `compute/`, `database/` as separate Terraform roots with their own state. Each runs in seconds.
+- **Increase parallelism**: `terraform apply -parallelism=20` (default is 10)
+- **Skip refresh when safe**: `terraform plan -refresh=false` when nothing external has changed
+- **Use `-target` once as a hotfix, then reconcile immediately** with a full plan
 
-**The root cause**: If full apply "takes too long," the real fix is:
-- Split the monolithic stack into separate, smaller Terraform states (e.g., `networking/`, `compute/`, `data/`)
-- Use `-parallelism=20` to increase concurrent operations
-- Enable provider caching to speed up refresh
-- Use `-refresh=false` when you're confident the cloud hasn't changed
+**Recovery from three weeks of targeted applies**: run `terraform plan` with no flags. Review every proposed change. Apply everything — then establish a policy: no `-target` in the normal deploy workflow.
 
-**Recovery**: Run a full `terraform plan` (no `-target`) immediately. Review all proposed changes. Apply everything at once to reconcile state with config.
+---
+
+## Q6: "What is the difference between a `precondition`, a `postcondition`, and a `check` block? When would you use each?"
+
+**Trap**: Tests knowledge of three different validation mechanisms introduced across v1.2 and v1.5, and crucially — which ones block deploys.
+
+**`lifecycle.precondition`** (v1.2+) — runs at **plan time**, before any change:
+
+```hcl
+resource "aws_db_instance" "main" {
+  lifecycle {
+    precondition {
+      condition     = contains(["db.t3.micro", "db.t3.small"], var.db_instance_class)
+      error_message = "Only approved db.t3 instance classes are allowed."
+    }
+  }
+}
+```
+
+**Fails the plan** → no apply happens. Can reference variables, locals, data sources — broader than variable `validation` blocks (which only see the variable's own value).
+
+**`lifecycle.postcondition`** (v1.2+) — runs **after the resource is applied**:
+
+```hcl
+resource "aws_db_instance" "main" {
+  lifecycle {
+    postcondition {
+      condition     = self.storage_encrypted == true
+      error_message = "RDS instance must be encrypted. Check account encryption policy."
+    }
+  }
+}
+```
+
+Uses `self` to reference the actual applied resource's attributes. **Fails the apply** if condition is false. Use to assert that the cloud responded as expected.
+
+**`check` block** (v1.5+) — runs after apply, **does NOT fail the apply**:
+
+```hcl
+check "api_health" {
+  data "http" "ping" {
+    url = "https://${aws_api_gateway_stage.stg.invoke_url}/health"
+  }
+  assert {
+    condition     = data.http.ping.status_code == 200
+    error_message = "API health check returned ${data.http.ping.status_code}"
+  }
+}
+```
+
+Emits a **warning** on failure — deploy succeeds anyway. Use for real-world health checks where you want to observe without blocking.
+
+**Decision matrix:**
+
+| Need | Use |
+|---|---|
+| Validate config inputs before any changes | `precondition` |
+| Verify cloud state matches expectations after apply | `postcondition` |
+| Assert real-world health without blocking deploy | `check` block |
+| Validate a single variable's format/range | `variable.validation` |
+
+---
+
+## Q7: "You see `(known after apply)` in a plan for an attribute that another resource depends on. What does this mean, and what can go wrong?"
+
+**Trap**: Tests understanding of plan-time vs apply-time value resolution — when `(known after apply)` causes plan failures, not just placeholders.
+
+`(known after apply)` means the value cannot be resolved until the cloud API creates the resource and returns it. Common examples: ARN, ID, DNS name, assigned IP. These are fine as attribute values — Terraform plans them with placeholders.
+
+**Where it breaks things:**
+
+1. **`for_each` keys from computed values** — keys must be known at plan time to build the graph:
+   ```hcl
+   # FAILS:
+   resource "aws_api_gateway_resource" "route" {
+     for_each = toset(aws_api_gateway_rest_api.api.endpoint_configuration[*].types)
+     # Error: "for_each value depends on resource attributes that cannot be determined until apply"
+   }
+   ```
+
+2. **`count` from computed values** — same constraint:
+   ```hcl
+   count = length(some_resource.attr)   # FAILS if attr is (known after apply)
+   ```
+
+3. **`dynamic` block `for_each` from computed values** — same constraint, in nested blocks.
+
+**Why**: Terraform must know the full set of resource instances before it can walk the graph. If the number of instances (determined by `count`/`for_each`) is unknown at plan time, the graph can't be constructed.
+
+**Workarounds:**
+- Always derive `count` and `for_each` keys from variables or locals — statically known
+- Split into two separate applies: first apply creates the dependency, second apply uses its outputs — common in module composition and bootstrap flows
+- Use `-target` to apply the dependency first, then run a full plan — acceptable as a one-time bootstrap step

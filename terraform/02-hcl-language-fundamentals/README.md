@@ -2,64 +2,71 @@
 
 ## Mental Model
 
-HCL (HashiCorp Configuration Language) is Terraform's DSL. It is **not** a general-purpose programming language. Think of it as a **structured data format with expressions** — closer to JSON-with-superpowers than to Python or JavaScript.
+HCL (HashiCorp Configuration Language) is Terraform's DSL. It is **not** a general-purpose programming language — think of it as a **structured data format with expressions**: closer to JSON-with-computation than to Python or JavaScript.
 
 The key insight:
 
-> HCL describes **what you want**, not **how to build it**. Every block declares a piece of infrastructure. Terraform's engine (Chapter 01) figures out the execution order from the dependency graph — not from the order you write your blocks.
+> HCL describes **what you want**, not **how to build it**. Every block declares a piece of desired state. Terraform's engine (Chapter 01) determines the execution order from the dependency graph — never from the order you write your blocks.
 
-This means:
-- **No imperative control flow** — no `if/then/else` branches that prevent resources from existing. You use `count = 0` or conditional expressions.
-- **No loops that iterate "do this N times"** — you declare `count` or `for_each` on a resource and Terraform expands the graph.
-- **Expressions are evaluated lazily** — during graph walk, not when the file is parsed. That's why `(known after apply)` exists.
+Three constraints flow from this:
+
+- **No imperative control flow** — there is no `if/else` that prevents a resource from existing. You use `count = 0` or conditional `for_each` to make resources optional.
+- **No user-defined functions** — you cannot abstract repeated expressions into named functions. Use `locals` for naming, `modules` for encapsulation.
+- **Expressions are evaluated during graph walk, not at parse time** — that's why `(known after apply)` exists. An attribute that depends on another resource's output cannot be resolved until that resource is created.
 
 ---
 
 ## HCL File Structure
 
-Every `.tf` file is made of **blocks**. Terraform reads ALL `.tf` files in a directory and merges them — file names and ordering are irrelevant.
+Terraform reads **all** `.tf` files in the current directory and merges them. File names, numbers, and ordering are irrelevant. You can split your config across as many files as you want.
 
 ```hcl
 # Block types you'll use constantly:
 
-# 1. Provider block — configures the cloud provider
+# 1. terraform — backend config, required providers, version constraints
+terraform {
+  required_version = ">= 1.9"
+  required_providers {
+    aws = { source = "hashicorp/aws", version = "~> 5.0" }
+  }
+}
+
+# 2. provider — configures the cloud provider
 provider "aws" {
   region = "ap-south-1"
 }
 
-# 2. Resource block — declares a piece of infrastructure
-resource "aws_lambda_function" "presign" {
-  function_name = "prasaarit-presign-stg"
-  runtime       = "python3.12"
-  handler       = "handler.lambda_handler"
-  # ...
-}
-
-# 3. Variable block — declares an input parameter
+# 3. variable — declares an input parameter (from tfvars, CLI, env)
 variable "stage" {
   type    = string
   default = "stg"
 }
 
-# 4. Output block — exposes a value after apply
-output "api_url" {
-  value = aws_api_gateway_stage.stg.invoke_url
-}
-
-# 5. Locals block — defines computed constants
+# 4. locals — computed constants (derived from variables, other locals, resources)
 locals {
   prefix = "${var.project_name}-${var.stage}"
 }
 
-# 6. Data block — reads existing infrastructure (not managed by this config)
+# 5. data — reads existing infrastructure without managing it
 data "aws_caller_identity" "current" {}
+
+# 6. resource — declares a piece of infrastructure to create/manage
+resource "aws_lambda_function" "presign" {
+  function_name = "${local.prefix}-presign"
+  # ...
+}
+
+# 7. output — exposes a value after apply (used by other stacks or humans)
+output "api_url" {
+  value = aws_api_gateway_stage.stg.invoke_url
+}
 ```
 
 ---
 
 ## Variables — Input Parameters
 
-Variables are how values are passed **into** your Terraform config from the outside. Think of them as function parameters.
+Variables are how values flow **into** your config from the outside. Think of them as function parameters that differ per environment.
 
 ### Declaring Variables
 
@@ -67,7 +74,7 @@ Variables are how values are passed **into** your Terraform config from the outs
 # variables.tf
 
 variable "project_name" {
-  description = "Project name used as prefix for all resources"
+  description = "Project name, used as prefix for all resources"
   type        = string
   default     = "prasaarit"
 }
@@ -76,28 +83,21 @@ variable "stage" {
   description = "Deployment stage"
   type        = string
   default     = "stg"
+
+  validation {
+    condition     = contains(["stg", "prod"], var.stage)
+    error_message = "stage must be 'stg' or 'prod'."
+  }
 }
 
-variable "region" {
-  description = "AWS region"
-  type        = string
-  default     = "ap-south-1"
-}
-
-# No default = REQUIRED. Terraform will prompt or error if not provided.
+# No default = REQUIRED. Terraform will error at plan time if not provided.
 variable "s3_upload_bucket" {
-  description = "Name of the S3 bucket for video uploads (managed externally)"
+  description = "S3 bucket name for uploads (managed by the core infra repo)"
   type        = string
-}
-
-variable "allowed_origins" {
-  description = "CORS origins allowed to call the API"
-  type        = list(string)
-  default     = ["*"]
 }
 
 variable "lambda_timeout" {
-  description = "Lambda function timeout in seconds"
+  description = "Lambda timeout in seconds"
   type        = number
   default     = 10
 
@@ -106,51 +106,41 @@ variable "lambda_timeout" {
     error_message = "Lambda timeout must be between 1 and 900 seconds."
   }
 }
+
+variable "allowed_origins" {
+  description = "CORS origins allowed to call the API"
+  type        = list(string)
+  default     = ["*"]
+}
 ```
 
-### How Variables Are Set (Precedence Order)
-
-Terraform resolves variable values in this order (last wins):
+### Variable Precedence (Last Wins)
 
 ```
 1. default value in variable block        ← lowest priority
 2. terraform.tfvars file                  ← auto-loaded if present
-3. *.auto.tfvars files                    ← auto-loaded, alphabetical
-4. -var-file=custom.tfvars flag           ← explicit file
-5. -var="stage=prod" CLI flag             ← command line
-6. TF_VAR_stage environment variable      ← env var
-                                          ← highest priority
+3. *.auto.tfvars files                    ← auto-loaded, alphabetical order
+4. -var-file=custom.tfvars flag           ← explicit file on CLI
+5. -var="stage=prod" CLI flag             ← inline CLI
+6. TF_VAR_stage environment variable      ← highest priority
 ```
 
-**For your project**, the practical pattern:
+The practical pattern for your project:
 
 ```hcl
-# terraform.tfvars (auto-loaded, NOT committed to git)
+# terraform.tfvars — auto-loaded, NOT committed to git
 s3_upload_bucket = "prasaarit-uploads-stg"
 stage            = "stg"
 ```
 
 ```bash
 # .gitignore
-*.tfvars      # Never commit tfvars — they often contain secrets or env-specific values
-!*.auto.tfvars # Unless you want shared defaults
+*.tfvars        # never commit — they often contain env-specific values or secrets
 ```
 
-### Referencing Variables
+### The Type System
 
-Variables are referenced as `var.<name>`:
-
-```hcl
-resource "aws_lambda_function" "presign" {
-  function_name = "${var.project_name}-presign-${var.stage}"
-  timeout       = var.lambda_timeout
-  # ...
-}
-```
-
-### Variable Types — The Type System
-
-HCL has a static type system. Every variable must declare a type. This isn't optional boilerplate — it prevents bugs.
+Every variable should declare a type. This is not optional boilerplate — it catches misconfigurations at `terraform plan`, not at `terraform apply` when AWS rejects the request.
 
 ```hcl
 # Primitive types
@@ -159,30 +149,37 @@ type = number      # 42, 3.14
 type = bool        # true, false
 
 # Collection types
-type = list(string)           # ["a", "b", "c"] — ordered, duplicates allowed
-type = set(string)            # ["a", "b"] — unordered, no duplicates
-type = map(string)            # { key1 = "val1", key2 = "val2" }
+type = list(string)    # ["a", "b", "c"] — ordered, duplicates allowed, indexed by number
+type = set(string)     # {"a", "b"} — unordered, no duplicates
+type = map(string)     # { key1 = "val1", key2 = "val2" } — indexed by string key
 
-# Structural types
-type = object({               # Fixed structure with named attributes
-  name    = string
+# Structural types — specify the exact shape of a complex value
+type = object({
+  handler = string
   timeout = number
   tags    = map(string)
 })
 
-type = tuple([string, number, bool])  # Fixed-length, mixed types — rarely used
+type = tuple([string, number, bool])  # fixed-length, mixed types — rarely needed
 
-# The escape hatch — avoid unless necessary
-type = any                    # Disables type checking. Use object() instead.
+# The escape hatch — avoid unless you're writing a module that must accept any type
+type = any    # disables type checking entirely; callers get no validation
+
+# optional() fields in objects — available since v1.3
+type = object({
+  timeout    = number
+  memory     = optional(number, 128)    # default used if caller omits the key
+  log_level  = optional(string, "INFO")
+})
 ```
 
-**When types bite you:**
+**Common type pitfalls:**
 
 ```hcl
 variable "port" {
   type    = number
-  default = "8080"    # ← This WORKS! HCL auto-converts string "8080" to number 8080.
-                      #    But "eight" would fail. This implicit conversion hides bugs.
+  default = "8080"    # WORKS — HCL auto-converts "8080" → 8080.
+                      # But "eight" would fail. Implicit conversion hides intent.
 }
 
 variable "tags" {
@@ -190,8 +187,7 @@ variable "tags" {
   default = {
     Name = "my-lambda"
     Env  = "stg"
-    Cost = 42          # ← ERROR at plan time: number 42 is not string.
-                       #    map(string) means ALL values must be strings.
+    Cost = 42          # ERROR at plan: 42 is number, map(string) requires string values.
   }
 }
 ```
@@ -200,45 +196,47 @@ variable "tags" {
 
 ## Locals — Computed Constants
 
-Locals are the equivalent of `const` definitions. They compute values from variables, other locals, or resource attributes. They exist to **avoid duplication** and **make config readable**.
+Locals are `const` definitions for your config: they compute values from variables, other locals, or even resource attributes. They exist to avoid duplication and to give readable names to derived values.
 
 ```hcl
 locals {
-  prefix       = "${var.project_name}-${var.stage}"
-  account_id   = data.aws_caller_identity.current.account_id
-  lambda_name  = "${local.prefix}-presign"
+  prefix      = "${var.project_name}-${var.stage}"
+  lambda_name = "${local.prefix}-presign"
+  is_prod     = var.stage == "prod"
 
-  # Complex locals are fine
+  # Computed from other locals — fine to chain
+  log_retention_days = local.is_prod ? 90 : 14
+
+  # Computed from a data source attribute
+  account_id = data.aws_caller_identity.current.account_id
+
+  # Shared tags — defined once, referenced everywhere
   common_tags = {
-    Project     = var.project_name
-    Stage       = var.stage
-    ManagedBy   = "terraform"
+    Project   = var.project_name
+    Stage     = var.stage
+    ManagedBy = "terraform"
   }
-
-  # Conditional logic in locals
-  is_production = var.stage == "prod"
-  log_retention = local.is_production ? 90 : 14
 }
 ```
 
-### Variable vs Local — When to Use Which
+### Variable vs Local — The Decision Rule
 
-| Use a **variable** when | Use a **local** when |
-|------------------------|---------------------|
-| The value comes from **outside** the config | The value is **computed from** other values |
-| Different environments need different values | You want to **name a derived value** for readability |
-| You want users to override it via tfvars/CLI | The value should **never** be overridden — it's a fact |
-| Example: `s3_upload_bucket`, `stage`, `region` | Example: `prefix`, `common_tags`, `lambda_name` |
+| Use a **variable** when... | Use a **local** when... |
+|---|---|
+| The value comes from **outside** the config (caller provides it) | The value is **derived** from other values inside the config |
+| Different environments or teams will provide different values | The value should **never** be overridden — it's an internal fact |
+| You want operator control: tfvars, CLI, env vars | You want to **name a derived expression** for readability |
+| Example: `s3_upload_bucket`, `stage`, `region` | Example: `prefix`, `common_tags`, `lambda_name`, `is_prod` |
 
-**Common mistake**: Using variables for values that should be locals.
+**The most common mistake**: exposing as a variable something that should never change:
 
 ```hcl
-# BAD — a "variable" that nobody should ever change
+# BAD — invites misconfiguration, adds surface area
 variable "lambda_runtime" {
   default = "python3.12"
 }
 
-# GOOD — fixed fact about your deployment
+# GOOD — it's a fact about your deployment, not a knob
 locals {
   lambda_runtime = "python3.12"
 }
@@ -246,22 +244,22 @@ locals {
 
 ---
 
-## Expressions — String Interpolation, References, and Operators
+## Expressions — References, Interpolation, and Operators
 
 ### String Interpolation
 
 ```hcl
-# Template syntax — embed expressions inside strings
+# Embed any expression inside a string with ${}
 name = "${var.project_name}-presign-${var.stage}"
 
-# If the entire value IS the expression, skip the quotes:
-timeout = var.lambda_timeout       # ✓ correct
-timeout = "${var.lambda_timeout}"  # ✗ works but redundant — Terraform warns about this
+# When the ENTIRE value is an expression, skip the quotes — don't wrap in strings
+timeout = var.lambda_timeout         # ✓ correct
+timeout = "${var.lambda_timeout}"    # ✗ works but Terraform warns: unnecessary interpolation
 ```
 
-### References to Other Resources
+### References — How the Dependency Graph Gets Built
 
-This is how the dependency graph gets built (Chapter 01). When you reference another resource's attribute, Terraform creates a "happens after" edge.
+Every reference to another resource's attribute creates an implicit edge in the dependency graph. This is how Terraform knows execution order without you writing `depends_on`.
 
 ```hcl
 resource "aws_iam_role" "lambda_exec" {
@@ -271,466 +269,594 @@ resource "aws_iam_role" "lambda_exec" {
 
 resource "aws_lambda_function" "presign" {
   role = aws_iam_role.lambda_exec.arn
-  #      ────────────────────────────
-  #      │ resource type: aws_iam_role
-  #      │ resource name: lambda_exec
-  #      │ attribute: arn
-  #      └── This creates a graph edge:
-  #          Lambda DEPENDS ON IAM role
+  #      ══════════════════════════════
+  #      type: aws_iam_role
+  #      name: lambda_exec
+  #      attr: arn
+  #      └→ creates a graph edge: Lambda WAITS for IAM role (see Chapter 01)
 }
 ```
 
-The reference pattern: `<resource_type>.<resource_name>.<attribute>`
+Reference patterns:
 
-Other reference patterns:
 ```hcl
-var.stage                                  # variable
-local.prefix                               # local
-data.aws_caller_identity.current.account_id # data source
-module.networking.vpc_id                   # module output
+var.stage                                    # input variable
+local.prefix                                 # local value
+aws_iam_role.lambda_exec.arn                 # resource attribute
+data.aws_caller_identity.current.account_id  # data source attribute
+module.networking.vpc_id                     # output from a child module
 ```
 
-### Operators
+### Operators and Ternary Conditional
 
 ```hcl
 # Arithmetic
-memory = 128 * 2      # 256
+memory = 128 * 2           # 256
 
-# Comparison (returns bool)
+# Comparison → bool
 is_prod = var.stage == "prod"
 
 # Logical
 needs_alarm = var.stage == "prod" && var.enable_alarms
 
-# Ternary conditional — this is HCL's only "if/else"
+# Ternary — HCL's only branching construct
 timeout = var.stage == "prod" ? 30 : 10
 ```
 
-### Important: The Ternary Evaluates BOTH Sides
+**Critical trap — the ternary type-checks BOTH branches:**
 
 ```hcl
-# TRAP: Both sides are evaluated even if the condition is known at plan time
+# Even when stage = "stg", this ERRORS if prod_db_password has no value.
+# Both branch expressions are evaluated for type-checking regardless of which
+# branch is actually selected.
 value = var.stage == "prod" ? var.prod_db_password : "dummy"
-# ↑ If prod_db_password has no value (and no default), this ERRORS
-#   even when stage is NOT "prod". Both expressions are evaluated
-#   for type-checking, even though only one result is used.
+
+# Fix: give the variable a default, or use try()
+value = var.stage == "prod" ? try(var.prod_db_password, "") : "dummy"
+```
+
+Both branches must also return the **same type**:
+
+```hcl
+value = var.enabled ? 42 : "none"      # ERROR: number vs string
+value = var.enabled ? 42 : null        # OK: null is compatible with any type
 ```
 
 ---
 
-## Conditionals — count and for_each
+## count and for_each — Creating Multiple Resources
 
-HCL has no `if` statement. Instead, you use `count` or `for_each` to **conditionally create resources**.
+HCL has no `if` statement. Conditional and repeated resource creation is done via `count` and `for_each`.
 
-### count — The Simple On/Off Switch
+### count — Boolean On/Off Switch
 
 ```hcl
-# Create this resource only in production
+# Create only in production
 resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
-  count = var.stage == "prod" ? 1 : 0       # 1 = create, 0 = skip
+  count = var.stage == "prod" ? 1 : 0   # 1 = create, 0 = skip
 
   alarm_name = "${local.prefix}-lambda-errors"
   # ...
 }
 
-# When count = 0, this resource does not exist at all.
-# When count = 1, the resource address is:
-#   aws_cloudwatch_metric_alarm.lambda_errors[0]   ← note the [0] index
+# When count = 1, the resource address includes the index:
+#   aws_cloudwatch_metric_alarm.lambda_errors[0]
 ```
 
 **Why `count` is dangerous for lists:**
 
 ```hcl
-# DON'T DO THIS for a list of items:
 variable "methods" {
-  default = ["GET", "POST", "DELETE"]
+  default = ["/upload", "/metadata", "/delete"]
 }
 
-resource "aws_api_gateway_method" "method" {
-  count       = length(var.methods)
-  http_method = var.methods[count.index]
+resource "aws_api_gateway_resource" "route" {
+  count     = length(var.methods)
+  path_part = var.methods[count.index]
 }
-
-# This creates:
-#   aws_api_gateway_method.method[0] → GET
-#   aws_api_gateway_method.method[1] → POST
-#   aws_api_gateway_method.method[2] → DELETE
-
-# PROBLEM: If you remove "GET" from the list:
-#   var.methods = ["POST", "DELETE"]
-#   [0] → POST  (was GET → Terraform plans REPLACEMENT of [0])
-#   [1] → DELETE (was POST → Terraform plans UPDATE of [1])
-#   [2] → gone   (was DELETE → Terraform plans DESTROY of [2])
+# Creates:
+#   route[0] = "/upload"
+#   route[1] = "/metadata"
+#   route[2] = "/delete"
 #
-# You wanted to remove GET, but Terraform replaces POST and destroys DELETE.
-# This is because count uses INDEX-BASED identity.
+# Now remove "/upload" → var.methods = ["/metadata", "/delete"]
+#   route[0] was "/upload", should be "/metadata" → REPLACE (destroy + recreate)
+#   route[1] was "/metadata", should be "/delete" → UPDATE
+#   route[2] was "/delete", now gone → DESTROY
+#
+# You wanted to remove one route. Terraform replaces two and destroys one.
+# This is the index-shift problem — count uses position, not identity.
 ```
 
-### for_each — The Safe Way to Create Multiple Resources
+### for_each — Identity by Key
 
 ```hcl
-# CORRECT: Use for_each for lists of things
-variable "methods" {
-  default = ["GET", "POST", "DELETE"]
+resource "aws_api_gateway_resource" "route" {
+  for_each  = toset(var.methods)    # for_each requires a set or map
+  path_part = each.value            # each.value = current item, each.key = same for sets
 }
-
-resource "aws_api_gateway_method" "method" {
-  for_each    = toset(var.methods)        # for_each requires a set or map
-  http_method = each.value                 # each.value = the current item
-}
-
-# This creates:
-#   aws_api_gateway_method.method["GET"]    → GET
-#   aws_api_gateway_method.method["POST"]   → POST
-#   aws_api_gateway_method.method["DELETE"] → DELETE
+# Creates:
+#   route["/upload"]   → /upload
+#   route["/metadata"] → /metadata
+#   route["/delete"]   → /delete
 #
-# Now remove "GET" from the list:
-#   ["GET"] → destroyed (correct!)
-#   ["POST"] → unchanged (correct!)
-#   ["DELETE"] → unchanged (correct!)
-#
-# for_each uses KEY-BASED identity, not index-based.
+# Remove "/upload" → only route["/upload"] is destroyed.
+# "/metadata" and "/delete" are untouched. Key-based identity.
 ```
 
-### for_each with a Map
+**for_each with a map** — when each instance needs different configuration:
 
 ```hcl
-# Define multiple Lambda functions from a map
 variable "lambdas" {
   default = {
-    presign = {
-      handler = "handler.lambda_handler"
-      timeout = 10
-    }
-    metadata = {
-      handler = "handler.lambda_handler"
-      timeout = 5
-    }
+    presign  = { handler = "handler.presign_handler",  timeout = 10 }
+    metadata = { handler = "handler.metadata_handler", timeout = 5  }
   }
 }
 
 resource "aws_lambda_function" "fn" {
   for_each = var.lambdas
 
-  function_name = "${local.prefix}-${each.key}"     # each.key = "presign" or "metadata"
-  handler       = each.value.handler                  # each.value = the inner object
+  function_name = "${local.prefix}-${each.key}"   # each.key = "presign" or "metadata"
+  handler       = each.value.handler               # each.value = the inner object
   timeout       = each.value.timeout
   # ...
 }
-
 # Creates:
 #   aws_lambda_function.fn["presign"]  → prasaarit-stg-presign
 #   aws_lambda_function.fn["metadata"] → prasaarit-stg-metadata
 ```
 
+**The `for_each` keys-must-be-known-at-plan-time constraint:**
+
+```hcl
+# This FAILS during terraform plan:
+resource "aws_api_gateway_resource" "route" {
+  for_each  = toset(aws_api_gateway_rest_api.api.endpoint_configuration[*].types)
+  #                 ↑ This attribute is (known after apply) — graph cannot be built
+}
+# Error: The "for_each" value depends on resource attributes that cannot be
+# determined until apply, so Terraform cannot predict how many instances will be created.
+
+# Fix: always derive for_each keys from variables or locals, not resource outputs.
+```
+
+**Rule**: Use `count` only for boolean on/off (`count = cond ? 1 : 0`). Use `for_each` for everything else.
+
 ---
 
 ## The `for` Expression — Transforming Collections
 
-The `for` expression transforms one collection into another. It's like `map()` and `filter()` in JavaScript.
+The `for` expression transforms one collection into another. It's HCL's equivalent of `map()` and `filter()` in JavaScript.
 
 ```hcl
-# Transform a list
 locals {
-  methods     = ["get", "post", "delete"]
+  methods       = ["get", "post", "delete"]
+  lambda_names  = ["presign", "metadata", "delete"]
+
+  # List → list transform
   upper_methods = [for m in local.methods : upper(m)]
   # → ["GET", "POST", "DELETE"]
-}
 
-# Transform with filter
-locals {
-  numbers   = [1, 2, 3, 4, 5]
-  even_only = [for n in local.numbers : n if n % 2 == 0]
-  # → [2, 4]
-}
+  # List → list with filter
+  long_methods = [for m in local.methods : m if length(m) > 4]
+  # → ["delete"]
 
-# Transform a list into a map
-locals {
-  lambda_names = ["presign", "metadata", "delete"]
-  lambda_arns  = { for name in local.lambda_names : name => "${local.prefix}-${name}" }
+  # List → map
+  lambda_full_names = { for name in local.lambda_names : name => "${local.prefix}-${name}" }
   # → { presign = "prasaarit-stg-presign", metadata = "prasaarit-stg-metadata", ... }
+
+  # Map → map (iterate both key and value)
+  lambda_configs = {
+    presign  = { timeout = 10, memory = 128 }
+    metadata = { timeout = 5,  memory = 128 }
+    delete   = { timeout = 15, memory = 256 }
+  }
+
+  # Filter map: only high-memory functions
+  heavy_lambdas = {
+    for name, cfg in local.lambda_configs :
+    name => cfg
+    if cfg.memory > 128
+  }
+  # → { delete = { timeout = 15, memory = 256 } }
 }
 ```
 
-**Syntax rule:** `[ ]` brackets produce a list, `{ }` braces produce a map.
+**Syntax reference:**
 
 ```hcl
-[for item in list : transform(item)]                    # → list
-{for item in list : key_expr => value_expr}             # → map
-[for item in list : transform(item) if condition(item)] # → filtered list
+[for item in collection : transform(item)]              # → list
+[for item in collection : transform(item) if cond]      # → filtered list
+{for k, v in map : new_key => new_val}                  # → map
+{for k, v in map : new_key => new_val if cond}          # → filtered map
 ```
+
+`[ ]` produces a list; `{ }` produces a map. The `if` clause is a filter, not a branch.
+
+---
+
+## `dynamic` Blocks — Programmatic Nested Blocks
+
+Some resources have **repeatable nested blocks** — `ingress` rules in `aws_security_group`, `cors_rule` in `aws_s3_bucket`. When you need a variable number, hardcoding each is impractical. `dynamic` blocks let you generate them programmatically.
+
+> A `dynamic` block is a `for_each` loop that emits **nested blocks**, not resources. It only works inside `resource`, `data`, or `provider` blocks.
+
+### Syntax
+
+```hcl
+dynamic "<block_type>" {
+  for_each = <set or map>
+  iterator = <optional rename>   # defaults to the block_type name
+
+  content {
+    # Access the current item via: <block_type>.value (or <iterator>.value)
+    # Access the current key via:  <block_type>.key
+  }
+}
+```
+
+### Example — Variable Security Group Rules
+
+```hcl
+# Without dynamic: you'd hardcode one ingress {} per port. Unmaintainable for 10+ rules.
+# With dynamic: the caller passes a map, the block expands automatically.
+
+variable "ingress_rules" {
+  type = map(object({
+    port     = number
+    protocol = string
+    cidrs    = list(string)
+  }))
+  default = {
+    http  = { port = 80,   protocol = "tcp", cidrs = ["0.0.0.0/0"] }
+    https = { port = 443,  protocol = "tcp", cidrs = ["0.0.0.0/0"] }
+    admin = { port = 8443, protocol = "tcp", cidrs = ["10.0.0.0/8"] }
+  }
+}
+
+resource "aws_security_group" "api" {
+  name   = "${local.prefix}-api-sg"
+  vpc_id = var.vpc_id
+
+  dynamic "ingress" {
+    for_each = var.ingress_rules
+    iterator = rule               # rename from "ingress" → "rule" for readability
+
+    content {
+      from_port   = rule.value.port
+      to_port     = rule.value.port
+      protocol    = rule.value.protocol
+      cidr_blocks = rule.value.cidrs
+      description = "Allow ${rule.key}"
+    }
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+```
+
+### When `dynamic` Blocks Obscure Intent
+
+`dynamic` is powerful, but it costs readability:
+
+- A reader must mentally expand the block to understand what rules exist. Explicit blocks self-document the security posture.
+- When `terraform plan` shows a change to an ingress rule, it shows the key — but if the rule objects are complex, tracing which rule changed is harder.
+- If some rules need `prefix_list_ids` while others need `cidr_blocks`, cramming them into one `dynamic` block creates objects full of nullable fields.
+
+**Rule**: Use `dynamic` when 3+ identical-shaped nested blocks are driven by a variable. For 2 or fewer, write explicit blocks — less abstraction, same result, easier to read.
+
+**Critical**: `for_each` inside a `dynamic` block has the same constraint as on a resource — keys must be **known at plan time**. If the collection comes from a computed resource attribute, the plan fails.
+
+**What `dynamic` cannot do**: generate top-level `resource {}` or `module {}` blocks. For that, use `for_each` on the resource/module itself.
 
 ---
 
 ## Built-in Functions
 
-HCL has ~100 built-in functions. You'll use about 15 regularly. Here are the ones relevant to your project:
+HCL has ~100 built-in functions. You cannot define your own — use `locals` to name repeated expressions and `modules` to encapsulate patterns. Here are the ones you'll use constantly:
 
 ### String Functions
 
 ```hcl
-# String manipulation
-upper("hello")                    # "HELLO"
-lower("HELLO")                    # "hello"
-replace("hello-world", "-", "_") # "hello_world"
-substr("hello", 0, 3)            # "hel"
-join("-", ["prasaarit", "stg"])   # "prasaarit-stg"
-split(",", "a,b,c")              # ["a", "b", "c"]
-trimspace("  hello  ")           # "hello"
+upper("hello")                             # "HELLO"
+lower("HELLO")                             # "hello"
+replace("hello-world", "-", "_")           # "hello_world"
+substr("hello", 0, 3)                      # "hel"
+join("-", ["prasaarit", "stg", "presign"]) # "prasaarit-stg-presign"
+split(",", "a,b,c")                        # ["a", "b", "c"]
+trimspace("  hello  ")                     # "hello"
 format("%s-%s-%s", var.project, var.stage, "presign")  # "prasaarit-stg-presign"
+
+# templatefile — render a file template with variable substitution
+# Use for pre-existing JSON policy templates a security team maintains separately
+templatefile("${path.module}/templates/policy.json.tpl", {
+  bucket_arn = aws_s3_bucket.uploads.arn
+  account_id = data.aws_caller_identity.current.account_id
+})
 ```
 
 ### Collection Functions
 
 ```hcl
-# Length
-length(["a", "b", "c"])           # 3
-length({ a = 1, b = 2 })          # 2
+length(["a", "b", "c"])                        # 3
+length({ a = 1, b = 2 })                       # 2
 
-# Lookup with default
-lookup({ stg = "t3.micro", prod = "t3.medium" }, var.stage, "t3.micro")
-# If stage = "stg" → "t3.micro". If stage = "unknown" → "t3.micro" (default)
+# Lookup a map key with a default (safe alternative to direct key access)
+lookup({ stg = "t3.micro", prod = "t3.large" }, var.stage, "t3.micro")
 
-# Merge maps (later values override earlier)
-merge(local.common_tags, { Name = "special" })
+merge(local.common_tags, { Name = "special" })   # later map values override earlier
 
-# Flatten nested lists
-flatten([["a", "b"], ["c", "d"]])  # ["a", "b", "c", "d"]
+flatten([["a", "b"], ["c", "d"]])                # ["a", "b", "c", "d"]
+distinct(["a", "b", "a"])                        # ["a", "b"]
 
-# Distinct — remove duplicates
-distinct(["a", "b", "a"])         # ["a", "b"]
-
-# Keys and values from a map
-keys({ a = 1, b = 2 })           # ["a", "b"]
-values({ a = 1, b = 2 })         # [1, 2]
-
-# Contains
-contains(["GET", "POST"], "GET")  # true
+keys({ a = 1, b = 2 })                           # ["a", "b"]
+values({ a = 1, b = 2 })                         # [1, 2]
+contains(["GET", "POST"], "GET")                 # true
 ```
 
 ### Encoding Functions
 
 ```hcl
-# JSON — critical for IAM policies
+# jsonencode — the right way to write IAM policies in HCL
+# Type-safe, properly escaped, plan diffs show attribute-level changes
 jsonencode({
   Version = "2012-10-17"
   Statement = [{
     Effect   = "Allow"
-    Action   = "s3:PutObject"
+    Action   = ["s3:PutObject"]
     Resource = "arn:aws:s3:::${var.s3_upload_bucket}/*"
   }]
 })
 
-# Base64 encoding (used by Lambda)
-base64encode("hello")             # "aGVsbG8="
-filebase64sha256("lambda.zip")    # hash of file content — used for source_code_hash
+# base64encode / filebase64
+base64encode("hello")                       # "aGVsbG8="
+filebase64sha256("lambda_payload.zip")      # SHA256 hash — used for source_code_hash
 ```
+
+> **`jsonencode` vs `templatefile` for IAM policies**: Use `jsonencode` when constructing policies directly in HCL (type-safe, IDE-supported, plan diffs are precise). Use `templatefile` only for pre-existing JSON templates maintained by another team.
 
 ### Filesystem Functions
 
 ```hcl
-# Read a file — useful for IAM policies stored as JSON files
-file("${path.module}/policies/lambda-policy.json")
+file("${path.module}/policies/lambda.json")          # read file contents as string
+filebase64sha256("${path.module}/../lambda.zip")     # hash for detecting code changes
 
-# Hash a file — used to detect Lambda code changes
-filebase64sha256("${path.module}/../lambda_payload.zip")
-
-# path.module = directory of the current .tf file
-# path.root   = directory where terraform was invoked
+# path references
+path.module    # absolute path to the directory of the current .tf file
+path.root      # absolute path to the directory where terraform was invoked
+path.cwd       # current working directory
 ```
 
-### Important: No User-Defined Functions
+### CIDR Math Functions
 
-**HCL does not support user-defined functions.** You cannot write:
+Essential for VPC networking:
 
 ```hcl
-# THIS DOES NOT EXIST IN HCL:
-function make_arn(service, resource) {
-  return "arn:aws:${service}:::${resource}"
+# cidrsubnet(prefix, newbits, netnum)
+#   prefix  = parent CIDR block   ("10.0.0.0/16")
+#   newbits = bits to add to mask  (8 turns /16 into /24)
+#   netnum  = which subnet number  (0 = first, 1 = second, ...)
+
+locals {
+  vpc_cidr = "10.0.0.0/16"
+
+  public_subnets = [
+    cidrsubnet(local.vpc_cidr, 8, 0),    # → "10.0.0.0/24"
+    cidrsubnet(local.vpc_cidr, 8, 1),    # → "10.0.1.0/24"
+    cidrsubnet(local.vpc_cidr, 8, 2),    # → "10.0.2.0/24"
+  ]
+
+  private_subnets = [
+    cidrsubnet(local.vpc_cidr, 8, 10),   # → "10.0.10.0/24"
+    cidrsubnet(local.vpc_cidr, 8, 11),   # → "10.0.11.0/24"
+    cidrsubnet(local.vpc_cidr, 8, 12),   # → "10.0.12.0/24"
+  ]
 }
+
+cidrhost("10.0.1.0/24", 4)    # → "10.0.1.4" — specific host in a subnet
+cidrhost("10.0.1.0/24", -2)   # → "10.0.1.254" — negative = count from end
 ```
 
-If you find yourself repeating complex expressions, use **locals** to name them, or **modules** to encapsulate reusable patterns. This is a fundamental difference from general-purpose languages.
+### Type Conversion and Safety Functions
+
+```hcl
+# Explicit conversion — prefer explicit over implicit
+tostring(42)                 # "42"
+tonumber("42")               # 42
+tobool("true")               # true
+toset(["b", "a", "b"])       # {"a", "b"} — removes duplicates, unordered
+tolist(toset(["b","a"]))     # ["a", "b"] — sorted when converting set → list
+
+# try() — evaluate an expression; return fallback on any error
+# Essential for accessing attributes that may not exist
+try(var.config.optional_field, "default")
+
+# can() — returns true if expression succeeds, false otherwise
+can(var.config.optional_field)  # true = exists and valid, false = would error
+```
+
+`try()` is especially useful with `optional()` object fields in modules:
+
+```hcl
+variable "lambda_config" {
+  type = object({
+    timeout = number
+    memory  = optional(number, 128)     # optional with default, since v1.3
+  })
+}
+
+# Older pattern before optional() existed:
+locals {
+  memory = try(var.lambda_config.memory, 128)
+}
+```
 
 ---
 
 ## Data Sources — Reading Existing Infrastructure
 
-Data sources **read** information from the cloud without managing it. They're for referencing things that exist outside your Terraform config.
+Data sources **read** from the cloud without managing anything. Use them for infrastructure owned by another team, another Terraform config, or AWS itself.
 
 ```hcl
-# Get current AWS account ID and region
+# AWS-provided data — no arguments needed
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
-# Use them
 locals {
   account_id = data.aws_caller_identity.current.account_id  # "123456789012"
   region     = data.aws_region.current.name                  # "ap-south-1"
 }
 ```
 
-**For your Prasaarit project — reading the externally-managed S3 bucket:**
+**For your Prasaarit project — using the externally-managed S3 bucket:**
 
 ```hcl
-# Option A: Just pass the bucket name as a variable (simple, what we're doing)
-variable "s3_upload_bucket" {
-  type = string
-}
-
-# Option B: Use a data source to look up the actual bucket and get its ARN
+# The bucket is managed in a different repo (core infra). Don't recreate it here.
+# Use a data source to get its actual ARN for the IAM policy.
 data "aws_s3_bucket" "uploads" {
   bucket = var.s3_upload_bucket
 }
 
-# Now you can reference its ARN for IAM policies:
 resource "aws_iam_role_policy" "lambda_s3" {
   role   = aws_iam_role.lambda_exec.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
       Effect   = "Allow"
-      Action   = "s3:PutObject"
+      Action   = ["s3:PutObject"]
       Resource = "${data.aws_s3_bucket.uploads.arn}/*"
-      #           ↑ data source gives you the real ARN
-      #             instead of manually constructing it
+      #           ↑ real ARN from the data source, no manual construction
     }]
   })
 }
 ```
 
-**Data source vs resource:**
+**Resource vs Data Source:**
 
-| | Resource | Data Source |
-|---|---------|------------|
-| **Purpose** | Creates/manages infrastructure | Reads existing infrastructure |
-| **Prefix** | `resource "aws_s3_bucket"` | `data "aws_s3_bucket"` |
-| **In state?** | Yes — tracked and managed | Yes — cached, but not managed |
-| **On destroy?** | Terraform destroys it | Terraform does nothing — it's not ours |
-| **When to use** | You own it | Someone else owns it (console, another repo, another team) |
+| | `resource` | `data` |
+|---|---|---|
+| Purpose | Create and manage | Read-only lookup |
+| Declaration | `resource "aws_s3_bucket" "b"` | `data "aws_s3_bucket" "b"` |
+| Tracked in state? | Yes — Terraform owns it | Yes — cached, but not owned |
+| On `terraform destroy` | Destroyed | Untouched |
+| When to use | You own it | Another team/config owns it |
+
+Data sources are **refreshed at every `plan`** — they call the cloud API to get current values. They do NOT create, update, or delete anything.
 
 ---
 
-## Putting It All Together — Your Prasaarit Config Skeleton
+## `terraform_data` — State Storage Without a Cloud Resource
 
-Here's how all the concepts come together for your upload service:
+### The Problem
+
+Sometimes you need to:
+1. Store a computed value in state so other resources can reference it
+2. Trigger a replacement (re-run a provisioner) when an external value changes
+3. Run local logic on apply without a real cloud resource
+
+Historically, `null_resource` from the `hashicorp/null` provider handled this. Since v1.4, `terraform_data` is the built-in replacement — no external provider needed.
+
+### Basic Usage
 
 ```hcl
-# ─── variables.tf ──────────────────────────────────────────────────
-
-variable "project_name" {
-  type    = string
-  default = "prasaarit"
-}
-
-variable "stage" {
-  type    = string
-  default = "stg"
-}
-
-variable "s3_upload_bucket" {
-  description = "S3 bucket for uploads (managed in core infra repo)"
-  type        = string
-  # No default — you MUST provide this
-}
-
-variable "allowed_origins" {
-  type    = list(string)
-  default = ["*"]
-}
-
-# ─── locals ──────────────────────────────────────────────────────
-
-locals {
-  prefix      = "${var.project_name}-${var.stage}"
-  lambda_name = "${local.prefix}-presign"
-
-  common_tags = {
-    Project   = var.project_name
-    Stage     = var.stage
-    ManagedBy = "terraform"
+# Store an arbitrary value in state
+resource "terraform_data" "deployment_marker" {
+  input = {
+    version  = "1.2.3"
+    stage    = var.stage
   }
 }
 
-# ─── data sources ────────────────────────────────────────────────
-
-data "aws_caller_identity" "current" {}
-
-data "aws_s3_bucket" "uploads" {
-  bucket = var.s3_upload_bucket
-}
-
-# ─── resources (simplified) ─────────────────────────────────────
-
-resource "aws_iam_role" "lambda_exec" {
-  name = "${local.prefix}-lambda-exec"
-  tags = local.common_tags                 # ← reusing locals
-
-  assume_role_policy = jsonencode({        # ← jsonencode function
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Action    = "sts:AssumeRole"
-      Principal = { Service = "lambda.amazonaws.com" }
-    }]
-  })
-}
-
-resource "aws_lambda_function" "presign" {
-  function_name    = local.lambda_name     # ← local reference
-  role             = aws_iam_role.lambda_exec.arn  # ← resource reference → graph edge
-  runtime          = "python3.12"
-  handler          = "handler.lambda_handler"
-  filename         = "${path.module}/../lambda_payload.zip"
-  source_code_hash = filebase64sha256("${path.module}/../lambda_payload.zip")
-  timeout          = 10
-  memory_size      = 128
-  tags             = local.common_tags
-
-  environment {
-    variables = {
-      BUCKET_NAME    = var.s3_upload_bucket   # ← variable reference
-      ALLOWED_ORIGIN = join(",", var.allowed_origins)  # ← function
-    }
-  }
-}
-
-# ─── outputs ─────────────────────────────────────────────────────
-
-output "lambda_function_name" {
-  value = aws_lambda_function.presign.function_name
-}
-
-output "lambda_arn" {
-  value = aws_lambda_function.presign.arn
+# Read it back from state
+output "deployment_marker" {
+  value = terraform_data.deployment_marker.output   # same structure as input
 }
 ```
 
+### Triggering Re-Execution When a File Changes
+
+```hcl
+# Track the Lambda zip hash in state
+resource "terraform_data" "lambda_hash" {
+  input = filebase64sha256("${path.module}/../lambda_payload.zip")
+}
+
+# Re-run this whenever the zip changes
+resource "terraform_data" "post_deploy" {
+  triggers_replace = [terraform_data.lambda_hash.output]
+
+  provisioner "local-exec" {
+    command = "echo 'Lambda zip changed — hash: ${terraform_data.lambda_hash.output}'"
+  }
+}
+```
+
+When `lambda_payload.zip` changes:
+1. `terraform_data.lambda_hash` computes a new hash → its `input` changed → resource is **replaced** → new `output`
+2. `terraform_data.post_deploy` sees `triggers_replace` changed → it is **replaced** → `local-exec` runs
+
+### `terraform_data` vs `null_resource`
+
+| | `null_resource` | `terraform_data` |
+|---|---|---|
+| Provider required? | Yes — `hashicorp/null` in `required_providers` | No — built into Terraform Core |
+| Available since | Very old | v1.4+ |
+| Triggers | `triggers = { key = string }` — string map only | `triggers_replace = [any_expressions]` |
+| Value storage | Cannot store value in state | `input` → state → `output` |
+| Migration | Remove `hashicorp/null` from required_providers; `terraform state mv` to preserve existing resource |
+
+```hcl
+# OLD:
+resource "null_resource" "trigger" {
+  triggers = { hash = filebase64sha256("script.sh") }
+  provisioner "local-exec" { command = "bash script.sh" }
+}
+
+# NEW:
+resource "terraform_data" "trigger" {
+  triggers_replace = [filebase64sha256("script.sh")]
+  provisioner "local-exec" { command = "bash script.sh" }
+}
+```
+
+> **Not the same as ephemeral resources** (v1.10): `terraform_data` values **are** written to state and persist between runs. Ephemeral resources are re-evaluated every plan/apply and never written to state. Use ephemeral resources for short-lived secrets. Use `terraform_data` for trigger logic and value storage.
+
 ---
 
-## What HCL Guarantees
+## Guarantees and Failure Modes
 
-| Guarantee | Details |
-|-----------|---------|
-| **Type safety** | Variable type mismatches are caught at `plan` time, not at apply |
-| **Reference tracking** | Every `resource.name.attr` reference creates a dependency edge automatically |
-| **File-order independence** | You can split config across any number of `.tf` files — order doesn't matter |
-| **Idempotent evaluation** | Same inputs → same plan, always |
+### What HCL Guarantees
 
-## What HCL Does NOT Guarantee
+| Guarantee | Detail |
+|---|---|
+| **Type safety at plan time** | Type mismatches in variables and locals are caught during `terraform plan`, not `apply` |
+| **Reference tracking** | Every `resource.name.attr` creates a dependency edge automatically |
+| **File-order independence** | Config can be split across any number of `.tf` files; order never matters |
+| **Idempotent evaluation** | Same inputs always produce the same plan |
+
+### What HCL Does NOT Guarantee
 
 | Non-guarantee | Why it matters |
-|--------------|----------------|
-| **No null safety** | Referencing an attribute that doesn't exist on a resource → runtime error during plan, not a compile error |
-| **No user-defined functions** | You can't abstract repeated expressions. Use locals or modules instead. |
-| **Ternary evaluates both sides** | Both branches are type-checked. If one branch references a missing variable, it errors even if that branch isn't selected. |
-| **`for_each` keys must be known at plan time** | You can't use `for_each` with a key that is `(known after apply)`. This forces certain ordering in your config. |
+|---|---|
+| **No null safety** | Referencing a non-existent attribute is a runtime error during plan, not a parse error. Use `try()` defensively. |
+| **Ternary evaluates both branches** | Both sides are type-checked. A missing variable on the unselected branch still errors. |
+| **`for_each` keys must be known** | You cannot use computed resource outputs as `for_each` keys — the plan fails. Always derive keys from variables or locals. |
+| **No user-defined functions** | Repeated expressions must be named with `locals` or encapsulated in `modules`. |
+| **`dynamic` block keys must be known** | Same constraint as `for_each` on a resource — applies to nested block generation too. |
 
 ---
 
 ## Source References
 
 - [HCL Language Specification](https://github.com/hashicorp/hcl/blob/main/hclsyntax/spec.md) — the formal grammar
-- [Terraform Variables](https://developer.hashicorp.com/terraform/language/values/variables) — official docs
-- [Terraform Functions](https://developer.hashicorp.com/terraform/language/functions) — complete function reference
-- [Terraform Expressions](https://developer.hashicorp.com/terraform/language/expressions) — operators, conditionals, for expressions
+- [Terraform Input Variables](https://developer.hashicorp.com/terraform/language/values/variables) — variables, validation, types
+- [Terraform Expressions](https://developer.hashicorp.com/terraform/language/expressions) — references, operators, for expressions
+- [Terraform Functions](https://developer.hashicorp.com/terraform/language/functions) — complete built-in function reference
+- [dynamic Blocks](https://developer.hashicorp.com/terraform/language/expressions/dynamic-blocks) — official docs
+- [terraform_data resource](https://developer.hashicorp.com/terraform/language/resources/terraform-data) — built-in resource reference

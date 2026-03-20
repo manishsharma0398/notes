@@ -1,33 +1,41 @@
 # Chapter 06 — Multi-Environment and Multi-Account — Revision Notes
 
-## 1. Three approaches: Workspaces, Directory-per-Env, and Terragrunt
+## 1. Three approaches — different tradeoffs on DRY vs isolation
 
-- **Workspaces**: Same config, multiple state files. DRY — zero config duplication. Run `terraform workspace select stg`. Risk of wrong-workspace apply locally.
-- **Directory-per-env**: Separate directory (`stg/`, `prod/`), each with its own `backend.tf` and `provider`. 100% state isolation, but requires copy-pasting the root module config.
-- **Terragrunt**: A wrapper over Terraform that provides the best of both. You use directory-per-env (`stg/`, `prod/`), but instead of duplicating `.tf` code, you write a `terragrunt.hcl` file that dynamically generates the backend and points to shared code in a `resources/` folder.
+| Approach | State isolation | Access isolation | Code duplication | Best for |
+|---|---|---|---|---|
+| **Workspaces** | Yes (separate state files) | No — shared credentials | None | Single account, low env divergence, CI/CD controlled |
+| **Directory-per-env** | Yes | Yes — per-dir provider/credentials | ~50 lines root module per env | Multi-account, significant env divergence, team scale |
+| **Terragrunt** | Yes | Yes | ~0 lines (generates backend/vars) | Enterprise, many envs/accounts → covered in ch20 |
 
-## 2. Assume role for multi-account — temporary credentials via STS
+## 2. Workspace mechanics and the `default` workspace risk
 
-- Provider's `assume_role` block calls `sts:AssumeRole` → gets temporary credentials (1h default).
-- CI/CD runner lives in a shared services account, assumes roles into dev/stg/prod accounts.
-- Each account's role has a **trust policy** (who can assume) and a **permissions policy** (what they can do).
-- Provider aliases (`provider "aws" { alias = "shared" }`) allow one config to manage resources across multiple accounts.
+- Each workspace has its own state file. S3 key is `env:/workspace/base-key`.
+- `terraform.workspace` = the current workspace name — use in `env_config` map lookups, `prefix`, and `common_tags`.
+- **`default` workspace risk**: if anyone runs `apply` without selecting a workspace, they hit `default` — a separate state, untracked by your pipeline. Always guard: `contains(["stg", "prod"], terraform.workspace)` in a `locals` block or enforce workspace selection in CI/CD.
+- `env_config` map pattern: centralize ALL per-env values into one `locals` map. Index it with `terraform.workspace`. Resources have no inline conditionals.
 
-## 3. Remote state data sources are a fragile cross-stack contract
+## 3. Multi-account: assume_role pattern
 
-- `data "terraform_remote_state"` reads another stack's outputs from its state file.
-- **No compile-time contract**: if the upstream stack renames/removes an output, your plan fails at runtime.
-- Requires read access to the other stack's state file (which contains ALL their secrets).
-- **Better alternative**: Publish values to SSM Parameter Store. Explicit, tool-agnostic, no state file access needed.
+- Provider `assume_role` block calls `sts:AssumeRole` → receives temporary credentials (default: 1h TTL).
+- **Trust policy** on the target role limits WHO can assume it (e.g., only the CI/CD runner's IAM role).
+- `external_id` in `assume_role` prevents confused deputy attack — third parties cannot trick your CI into assuming the role.
+- Developer laptops cannot assume the prod deployment role — only the CI/CD pipeline can. This is the access isolation workspaces can't provide.
+- Provider aliases + `providers` map: one config can touch multiple accounts using aliased providers.
 
-## 4. Backend blocks cannot use variables — this is an `init`-time limitation
+## 4. Backend blocks cannot use variables — init-time constraint
 
-- Backend is configured during `terraform init`, BEFORE variables/locals are evaluated.
-- Workarounds: `-backend-config` CLI flags, `.hcl` config files, or just hardcode per environment (simple with directory-per-env).
-- `terraform init -backend-config=backend.hcl` is the cleanest for CI/CD.
+- Backend is configured during `terraform init`, before variables/locals are evaluated.
+- Workarounds: `-backend-config` CLI flags, `-backend-config=file.hcl`, or just hardcode per directory (simplest with directory-per-env).
+- The 6-line backend block repeated across environment directories is cheap and readable — not worth abstracting.
 
-## 5. Start single-account, directory-per-env — add multi-account when you need it
+## 5. Cross-stack dependencies — prefer SSM over `terraform_remote_state`
 
-- Single account + directory-per-env gives you full state isolation without AWS Organizations complexity.
-- When you add a second AWS account, add `assume_role` to the prod provider — no structural change.
-- CI/CD maps naturally: one job per directory, no workspace-switching logic.
+- `terraform_remote_state`: reads another stack's outputs from its S3 state file. Requires read access to the entire state (exposes all secrets). Output renames break consumers at plan time with no compile-time check.
+- **SSM Parameter Store** (preferred): upstream stack publishes a parameter (`/project/env/name`), downstream reads it via `data "aws_ssm_parameter"`. Explicit contract, no state file access, any tool can read it.
+- Variable + manual tfvars: zero coupling, fine for solo projects.
+
+## 6. Workspace vs directory-per-env — choice factors
+
+- **Use workspaces when**: single AWS account, environments are nearly identical, CI/CD strictly controls workspace selection.
+- **Switch to directory-per-env when**: environments diverge significantly (prod-only WAF, alarms), you need multi-account isolation, or prod-only `count` conditionals accumulate beyond ~5.

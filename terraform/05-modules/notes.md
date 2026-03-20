@@ -1,46 +1,55 @@
 # Chapter 05 — Modules — Revision Notes
 
-## 1. A module is just a directory of .tf files — nothing more
+## 1. A module is just a directory of .tf files — the root is already one
 
-- The root directory is the "root module." Modules you call are "child modules."
-- No special syntax, no compilation, no build step. A directory with `.tf` files = a module.
-- Convention: `main.tf`, `variables.tf`, `outputs.tf`. Terraform doesn't enforce filenames.
-- Modules are like functions: inputs (variables), body (resources), outputs (return values).
+- No special syntax, no build step, no registry required. A directory with `.tf` files = a module.
+- Root config = root module. Directories called via `module {}` = child modules. No structural difference.
+- Convention: `versions.tf` (required_providers + version constraint), `variables.tf`, `main.tf`, `outputs.tf`. Terraform doesn't enforce filenames — these are for humans.
+- Always declare `required_providers` in `versions.tf` — without it, the module silently accepts whatever version the caller has, which may be incompatible.
 
-## 2. Modules enforce encapsulation — no side-channel communication
+## 2. Modules enforce encapsulation — all communication is explicit
 
-- A child module **cannot** access parent variables, resources, or locals.
-- All communication flows through **inputs** (variables in) and **outputs** (values out).
-- Callers **cannot** reach into module internals: `module.x.aws_resource.y.attr` is an error. Use `module.x.output_name`.
-- This is a feature: the module author can refactor internals without breaking callers.
+- A child module **cannot** access parent variables, locals, or resources.
+- Inputs: passed as arguments in the `module {}` block → received as `var.x` inside.
+- Outputs: only `output` blocks are visible to callers. Internal resources are hidden.
+- `module.x.aws_resource.name.attr` → **compile error**. Use `module.x.output_name` instead.
+- This means: the module author can rename/restructure internal resources without breaking callers — as long as output names and types stay the same.
+- `sensitive = true` on an output hides the value in plan/apply terminal output. It's still stored in state as plaintext.
 
 ## 3. Module sources — always pin versions
 
 | Source | When to use |
-|--------|-------------|
-| Local path (`../modules/x`) | Same repo, fast iteration |
-| Terraform Registry (`terraform-aws-modules/vpc/aws`) | Community modules, well-maintained |
-| Git (`git::https://...?ref=v1.0.0`) | Private org modules across repos |
-| S3 | Air-gapped environments |
+|---|---|
+| Local path (`../modules/x`) | Same repo; fast iteration; no download needed |
+| Terraform Registry (`terraform-aws-modules/vpc/aws`) | Community modules; `version =` required |
+| Git (`git::https://...//path?ref=v1.0.0`) | Private org modules across repos |
+| S3 | Air-gapped / strictly controlled environments |
 
-- **Always pin**: `version = "5.1.0"` (registry) or `?ref=v1.0.0` (Git tag).
-- Unpinned = non-deterministic. Next `init` could download a breaking change.
+- **Always pin**: `version = "5.1.0"` (registry) or `?ref=v1.0.0` (Git tag — not a branch).
+- Unpinned registry or `?ref=main` = non-deterministic. Next `terraform init` can break your infra.
+- Re-run `terraform init` after any change to a module's `source`.
 
-## 4. Three composition patterns — start flat, extract when duplicating
+## 4. Provider inheritance and the `providers` map
+
+- Child modules **automatically inherit** the parent's providers — no `provider` block needed inside.
+- **Never** declare a `provider` block in a child module (unless it's the root). It creates a second provider instance → resources land in the wrong region or account.
+- For multi-region/account: use provider `alias` in root, pass via `providers = { aws = aws.alias }` in the `module {}` block.
+
+## 5. Three composition patterns — start flat, extract when duplicating
 
 | Pattern | When |
-|---------|------|
-| **Flat** (all resources in root) | Small project, < 10 resources, still designing |
-| **Feature modules** (local `modules/` dir) | Duplicating resource groups within one repo |
-| **Shared module repo** (Git source) | Multiple services/repos need the same module |
+|---|---|
+| **Flat** — all resources in root | < 10 resources, still designing |
+| **Local feature modules** (`modules/` dir) | Copy-pasting a resource group for a second instance is the signal to extract |
+| **Shared module repo** (Git source, versioned) | Two+ repos/services need the same module |
 
-- Don't pre-optimize. Start flat. Extract modules when you copy-paste resource groups.
-- Modules with 30+ variables aren't abstracting — they're wrapping. That's a code smell.
+- Modules with 30+ input variables aren't abstracting — they're wrapping. That's a code smell.
+- Modules that wrap a single resource provide zero abstraction — use the resource directly.
+- Start flat. Extract after the pattern stabilises.
 
-## 5. Modules in the graph and state are namespaced
+## 6. Modules in the graph and state are namespaced — refactoring needs `moved` blocks
 
-- Resource addresses become: `module.<name>.<type>.<resource>`
-  - Example: `module.presign_lambda.aws_lambda_function.this`
-- State stores module resources with their full namespaced address.
-- Dependencies cross module boundaries transparently — Terraform tracks references into module outputs.
-- Refactoring (moving resources into/out of modules) requires `moved` blocks to avoid destroy+create.
+- Resource addresses: `module.<name>.<type>.<resource>` (e.g., `module.presign_lambda.aws_lambda_function.this`)
+- State stores the full namespaced address. `terraform state show module.presign_lambda.aws_lambda_function.this` works.
+- Moving a resource into a module, or renaming inside a module, requires `moved` blocks to prevent destroy+create.
+- `for_each` on a module: same rules as resource `for_each` — key-based identity, keys must be known at plan time.

@@ -1,33 +1,45 @@
-# Chapter 03 — State File — Revision Notes
+# Chapter 03 — The State File — Revision Notes
 
-## 1. State = Terraform's map from resource addresses to cloud IDs
+## 1. State = Terraform's map from HCL addresses to cloud resource IDs and attributes
 
-- Without state, Terraform can't know which real cloud resource corresponds to which `resource` block.
-- State is a **JSON file** with a `serial` (incrementing counter), `lineage` (UUID), and a `resources` array.
-- State stores **every attribute** the provider returned — including values you didn't set in config.
+- State is a JSON file (`terraform.tfstate`) with `serial` (write counter), `lineage` (project UUID), outputs, and a `resources` array.
+- Every attribute the provider returned at apply time is stored — not just what you declared in config.
+- Key fields: `serial` (optimistic concurrency), `lineage` (prevents cross-project state swaps), `attributes` (full resource snapshot).
 
-## 2. Terraform diffs THREE things during plan: config vs state vs cloud
+## 2. Terraform diffs three things simultaneously during plan: config vs state vs cloud
 
-- **Config** = what you want. **State** = what was last recorded. **Cloud** = what actually exists (refreshed via `ReadResource`).
-- Drift = cloud reality ≠ state. Terraform detects drift during refresh and plans to revert cloud to match config.
-- Between `plan` runs, Terraform is **completely blind** to drift. There is no continuous monitoring.
+- **Config** = what you want. **State** = what was last recorded. **Cloud** = what actually exists (fetched via provider `ReadResource`).
+- Drift = cloud ≠ state. Terraform detects it during refresh and plans to **revert** cloud to match config.
+- Between `plan` runs Terraform is completely blind to drift — no continuous monitoring, only point-in-time detection at plan time.
+- `terraform plan -refresh-only` → shows what state WOULD become after refresh; `terraform apply -refresh-only` → accepts cloud changes into state without reverting them.
+- `-refresh=false` → skips `ReadResource`, uses stale state. Faster, but hides drift. Never use in production pipelines.
 
-## 3. `terraform import` adds existing resources to state — it does NOT generate config
+## 3. `terraform import` adds to state — it does NOT generate config
 
-- Import calls `ReadResource` and writes the result into state at a given address.
-- **You must write the HCL resource block yourself.** If your config doesn't match the imported state, the next `plan` will show changes.
-- Modern approach: `import {}` block in config (Terraform 1.5+) — reviewable in Git, works in CI/CD.
+- CLI: `terraform import <address> <cloud-id>` writes state but nothing else. You must write the HCL resource block manually.
+- After import: run `terraform plan` and iterate config until 0 changes. Or use `terraform plan -generate-config-out=generated.tf` (v1.5) to auto-generate the HCL.
+- **Better way**: `import {}` block in config (v1.5+) — in version control, goes through code review, runs in normal plan/apply flow.
 
-## 4. Remote state with S3+DynamoDB solves three problems
+## 4. Remote state with S3 backend solves four local-state problems: locking, sharing, versioning, security
 
-- **Locking**: DynamoDB conditional write ensures only one `apply` runs at a time.
-- **Sharing**: Multiple engineers access the same state from S3.
-- **Security**: S3 encryption at rest + bucket policy restricts access.
-- **Chicken-and-egg**: The state bucket itself must be created first (manually or with a bootstrap Terraform config that uses local state).
+- DynamoDB locking: conditional `PutItem` with `attribute_not_exists` — atomic; only one apply runs at a time.
+- **S3 native locking** (`use_lockfile = true`, v1.11): conditional `PutObject` with `If-None-Match: *` replaces DynamoDB entirely. No separate table needed.
+- Chicken-and-egg: create the state bucket manually (or via a bootstrap local-state config), then `terraform init -migrate-state` to move local state to S3.
+- `terraform_remote_state` data source: reads another stack's outputs from its remote state. Operational risk: if that stack removes an output, this stack's next plan breaks.
 
-## 5. State contains secrets in plaintext — always protect it
+## 5. State contains secrets in plaintext — `sensitive = true` only hides terminal output
 
-- Lambda env vars, RDS passwords, API keys — all stored in plaintext JSON.
-- `sensitive = true` only hides values from `plan` output, **NOT from the state file**.
-- **Always**: encrypt S3 backend, restrict bucket access, add `*.tfstate` to `.gitignore`.
-- **Better practice**: Use Secrets Manager for sensitive values. Terraform stores only the secret's ARN in state.
+- Lambda env vars, RDS passwords, KMS key IDs — all stored in the state JSON, regardless of `sensitive = true`.
+- Mitigations: S3 `encrypt = true`, bucket policy restricting access, S3 versioning enabled, `*.tfstate` in `.gitignore`.
+- Best practice: don't pass secrets as Terraform-managed values at all. Use Secrets Manager and pass only the ARN. State stores the ARN, not the secret.
+
+## 6. State manipulation: always prefer declarative over imperative
+
+| Task | Imperative (CLI) | Declarative (config) |
+|---|---|---|
+| Rename/move a resource | `terraform state mv old new` | `moved { from = old  to = new }` (v1.1+) |
+| Remove from state but don't destroy | `terraform state rm address` | `removed { from = … lifecycle { destroy = false } }` (v1.7+) |
+| Force rebuild | `terraform taint` (deprecated) | `terraform apply -replace=address` |
+
+- `moved` and `removed` blocks are code-reviewed, CI/CD-compatible, and run through normal plan/apply flow.
+- After `state rm` without removing the config block: Terraform will try to create a duplicate resource on next apply → cloud conflict error.
