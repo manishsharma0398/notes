@@ -1,120 +1,144 @@
-# Chapter 07 — Terraform in CI/CD
+# Chapter 07 — Terraform in CI/CD (GitLab CI & GitHub Actions)
 
 ## Mental Model
 
-Running Terraform on your laptop is fine for testing, but in a team (or a disciplined solo project like Prasaarit), Terraform should exclusively run in a CI/CD pipeline.
+**Problem this solves:** Terraform run on a developer's laptop is non-reproducible, non-auditable, and non-reviewable. Anyone can run `terraform apply` with local state of unknown freshness, using whatever AWS credentials they have in `~/.aws`, and there is no record of what changed or why. Teams of more than one person will corrupt each other's state.
 
-Why?
-1. **Consistency**: The deployment environment is always identical (same Terraform version, same tools).
-2. **Auditability**: Every infrastructure change is tied to a git commit and a pipeline log.
-3. **Drift Prevention**: Developers aren't manually applying changes that aren't in git.
+CI/CD for Terraform solves three things:
 
-The core CI/CD flow is a two-stage process matching Terraform's execution model:
+1. **Who can deploy** — only the pipeline can run `apply`; the IAM role that does it has no long-lived secret to steal
+2. **What gets deployed** — a human reviews the exact binary plan that will be applied, not a text description
+3. **When it's safe to deploy** — the lock table prevents two concurrent applies from tearing the state apart
+
 ```
-Git Commit ──► [Pipeline Starts] ──► terraform plan (creates plan file) ──► [Approval Gate] ──► terraform apply (consumes plan file)
+                 ┌───────────────────────────────────────────────────────────┐
+git push         │  PIPELINE                                                 │
+─────────────►  │                                                            │
+                 │  [validate/fmt]──►[terraform plan -out=plan.bin]──►[gate] │
+                 │                                                    │       │
+                 │                              human reviews plan    │       │
+                 │                              and clicks "deploy" ◄─┘       │
+                 │                                                            │
+                 │                    [terraform apply plan.bin]              │
+                 └───────────────────────────────────────────────────────────┘
 ```
+
+The **plan file** (`plan.bin`) is the contract. Everything in the pipeline centres on generating it safely, storing it safely, and consuming it exactly — not recalculating it.
 
 ---
 
-## 1. Saved Plan Files: The Contract
+## Topic 1 — Saved Plan Files: The Core Contract
 
-The biggest mistake teams make in CI/CD is this script:
+### Mechanism
 
-```bash
-# WRONG - DANGEROUS PIPELINE
-terraform apply -auto-approve
-```
+`terraform plan -out=tfplan.bin` serialises the desired diff into a binary protobuf file. This file contains:
+- The exact current state snapshot Terraform refreshed against
+- The exact set of resource changes (create / update / replace / destroy)
+- Encoded provider schemas
 
-Or this two-stage pipeline:
-
-```bash
-# Job 1 (Plan phase)
-terraform plan
-
-# Job 2 (Apply phase - runs later)
-terraform apply -auto-approve
-```
-
-**Why this is dangerous:** What you reviewed in Job 1 is NOT necessarily what Job 2 applies. `terraform apply` without a plan file calculates a _new_ plan implicitly. If someone changed the cloud via the console between Job 1 and Job 2, Job 2 will apply a different set of changes than what was approved.
-
-### The Fix: Binary Plan Artifacts
-
-You must pass the **exact** plan calculated in the plan phase to the apply phase.
+When you run `terraform apply tfplan.bin`, Terraform does **not** recalculate. It executes the serialised changes verbatim. If the remote state has changed since the plan was created, the apply will detect the state version mismatch and fail with an error rather than silently applying a different plan.
 
 ```bash
-# Job 1 (Plan phase)
-terraform plan -out=tfplan.binary
+# Stage 1 — Plan job
+terraform plan -out=tfplan.bin          # generates the contract
 
-# Job 2 (Apply phase)
-# Takes tfplan.binary from Job 1's artifacts
-terraform apply tfplan.binary
+# Stage 2 — Apply job (hours later, after human review)
+terraform apply tfplan.bin             # executes exactly that contract
 ```
 
-When you pass a saved plan file, Terraform **guarantees** it will only execute those exact changes. If the state has diverged in the background since the plan was created, the `apply` will fail safely rather than doing something unexpected.
+### What Terraform Guarantees
 
-### The Security Warning
+- `terraform apply <planfile>` applies the exact diff captured at plan time.
+- If the state file version has changed since the plan was captured, the apply aborts.
+- The CLI will not prompt for confirmation when given an explicit plan file.
 
-Saved plan files contain **your entire state** and all planned changes in plaintext (including secrets). In GitLab CI, you must protect these artifacts:
-- Don't set public visibility on infrastructure pipelines.
-- Ensure the artifact expires quickly (e.g., `expire_in: 1 day`).
+### Failure Mode — The Stale Plan Anti-Pattern
+
+```bash
+# WRONG — extremely common pipeline mistake
+job_1: terraform plan          # output goes to stdout, nothing saved
+job_2: terraform apply -auto-approve  # computes a BRAND NEW plan silently
+```
+
+Between Job 1 and Job 2 (e.g., while waiting for human approval):
+- A colleague might have applied a different stack that shares state outputs
+- Someone might have manually changed a resource in the console
+- A scheduled Lambda or Auto Scaling event might have modified tags
+
+Job 2 will apply the **new** plan without human review. This is the most common cause of "but I approved the plan and something else happened" incidents.
+
+### Security Warning
+
+Binary plan files contain the **entire state** in decrypted form, including any secrets. A plan file for a stack that manages an RDS instance will contain the master password in plaintext inside the protobuf.
+
+**GitLab CI rules:**
+```yaml
+artifacts:
+  paths: [tfplan.bin]
+  expire_in: 1 hour      # do not leave plan files around indefinitely
+  access: developer      # restrict who can download artifacts
+```
+
+Never post `terraform show tfplan.bin` output as an MR comment without scrubbing. Sensitive values are masked in the CLI display but are present in the plan protobuf.
 
 ---
 
-## 2. OIDC Credential Injection (Passwordless Authentication)
+## Topic 2 — OIDC Credential Injection (Passwordless Authentication)
 
-How does your GitLab runner get permission to provision AWS resources?
+### Problem
 
-**The Old Way (Bad)**: Generate an IAM Data `Access Key ID` and `Secret Access Key` for a "gitlab_deployer" IAM user. Store them as masked CI/CD variables in GitLab.
-_Why it's bad_: Long-lived credentials leak. They get checked into code, accidentally logged, or an ex-employee takes them. You have to rotate them manually.
+The classical approach stores AWS Access Keys (`AKIA…`) as GitLab/GitHub CI/CD secrets. These are:
+- **Long-lived** — do not expire automatically, require manual rotation
+- **Broad** — one key for the whole account, not scoped to a single repo or branch
+- **Leakable** — accidentally logged, committed to history, or left in a former employee's memory
 
-**The Modern Way (OIDC)**: OpenID Connect. GitLab and AWS establish a trust relationship. GitLab gives the pipeline runner a temporary, cryptographically signed token (JWT). The runner trades that token with AWS STS for temporary IAM credentials.
+### Mechanism — OIDC Token Exchange
+
+OIDC (OpenID Connect) replaces long-lived keys with a short-lived trust handshake:
 
 ```
- GitLab Runner               AWS IAM
- ─────────────               ───────
-       │                        │
-       │ 1. "I am GitLab job "  │
-       │    running on repo X"  │
-       ├───────────────────────►│
-       │                        │ 2. Validates GitLab's signature
-       │                        │ 3. Checks Trust Policy (Is repo X allowed?)
-       │ 4. Here are temporary  │
-       │    access keys (1hr)   │
-       ◄────────────────────────┤
-       │                        │
+GitLab Runner                            AWS STS
+─────────────                            ───────
+      │                                     │
+      │  1. GitLab issues a signed JWT      │
+      │     for this specific pipeline job  │
+      │                                     │
+      │  2. Runner calls AssumeRoleWith     │
+      │     WebIdentity, passing JWT ──────►│
+      │                                     │  3. AWS verifies JWT signature
+      │                                     │     against GitLab's OIDC endpoint
+      │                                     │  4. AWS checks IAM role Trust Policy:
+      │                                     │     Is sub == "project_path:myorg/
+      │                                     │     myrepo:ref_type:branch:ref:main"?
+      │◄──── 5. Temporary credentials ──────│
+      │         (valid 60 min)              │
+      │                                     │
+terraform plan / apply (using temp creds)
 ```
 
-### Setting up OIDC for Prasaarit (GitLab -> AWS)
+### GitLab CI Setup
 
-**Step 1: In AWS, create the OIDC Identity Provider** (telling AWS to trust your GitLab instance).
-
+**Step 1 — AWS side (one-time bootstrap):**
 ```hcl
-# This is usually done once in a "bootstrap" terraform repo
+# Create the OIDC trust between AWS and GitLab
 resource "aws_iam_openid_connect_provider" "gitlab" {
   url             = "https://gitlab.com"
   client_id_list  = ["https://gitlab.com"]
-  thumbprint_list = ["b3dd..."] # GitLab's TLS certificate thumbprint
+  thumbprint_list = ["b3dd7606d2b5a8..."]  # GitLab's TLS thumbprint
 }
-```
 
-**Step 2: Create the IAM Role with a Trust Policy** (saying WHICH GitLab repo can assume it).
-
-```hcl
-resource "aws_iam_role" "gitlab_deploy_role" {
-  name = "PrasaaritGitlabDeployRole"
-
+resource "aws_iam_role" "ci_deploy" {
+  name = "terraform-ci-deploy"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
-      Principal = {
-        Federated = aws_iam_openid_connect_provider.gitlab.arn
-      }
-      Action = "sts:AssumeRoleWithWebIdentity"
+      Effect    = "Allow"
+      Principal = { Federated = aws_iam_openid_connect_provider.gitlab.arn }
+      Action    = "sts:AssumeRoleWithWebIdentity"
       Condition = {
-        "StringLike" = {
-          # ONLY allow the Prasaarit project, and ONLY the main branch
-          "gitlab.com:sub": "project_path:your-username/prasaarit-upload-service:ref_type:branch:ref:main"
+        StringLike = {
+          # Only allow the main branch of a specific project
+          "gitlab.com:sub" = "project_path:myorg/infra:ref_type:branch:ref:main"
         }
       }
     }]
@@ -122,165 +146,201 @@ resource "aws_iam_role" "gitlab_deploy_role" {
 }
 ```
 
-**Step 3: In `.gitlab-ci.yml`, trade the token**
-
+**Step 2 — `.gitlab-ci.yml`:**
 ```yaml
 deploy-prod:
-  # GitLab provides this token automatically
   id_tokens:
     GITLAB_OIDC_TOKEN:
-      aud: https://gitlab.com
+      aud: https://gitlab.com    # Tells GitLab to issue a JWT for this job
   script:
-    # Use AWS CLI to exchange the GitLab token for temporary AWS keys
-    - >
-      export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s"
-      $(aws sts assume-role-with-web-identity
-      --role-arn arn:aws:iam::123456789012:role/PrasaaritGitlabDeployRole
-      --role-session-name "GitLabRunner-${CI_PROJECT_ID}-${CI_PIPELINE_ID}"
-      --web-identity-token ${GITLAB_OIDC_TOKEN}
-      --duration-seconds 3600
-      --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]'
-      --output text))
-    # Now terraform runs using those temporary keys
+    - |
+      export $(aws sts assume-role-with-web-identity \
+        --role-arn arn:aws:iam::123456789012:role/terraform-ci-deploy \
+        --role-session-name "gitlab-ci-${CI_PIPELINE_ID}" \
+        --web-identity-token "${GITLAB_OIDC_TOKEN}" \
+        --duration-seconds 3600 \
+        --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+        --output text | awk '{print "AWS_ACCESS_KEY_ID="$1" AWS_SECRET_ACCESS_KEY="$2" AWS_SESSION_TOKEN="$3}')
     - terraform apply prod.tfplan
 ```
 
-Result: **Zero secrets stored in GitLab.** Highly secure.
+### GitHub Actions Setup
+
+```yaml
+# Must declare permissions for OIDC token request
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/terraform-ci-deploy
+          aws-region: ap-south-1
+          # GitHub Actions handles the token exchange automatically
+      - run: terraform apply prod.tfplan
+```
+
+### What Terraform Guarantees
+
+Nothing — Terraform does not manage credentials, it consumes `AWS_*` environment variables. The guarantee is at the IAM level: the temporary credentials have the permissions of the role you assumed and expire when the session ends.
+
+### Failure Mode — Overly Broad Trust Policy
+
+```hcl
+# DANGEROUS — allows ANY GitLab project to assume this role
+Condition = {
+  StringLike = {
+    "gitlab.com:sub" = "*"
+  }
+}
+```
+
+If your trust policy doesn't scope to a specific repository, project, and branch, any GitLab pipeline anywhere can assume your role. Always scope to the minimum: org, repo, and branch (`ref:main` not `ref:*`).
 
 ---
 
-## 3. Plan Review Gates
+## Topic 3 — Plan Review Gates
 
-You don't want every push to `main` deploying straight to production. You want a human to see the `terraform plan` output and approve it.
+### Mechanism
 
-In GitLab CI, this is handled using `when: manual`.
+A plan review gate is a pipeline pause between `plan` and `apply`. The binary plan artifact is stored, a human reviews it (ideally the text output), and explicitly approves execution.
 
+**GitLab CI — `when: manual`:**
 ```yaml
+stages: [validate, plan, apply]
+
+validate:
+  stage: validate
+  script:
+    - terraform fmt -check -recursive
+    - terraform validate
+
 plan-prod:
   stage: plan
   script:
     - terraform workspace select prod
     - terraform plan -out=prod.tfplan
-    # Optional but nice: Post the plan to the Merge Request
-    - terraform show prod.tfplan > plan.txt
+    - terraform show -no-color prod.tfplan | tee plan-output.txt
   artifacts:
-    paths: [prod.tfplan]
+    paths: [prod.tfplan, plan-output.txt]
+    expire_in: 4 hours
 
 apply-prod:
-  stage: deploy
-  when: manual        # Pipeline PAUSES here waiting for human click
+  stage: apply
   needs: [plan-prod]
+  when: manual              # Pipeline halts here — human must click ▶
   environment:
-    name: production
+    name: production        # Triggers GitLab Environment protection rules
   script:
     - terraform workspace select prod
     - terraform apply prod.tfplan
 ```
 
-The pipeline stops. You review `plan.txt` from the artifacts. If it looks correct, you click the "Play" button on the `apply-prod` job.
+**GitHub Actions — Environments + Required Reviewers:**
+```yaml
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      plan-file: ${{ steps.plan.outputs.plan-file }}
+    steps:
+      - run: terraform plan -out=prod.tfplan
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prod-tfplan
+          path: prod.tfplan
+
+  apply:
+    needs: plan
+    environment: production     # Requires approval from environment reviewers in GitHub settings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: prod-tfplan
+      - run: terraform apply prod.tfplan
+```
+
+### Operational Impact
+
+Ephemeral CI environments running `terraform workspace select prod` mid-pipeline is fine **only if** the workspace was selected consistently across both jobs. Ensure you `terraform init -reconfigure` or use a backend config file to guarantee both jobs connect to the same state backend endpoint.
 
 ---
 
-## 4. State Locking and Concurrency
+## Topic 4 — Locking and Concurrency
 
-What happens when Alice pushes a commit, triggering Pipeline A, and two minutes later Bob pushes a commit, triggering Pipeline B?
+### Mechanism
 
-Both pipelines run `terraform apply` against the same state file simultaneously.
-- Pipeline A reads state, decides to create Lambda X.
-- Pipeline B reads state, decides to create Lambda X.
-- Both call AWS API to create Lambda X. One fails, state is corrupted.
+State locking is covered deeply in Chapter 03. In CI/CD context:
 
-### The Fix: DynamoDB Lock Table
+```
+Pipeline A (Alice's push)          Pipeline B (Bob's push, 30s later)
+─────────────────────────          ──────────────────────────────────
+terraform plan                     terraform plan
+  → acquires DynamoDB lock           → acquires DynamoDB lock (OK, plan only reads)
+terraform apply                    terraform apply
+  → acquires exclusive write lock    → tries exclusive write lock
+                                     → FAILS: "Error acquiring the state lock"
+  → releases lock
+```
 
-If you configured your S3 backend with a `dynamodb_table`, Terraform handles this safely:
+Both plan phases can run in parallel. Only apply requires an exclusive lock. Pipeline B's apply fails immediately — it does not wait.
 
-1. Pipeline A starts `terraform plan`. It writes a lock record to DynamoDB.
-2. Pipeline B starts `terraform plan`. It checks DynamoDB, sees the lock, and **fails immediately**:
-   `Error: Error acquiring the state lock`
-3. Pipeline A finishes, deletes the lock record.
-4. Bob must re-run Pipeline B.
+### The Two-Layer Defense
 
-This is a feature, not a bug. It forces pipeline serialization.
+**Layer 1 — Terraform's DynamoDB/S3 lock (correctness):**
+Prevents state corruption. If Pipeline B fails to acquire the lock, it errors immediately. This is the hard stop — state is safe.
 
-**Advanced GitLab Tip**: You can tell GitLab to restrict pipeline concurrency inherently, so the second pipeline queues up rather than failing on the Terraform lock:
+**Layer 2 — CI/CD concurrency control (UX):**
+Instead of failing Pipeline B, queue it until Pipeline A finishes. This avoids wasted pipeline runs and means both deployments eventually succeed.
 
 ```yaml
-# In .gitlab-ci.yml
-deploy-prod:
-  resource_group: production-env   # GitLab ensures only one job runs this at a time
+# GitLab
+apply-prod:
+  resource_group: production-tf  # GitLab queues concurrent jobs instead of running them
   script:
     - terraform apply prod.tfplan
 ```
 
----
-
-## The Perfect Pipeline (GitLab CI + Workspaces)
-
-Bringing it all together for your Prasaarit project:
-
-1. **Format/Validate** on every commit (fast feedback).
-2. **Plan (Stg)** on merge requests.
-3. **Apply (Stg)** automatically on merge to `main`.
-4. **Plan (Prod)** automatically after Stg deploy.
-5. **Apply (Prod)** via manual click on `main`.
-
-_See `examples/gitlab-ci.md` for the complete implementation._
-
----
-
-## 5. Terragrunt in CI/CD
-
-If you are using Terragrunt, the CI/CD pipeline principles remain the same (OIDC, locking, manual review gates), but the execution commands change slightly.
-
-### The `--non-interactive` Flag
-
-Terragrunt occasionally prompts the user interactively (e.g., "Do you want to create the S3 state bucket now?"). In a GitLab pipeline, an interactive prompt will hang the job until it times out. 
-
-**Rule:** Always pass `--non-interactive` in CI (Note: In older versions of Terragrunt before RFC-3445, this flag was `--terragrunt-non-interactive`).
-
 ```yaml
-script:
-  - terragrunt plan --non-interactive -out=plan.tfplan
+# GitHub Actions — use concurrency groups
+concurrency:
+  group: terraform-prod
+  cancel-in-progress: false      # Don't cancel — queue instead
 ```
 
-### Passing Binary Plans in Terragrunt
+### What Terraform Guarantees
 
-The syntax for passing a binary plan file in Terragrunt is identical to native Terraform, but you must make sure Terragrunt is running against the same `.terragrunt-cache` directory in both the `plan` and `apply` jobs, OR use absolute paths.
+- If the lock cannot be acquired within a timeout (`-lock-timeout=0s` by default, fails immediately), the operation aborts.
+- The state file is never left in a partial write state if the locking backend is functioning. (The `terraform apply` writes state atomically after all changes complete or to reflect partial progress on error.)
+- `terraform force-unlock <lock-id>` is available as an escape hatch if a pipeline dies mid-apply and leaves a stale lock. **This is dangerous.** Only use it when you are certain no apply is actually running.
 
-```yaml
-plan-stg:
-  script:
-    # Generate the plan file at the root of the repository
-    - terragrunt plan --non-interactive -out=$CI_PROJECT_DIR/stg.tfplan
-  artifacts:
-    paths:
-      - stg.tfplan
+### Failure Mode — Stale Lock after CI Runner Crash
 
-apply-stg:
-  script:
-    # Consume the absolute path to the plan file
-    - terragrunt apply --non-interactive $CI_PROJECT_DIR/stg.tfplan
-```
-
-### Orchestrating Multiple Modules with `run --all`
-
-If your environment contains multiple modules (e.g., `vpc/terragrunt.hcl`, `database/terragrunt.hcl`, `lambda/terragrunt.hcl`), native Terraform requires you to run them one by one in the correct dependency order.
-
-Terragrunt handles this automatically using the `--all` flag (formerly `run-all`). In CI/CD, this collapses a complex multi-stage pipeline into a single command:
-
-```yaml
-deploy-stg:
-  script:
-    # Terragrunt scans the directory tree, calculates dependencies, 
-    # creates the VPC, then the DB, then the Lambda, in parallel where possible.
-    - terragrunt run --all apply --non-interactive --queue-exclude-dir .terragrunt-cache
-```
-
-*(Note: `run --all plan` with binary plan files is currently difficult to implement cleanly in CI because each module requires its own `-out` file. Most teams rely on `run --all apply --non-interactive` for lower environments, and single-module `plan/apply` for production).*
+If a GitLab runner is killed mid-apply (OOM, pipeline timeout, spot instance termination), the DynamoDB lock record remains. The next pipeline will see `Error acquiring the state lock` indefinitely. You must:
+1. Verify no apply is actually running (`terraform show` against the state and inspect AWS resources)
+2. Run `terraform force-unlock <lock-id>` with the ID shown in the error
 
 ---
+
+## What Terraform Guarantees (Chapter Summary)
+
+| Concern | Guarantee |
+|---|---|
+| Binary plan file | Applies exactly the captured diff; aborts if state diverged |
+| OIDC credentials | Scoped to a specific role; expire automatically (60 min) |
+| State locking | Prevents concurrent writes; cannot prevent two separate plans choosing conflicting changes |
+| Plan review gate | Human sees what will happen; `apply <planfile>` executes exactly that |
+| Concurrency | Terraform guarantees the lock; CI/CD is responsible for queueing or graceful failure |
+
+---
+
 ## Source References
 
-- [Running Terraform in Automation](https://developer.hashicorp.com/terraform/tutorials/automation/automate-terraform) — Official HashiCorp guide
-- [GitLab CI/CD OIDC with AWS](https://docs.gitlab.com/ee/ci/cloud_services/aws/) — GitLab docs on passwordless auth
-- [Terraform CLI: Backend DynamoDB Lock](https://developer.hashicorp.com/terraform/language/settings/backends/s3#dynamodb_table) — How state locking works
+- [Running Terraform in Automation](https://developer.hashicorp.com/terraform/tutorials/automation/automate-terraform) — HashiCorp official guide
+- [GitLab CI: OIDC with AWS](https://docs.gitlab.com/ee/ci/cloud_services/aws/) — Passwordless auth setup
+- [GitHub Actions: OIDC with AWS](https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services)
+- [S3 Backend docs: locking](https://developer.hashicorp.com/terraform/language/settings/backends/s3)

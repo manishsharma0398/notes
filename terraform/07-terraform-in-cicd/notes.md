@@ -1,30 +1,29 @@
 # Chapter 07 — Terraform in CI/CD — Revision Notes
 
-## 1. Never run `terraform apply -auto-approve` without a plan file
+## 1. Always pass a saved binary plan between pipeline stages
 
-- A two-stage pipeline (`terraform plan` in Job 1, `terraform apply` in Job 2) is **unsafe** unless Job 2 consumes the exact output of Job 1.
-- Without a plan file, `terraform apply` computes a new plan. If the cloud state diverged between Job 1 and Job 2, the unreviewed changes will be applied silently.
-- **The fix**: `terraform plan -out=tfplan.binary` in Job 1, pass the file as an artifact, run `terraform apply tfplan.binary` in Job 2.
+- `terraform plan -out=tfplan.bin` serialises the diff as a binary protobuf. `terraform apply tfplan.bin` executes exactly that diff — it does not recalculate.
+- `terraform apply -auto-approve` (without a plan file) always recalculates a fresh plan. What you reviewed is not what gets applied.
+- If the state has changed between plan and apply, `terraform apply tfplan.bin` detects the version mismatch and **aborts** rather than applying silently.
 
-## 2. OIDC (OpenID Connect) replaces long-lived AWS keys
+## 2. OIDC replaces long-lived AWS access keys in CI
 
-- Don't store AWS Access Keys (`AKIA...`) in GitLab CI/CD variables. They leak and need rotation.
-- **OIDC pattern**: GitLab gives the pipeline runner a cryptographically signed token (JWT). The runner trades this token via `sts:AssumeRoleWithWebIdentity` for temporary AWS credentials (valid for 1 hour).
-- You secure the AWS IAM role by adding a `Condition` in the Trust Policy that restricts which GitLab repository (and branch) is allowed to assume the role.
+- Store no `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in GitLab/GitHub CI variables.
+- GitLab/GitHub issues a signed JWT per pipeline job. The runner exchanges it via `sts:AssumeRoleWithWebIdentity` for temporary credentials (60 min TTL).
+- The IAM role Trust Policy must scope the `sub` condition to a specific repo and branch (`ref:main`), not a wildcard — otherwise any pipeline in the world can assume the role.
 
-## 3. Plan review gates require pausing the pipeline
+## 3. A plan review gate pairs `when: manual` (GitLab) or an Environment (GitHub) with the binary plan artifact
 
-- Staging deployments can be fully automated on merge to `main`.
-- Production deployments must be gated behind human review of the plan output.
-- In GitLab CI, this is implemented using `when: manual` on the production apply job. The pipeline waits, the human reviews the plan artifact, and clicks "Play".
+- The pipeline pauses. The reviewer reads the plan text artifact. Only after explicit approval does `terraform apply tfplan.bin` execute the exact captured plan.
+- The plan text artifact must expire quickly (`expire_in: 1 hour`) and be restricted to authorised users — it may contain plaintext secrets despite `sensitive = true` masking the CLI display.
 
-## 4. State locking prevents concurrency corruption
+## 4. State locking provides the hard stop; CI concurrency groups provide the graceful queue
 
-- If two pipelines run `terraform apply` simultaneously (e.g., Alice and Bob push to `main` at the same time), the state file will be corrupted or race conditions will occur.
-- **The fix**: The S3 backend `dynamodb_table` handles locking. The first pipeline acquires the lock; the second pipeline fails immediately with `Error acquiring the state lock`.
-- In GitLab CI, you can prevent the job failure entirely by using `resource_group: production-env`. GitLab will automatically queue the second pipeline to run only after the first one finishes.
+- Two concurrent applies competing for the same DynamoDB lock: the second one fails immediately with `Error acquiring the state lock`. State is safe.
+- GitLab `resource_group: production-tf` / GitHub `concurrency: group: terraform-prod` queues the second pipeline rather than failing it, so both eventually succeed.
+- A CI runner killed mid-apply leaves a stale lock. Recover with `terraform force-unlock <lock-id>` — but only after confirming no apply is actually running.
 
-## 5. Saved plan files contain plaintext secrets
+## 5. `terraform init` must run in every CI job that touches state; never cache `.terraform/` between differing configurations
 
-- Outputting a plan to a text file (`terraform show tfplan.binary > plan.txt`) for human review means the plain text file might contain database passwords or private keys in the diff.
-- **Security rule**: Ensure pipeline artifacts expire quickly (`expire_in: 1 day`) and the repository/pipeline visibility is restricted to authorized team members.
+- Each CI job runs in a fresh container. `terraform init` downloads the provider, reinitialises the backend connection, and creates the lock file.
+- Caching the `.terraform/` directory between jobs is an optimisation but carries risk: a stale provider binary cache may mask version drift. Always pin `required_providers` versions and let `init` verify the lock file.

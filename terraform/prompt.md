@@ -189,65 +189,7 @@ Each chapter includes questions like:
 - Why provisioners break idempotency guarantees: what happens when `terraform apply` is run twice
 - Alternatives: cloud-init / user_data, AWS Systems Manager Run Command, container images
 
-### 12 — AWS IAM (Identity & Access)
-
-- Provider authentication and `default_tags`
-- Trust Policies vs Permission Policies
-- Breaking circular dependencies (e.g., Lambda ARN & IAM Role)
-- The Principle of Least Privilege in IaC
-- IAM eventual consistency: why resources that depend on a new IAM role fail immediately after creation — the `aws_iam_role_policy_attachment` + sleep workaround and the proper `depends_on` fix
-
-### 13 — AWS S3 (Storage)
-
-- The Provider v4 Disaggregation (`aws_s3_bucket`, versioning, encryption, public_access_block)
-- Bucket Policies vs IAM Policies
-- Handle `force_destroy` and mitigating naming collisions
-
-### 14 — AWS Lambda (Compute)
-
-- Execution environments, deployment packages, and Layers
-- Handling Code Drift: `archive_file` vs CI/CD "Dummy Zip" deployments
-- Zip artifact hashing — why filename hash forces replacement, how to use `source_code_hash` correctly
-- Lambda layers: version pinning behavior, what happens on layer update, forced replacement triggers
-
-### 15 — AWS API Gateway (Routing)
-
-- HTTP APIs (v2) vs REST APIs (v1) architectural differences
-- Lambda Proxy Integrations and Stages
-- The critical `aws_lambda_permission` Resource Policy requirement
-- Stage deployment model — why API GW changes require an explicit deployment resource
-
-### 16 — AWS DynamoDB (Data)
-
-- Table schema requirements (Partition key, Sort key, limits on non-key attributes)
-- Capacity Modes: `PROVISIONED` vs `PAY_PER_REQUEST` (On-Demand)
-- Global Secondary Indexes (GSIs)
-- Handling destructive changes (Why you cannot change a primary key)
-- Billing mode changes, GSI additions — what triggers table replacement vs in-place update
-
-### 17 — AWS Secrets Management
-
-- The State File vulnerability (Why `sensitive = true` does not encrypt state passwords)
-- AWS SSM Parameter Store (`SecureString`) vs Secrets Manager
-- Decoupling secret storage from infrastructure provisioning via data sources
-- Generating secure random passwords in memory
-- Using ephemeral resources for Secrets Manager tokens: no state footprint for short-lived credentials
-
-### 18 — AWS VPC Networking
-
-- The 3-tier architecture: Public, Private, and Isolated Subnets
-- Route tables, Internet Gateways, and NAT Gateways
-- Stateful Security Groups vs Stateless NACLs
-- `dynamic` blocks for security group rules: when to use them and when they become unmanageable
-
-### 19 — Advanced AWS Integration (ECS, EKS, RDS)
-
-- **ECS task definitions**: why every `terraform apply` creates a new revision even with no changes (and how to stop it)
-- **ECS services**: `force_new_deployment` behavior, what Terraform does vs what ECS does during deploy
-- **EKS**: Helm provider vs kubectl provider — what each owns in state, conflict risks
-- **RDS**: `apply_immediately` vs maintenance window — what each option costs you for running workloads
-
-### 20 — Terragrunt
+### 12 — Terragrunt
 
 - Terragrunt's problem statement: why raw Terraform repetition across environments breaks at scale — the DRY infrastructure argument
 - **Units**: a `terragrunt.hcl` file as the smallest atomic deployable unit; how Terragrunt downloads and executes versioned remote modules
@@ -261,6 +203,64 @@ Each chapter includes questions like:
 - **Terragrunt caching**: `.terragrunt-cache`, when to use `--source-update`, local development with `--source`
 - State backend generation: how Terragrunt generates `backend.tf` to keep remote state config DRY across all units
 - When NOT to use Terragrunt: teams new to Terraform, simple single-account setups, when the added abstraction layer creates more confusion than it solves
+
+### 13 — AWS IAM (Identity & Access)
+
+- Provider authentication and `default_tags`
+- Trust Policies vs Permission Policies
+- Breaking circular dependencies (e.g., Lambda ARN & IAM Role)
+- The Principle of Least Privilege in IaC
+- IAM eventual consistency: why resources that depend on a new IAM role fail immediately after creation — the `aws_iam_role_policy_attachment` + sleep workaround and the proper `depends_on` fix
+
+### 14 — AWS S3 (Storage)
+
+- The Provider v4 Disaggregation (`aws_s3_bucket`, versioning, encryption, public_access_block)
+- Bucket Policies vs IAM Policies
+- Handle `force_destroy` and mitigating naming collisions
+
+### 15 — AWS Lambda (Compute)
+
+- Execution environments, deployment packages, and Layers
+- Handling Code Drift: `archive_file` vs CI/CD "Dummy Zip" deployments
+- Zip artifact hashing — why filename hash forces replacement, how to use `source_code_hash` correctly
+- Lambda layers: version pinning behavior, what happens on layer update, forced replacement triggers
+
+### 16 — AWS API Gateway (Routing)
+
+- HTTP APIs (v2) vs REST APIs (v1) architectural differences
+- Lambda Proxy Integrations and Stages
+- The critical `aws_lambda_permission` Resource Policy requirement
+- Stage deployment model — why API GW changes require an explicit deployment resource
+
+### 17 — AWS DynamoDB (Data)
+
+- Table schema requirements (Partition key, Sort key, limits on non-key attributes)
+- Capacity Modes: `PROVISIONED` vs `PAY_PER_REQUEST` (On-Demand)
+- Global Secondary Indexes (GSIs)
+- Handling destructive changes (Why you cannot change a primary key)
+- Billing mode changes, GSI additions — what triggers table replacement vs in-place update
+
+### 18 — AWS Secrets Management
+
+- The State File vulnerability (Why `sensitive = true` does not encrypt state passwords)
+- AWS SSM Parameter Store (`SecureString`) vs Secrets Manager
+- Decoupling secret storage from infrastructure provisioning via data sources
+- Generating secure random passwords in memory
+- Using ephemeral resources for Secrets Manager tokens: no state footprint for short-lived credentials
+
+### 19 — AWS VPC Networking
+
+- The 3-tier architecture: Public, Private, and Isolated Subnets
+- Route tables, Internet Gateways, and NAT Gateways
+- Stateful Security Groups vs Stateless NACLs
+- `dynamic` blocks for security group rules: when to use them and when they become unmanageable
+
+### 20 — Advanced AWS Integration (ECS, EKS, RDS)
+
+- **ECS task definitions**: why every `terraform apply` creates a new revision even with no changes (and how to stop it)
+- **ECS services**: `force_new_deployment` behavior, what Terraform does vs what ECS does during deploy
+- **EKS**: Helm provider vs kubectl provider — what each owns in state, conflict risks
+- **RDS**: `apply_immediately` vs maintenance window — what each option costs you for running workloads
 
 ### AWS-Specific Resource Behavior (Quick Reference)
 
