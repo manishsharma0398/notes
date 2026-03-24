@@ -24,7 +24,7 @@
 
 - DynamoDB locking: conditional `PutItem` with `attribute_not_exists` — atomic; only one apply runs at a time.
 - **S3 native locking** (`use_lockfile = true`, v1.11): conditional `PutObject` with `If-None-Match: *` replaces DynamoDB entirely. No separate table needed.
-- Chicken-and-egg: create the state bucket manually (or via a bootstrap local-state config), then `terraform init -migrate-state` to move local state to S3.
+- **Chicken-and-egg bootstrap**: 1. create `bootstrap/` config with `backend "local"` to provision S3 bucket. 2. `terraform apply`. 3. Add `backend "s3"` block to `bootstrap/` config with `use_lockfile = true`. 4. `terraform init -migrate-state` to move state to the bucket, enabling native S3 locking for the bootstrap itself.
 - `terraform_remote_state` data source: reads another stack's outputs from its remote state. Operational risk: if that stack removes an output, this stack's next plan breaks.
 
 ## 5. State contains secrets in plaintext — `sensitive = true` only hides terminal output
@@ -35,11 +35,11 @@
 
 ## 6. State manipulation: always prefer declarative over imperative
 
-| Task | Imperative (CLI) | Declarative (config) |
-|---|---|---|
-| Rename/move a resource | `terraform state mv old new` | `moved { from = old  to = new }` (v1.1+) |
-| Remove from state but don't destroy | `terraform state rm address` | `removed { from = … lifecycle { destroy = false } }` (v1.7+) |
-| Force rebuild | `terraform taint` (deprecated) | `terraform apply -replace=address` |
+| Task                                | Imperative (CLI)               | Declarative (config)                                         |
+| ----------------------------------- | ------------------------------ | ------------------------------------------------------------ |
+| Rename/move a resource              | `terraform state mv old new`   | `moved { from = old  to = new }` (v1.1+)                     |
+| Remove from state but don't destroy | `terraform state rm address`   | `removed { from = … lifecycle { destroy = false } }` (v1.7+) |
+| Force rebuild                       | `terraform taint` (deprecated) | `terraform apply -replace=address`                           |
 
 - `moved` and `removed` blocks are code-reviewed, CI/CD-compatible, and run through normal plan/apply flow.
 - After `state rm` without removing the config block: Terraform will try to create a duplicate resource on next apply → cloud conflict error.

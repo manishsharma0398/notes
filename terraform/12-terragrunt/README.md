@@ -2,7 +2,7 @@
 
 ## Mental Model
 
-**The problem Terraform doesn't solve:** Terraform is a good DSL for describing a single root module's infrastructure. But it has no answer to *repetition across environments*. If you have three environments (dev / stg / prod) across three AWS accounts you need to:
+**The problem Terraform doesn't solve:** Terraform is a good DSL for describing a single root module's infrastructure. But it has no answer to _repetition across environments_. If you have three environments (dev / stg / prod) across three AWS accounts you need to:
 
 - Copy-paste a `backend {}` block into every single root module (9 files)
 - Copy-paste a `provider "aws" {}` block with `assume_role` into every root module
@@ -68,7 +68,7 @@ All keys in the `inputs = { ... }` block are serialised and exported as `TF_VAR_
 
 ### `locals` block
 
-Evaluated by an iterative resolver (`pkg/config/locals.go`). Each local can reference other locals. References are resolved in multiple passes — forward references work as long as there are no cycles. Locals from included parent files are **not** merged into child locals; each file's `locals` block is private to that file (per the source comment: *"locals [These blocks are not merged by design]"*).
+Evaluated by an iterative resolver (`pkg/config/locals.go`). Each local can reference other locals. References are resolved in multiple passes — forward references work as long as there are no cycles. Locals from included parent files are **not** merged into child locals; each file's `locals` block is private to that file (per the source comment: _"locals [These blocks are not merged by design]"_).
 
 ```hcl
 locals {
@@ -82,11 +82,11 @@ locals {
 
 Inherits configuration from a parent `terragrunt.hcl`. It supports three merge strategies (controlled via `merge_strategy`):
 
-| Strategy | Behaviour | Source reference |
-|---|---|---|
-| `no_merge` | Parent config is parsed but not merged | `include.go:NoMerge` |
-| `shallow_merge` (default) | Simple attributes: child wins. Lists: concatenated. Maps: merged shallowly. | `include.go:ShallowMerge` |
-| `deep_merge` | Maps merged recursively, lists concatenated. Inputs deep-merged via `mergo.Merge` with `WithAppendSlice` and `WithOverride`. | `include.go:DeepMerge` |
+| Strategy                  | Behaviour                                                                                                                    | Source reference          |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| `no_merge`                | Parent config is parsed but not merged                                                                                       | `include.go:NoMerge`      |
+| `shallow_merge` (default) | Simple attributes: child wins. Lists: concatenated. Maps: merged shallowly.                                                  | `include.go:ShallowMerge` |
+| `deep_merge`              | Maps merged recursively, lists concatenated. Inputs deep-merged via `mergo.Merge` with `WithAppendSlice` and `WithOverride`. | `include.go:DeepMerge`    |
 
 `locals` blocks are **never merged** regardless of strategy — this is an explicit design decision in the source.
 
@@ -196,6 +196,7 @@ Assume units A → B → C (C depends on B depends on A):
 - C was never attempted: it was skipped because its dependency (B) failed.
 
 **Recovery pattern:**
+
 1. **Do not** immediately re-run `run-all apply` from the root — this obscures the localized error.
 2. `cd` into B's directory. Fix the root cause.
 3. `terragrunt apply` in B's directory alone to confirm it succeeds cleanly.
@@ -293,7 +294,7 @@ When you run `terragrunt stack generate`, Terragrunt:
 3. Writes a `terragrunt.values.hcl` file into each generated unit directory (the `valuesFile` constant) — this is an auto-generated HCL file that exposes the `values` map to the unit's `terragrunt.hcl`
 4. Validates that each generated directory has a `terragrunt.hcl` file at its root
 
-**When to migrate from implicit to explicit stacks:** When you need to version and promote the *same group of units* as an atomic set across environments — e.g., a "microservice stack" that bundles an ECS service, its IAM role, its ALB target group, and its CloudWatch alarms, all at a specific tested version.
+**When to migrate from implicit to explicit stacks:** When you need to version and promote the _same group of units_ as an atomic set across environments — e.g., a "microservice stack" that bundles an ECS service, its IAM role, its ALB target group, and its CloudWatch alarms, all at a specific tested version.
 
 ---
 
@@ -302,6 +303,7 @@ When you run `terragrunt stack generate`, Terragrunt:
 `.terragrunt-cache` is created next to each `terragrunt.hcl` file. Add it to `.gitignore`.
 
 The cache directory structure:
+
 ```
 .terragrunt-cache/
 └── <url-encoded-module-source-hash>/
@@ -330,14 +332,14 @@ terragrunt plan --source ../../modules/vpc
 
 ## What Terraform Guarantees vs What Terragrunt Adds
 
-| Concern | Terraform alone | With Terragrunt |
-|---|---|---|
-| DRY backend config | ❌ Copy-paste per root module | ✅ `remote_state` or `generate` in root config |
-| DRY provider config | ❌ Copy-paste per root module | ✅ `generate` provider block |
-| Cross-module outputs | ❌ Manual `terraform_remote_state` data source | ✅ `dependency` blocks with output caching |
-| Multi-unit ordering | ❌ Manual scripts | ✅ `run-all` with DFS graph |
-| Unique state key per unit | ❌ Must configure per-module | ✅ `path_relative_to_include()` |
-| Versioned stack promotion | ❌ No concept | ✅ `terragrunt.stack.hcl` explicit stacks |
+| Concern                   | Terraform alone                                | With Terragrunt                                |
+| ------------------------- | ---------------------------------------------- | ---------------------------------------------- |
+| DRY backend config        | ❌ Copy-paste per root module                  | ✅ `remote_state` or `generate` in root config |
+| DRY provider config       | ❌ Copy-paste per root module                  | ✅ `generate` provider block                   |
+| Cross-module outputs      | ❌ Manual `terraform_remote_state` data source | ✅ `dependency` blocks with output caching     |
+| Multi-unit ordering       | ❌ Manual scripts                              | ✅ `run-all` with DFS graph                    |
+| Unique state key per unit | ❌ Must configure per-module                   | ✅ `path_relative_to_include()`                |
+| Versioned stack promotion | ❌ No concept                                  | ✅ `terragrunt.stack.hcl` explicit stacks      |
 
 ---
 

@@ -5,6 +5,7 @@
 ## Q1: "Walk me through exactly what happens when you run `terragrunt apply` inside a unit directory. Be precise — what does Terragrunt do before `terraform apply` is called?"
 
 ### The Trap
+
 Candidates often say "it runs Terraform". The interviewer wants the **pre-processing pipeline**: config parsing, include resolution, dependency output fetching, file generation, source download, and how inputs become env vars.
 
 ### What a Senior Engineer Says
@@ -26,6 +27,7 @@ Candidates often say "it runs Terraform". The interviewer wants the **pre-proces
 ## Q2: "Your CI pipeline runs `terragrunt run-all plan` on a brand-new environment. The `app` unit has a `dependency` block on `vpc`, but `vpc` hasn't been applied yet. What happens and how do you fix it?"
 
 ### The Trap
+
 Tests understanding of when dependency output resolution occurs (before Terraform runs) and the exact error path in the source code.
 
 ### What a Senior Engineer Says
@@ -53,6 +55,7 @@ With this config, `shouldReturnMockOutputs` returns `true` during `plan` and `va
 ## Q3: "How does `path_relative_to_include()` ensure every unit gets a unique S3 state key without any per-unit configuration? What would break if you removed it and hardcoded a fixed key?"
 
 ### The Trap
+
 Tests understanding of the `generate` / `remote_state` backend generation mechanic and why a fixed key creates a shared-state disaster.
 
 ### What a Senior Engineer Says
@@ -66,6 +69,7 @@ key = "${path_relative_to_include()}/terraform.tfstate"
 ```
 
 The generated `backend.tf` in `.terragrunt-cache` for the VPC unit will contain:
+
 ```hcl
 backend "s3" {
   key = "prod/vpc/terraform.tfstate"
@@ -81,6 +85,7 @@ If you hardcoded a fixed key, e.g. `key = "terraform.tfstate"`, every unit would
 ## Q4: "`terragrunt run-all apply` from `live/prod/` fails on unit 7 of 12. What is the exact state of your infrastructure? Walk me through a safe recovery procedure."
 
 ### The Trap
+
 Tests blast-radius understanding and disciplined incident recovery vs panic re-running `run-all` which can obscure the error or cause further damage.
 
 ### What a Senior Engineer Says
@@ -105,6 +110,7 @@ Tests blast-radius understanding and disciplined incident recovery vs panic re-r
 ## Q5: "You have a root `terragrunt.hcl` that defines a `before_hook` that runs `tfsec`. A child unit defines its own `before_hook` with the same name but pointing to a different scanner. Which one runs? What if they have different names?"
 
 ### The Trap
+
 Tests understanding of hook merge semantics from `include.go`, specifically `mergeHooks`.
 
 ### What a Senior Engineer Says
@@ -112,6 +118,7 @@ Tests understanding of hook merge semantics from `include.go`, specifically `mer
 From `include.go:mergeHooks`: hooks are merged by **name**. If a child hook has the same name as a parent hook, the child hook **overrides** the parent's hook entirely — the parent hook is replaced. If the child hook has a different name from all parent hooks, it is **appended** to the end of the parent's hooks list.
 
 So:
+
 - **Same name:** Only the child's hook runs. The parent's `tfsec` hook is discarded.
 - **Different names:** Both hooks run — parent's first, then child's (appended to the end).
 
@@ -122,6 +129,7 @@ This is how you allow child units to override compliance tooling for specific ca
 ## Q6: "What is the difference between an implicit Terragrunt stack and an explicit `terragrunt.stack.hcl` stack? When would you migrate from one to the other?"
 
 ### The Trap
+
 Tests awareness of the newer explicit stacks feature and the operational scenarios that justify it.
 
 ### What a Senior Engineer Says
@@ -131,11 +139,13 @@ Tests awareness of the newer explicit stacks feature and the operational scenari
 **Explicit stack (`terragrunt.stack.hcl`):** Declares `unit {}` and `stack {}` blocks that reference remote sources at specific versions. Running `terragrunt stack generate` materialises the units into a `.terragrunt-stack/` directory (the `StackDir` constant in `stack.go`) and writes a `terragrunt.values.hcl` values file into each unit directory. The stack config itself is versioned and promotable.
 
 **When to migrate:**
+
 - You have a multi-service "platform stack" (ECS service + IAM role + ALB + CloudWatch) that needs to be versioned and promoted as a single tested artifact across dev → stg → prod.
 - You want to decouple the directory layout (which environment-specific units live) from the module implementation version (what version of the reusable modules they use).
 - You want a single `ref=` pin point that advances through environments atomically.
 
 **When to stay implicit:**
+
 - Simple single-account setups.
 - Teams still learning Terragrunt's basic semantics.
 - The operational overhead of `stack generate` + the `.terragrunt-stack` materialisation step doesn't provide enough lift over a well-managed directory tree with locked module versions.
