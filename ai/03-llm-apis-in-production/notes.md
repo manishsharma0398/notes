@@ -70,11 +70,25 @@ async with semaphore:
 ### Cost Optimization Levers (Highest to Lowest Impact)
 
 1. **Model selection** — gpt-4o-mini is 17x cheaper than gpt-4o. Match model to task complexity.
-2. **Prompt caching** — Static system prompts cached at 10% of normal input price (Anthropic)
-3. **Response caching** — Cache at temperature=0 only. Redis + SHA256 key of request.
-4. **Batch API** — 50% cost reduction for async workloads (nightly pipelines, bulk processing)
+2. **Prompt caching** — Static system prompts cached at 10% of normal input price (Anthropic).
+3. **Response caching** — Cache at `temperature=0` only. Redis + SHA256 key of request.
+4. **Batch API** — 50% cost reduction for async workloads (nightly pipelines, bulk processing).
 5. **`max_tokens`** — Always set. Prevents runaway output on bad prompts.
 6. **Context trimming** — Shorter prompts = cheaper. Remove unnecessary context.
+
+---
+
+### When Input Tokens Are the Problem (e.g. Fat RAG Context)
+
+> **Diagnose first:** Is your bill driven by **input tokens** or **output tokens**?
+> - Input token cost → reduce context size, switch model, cache responses
+> - Output token cost → set `max_tokens`, tighten prompts
+> Applying the wrong lever wastes time. `max_tokens` does nothing for input token cost.
+
+1. **Reduce retrieved context size** — fewer chunks sent = direct cost reduction. Top-3 chunks vs Top-10 = 80% input token reduction. This is a retrieval quality problem dressed up as a cost problem.
+2. **Switch model** — gpt-4o → gpt-4o-mini = 17x cheaper on input tokens. RAG summarization rarely needs the expensive model.
+3. **Response caching at `temperature=0`** — Cache hit = zero token cost. Many users ask similar questions.
+4. **Prompt caching (provider-side)** — Shared context prefix (e.g. same retrieved chunks) cached at 10% price on cache reads.
 
 ---
 

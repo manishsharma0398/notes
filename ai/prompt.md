@@ -47,9 +47,36 @@ Notes & retention:
   * `examples/` – runnable Python examples (self-contained, minimal dependencies)
   * `notes.md` – concise revision notes
   * `interview.md` – senior-level interview questions, system design traps, and gotchas
+  * `exercises/` – hands-on coding exercises to be solved by me (see Exercises section)
 * End each chapter with **concise revision notes**.
 * Include a short **ASCII diagram** where architecture or data flow is involved.
 * Highlight **common engineering mistakes**, **production pitfalls**, and **interview traps**.
+
+Exercises:
+
+* At the end of every chapter, provide atleast **two exercises** saved in `exercises/`:
+
+  1. **Chapter exercise** (`chapter_exercise.md`) — A focused coding task that applies
+     *only* the concepts from the current chapter. Should take 30–60 minutes.
+     Requirements:
+     * Clear problem statement and acceptance criteria
+     * Starter code skeleton with `# TODO` markers where I need to fill in logic
+     * A "hints" section (collapsed or at the bottom) — available if I get stuck
+     * A "what to verify" checklist so I can self-assess my solution
+
+  2. **Cumulative exercise** (`cumulative_exercise.md`) — A small but complete project
+     that integrates concepts from **all chapters learned so far**. Should take 1–3 hours.
+     Requirements:
+     * A realistic mini-project brief (not a toy example — something I'd be proud to show)
+     * Broken into phases so I can tackle it incrementally
+     * Clear success criteria for each phase
+     * No pre-built solution — I must write the code myself
+
+* **Important:** These exercises must **not** be solved or pre-answered by you.
+  Your job is to write the problem statement, skeleton, and hints — not the solution.
+  I will solve them myself and can share my solution for review later.
+
+* Do not move to the next chapter until I confirm I have attempted the exercises.
 
 Depth calibration:
 

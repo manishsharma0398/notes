@@ -935,4 +935,64 @@ Before moving to Chapter 4, think about this:
 
 Think through it before reading the next chapter.
 
-_(Answer covered in the RAG pipeline chapter — but reason through it now.)_
+### Answer
+
+**Lever 1: Switch model — gpt-4o → gpt-4o-mini (17x cost reduction)**
+
+RAG summarization is not a complex reasoning task. The model reads retrieved context and generates a summary or answer. `gpt-4o-mini` handles this just as well.
+
+```
+gpt-4o:      $2.50 / 1M input tokens
+gpt-4o-mini: $0.15 / 1M input tokens
+
+$1,250/day → ~$74/day
+That's an 88% cost reduction from changing one parameter.
+```
+
+**Lever 2: Reduce retrieved context size (fix the retrieval, not the model)**
+
+The bill is on **input tokens**. The input is 5,000 tokens of retrieved context + 200 of query. The query is fixed — the context is not.
+
+```
+Current:  Top-10 chunks retrieved → 5,000 tokens sent per request
+Problem:  The retriever is being too generous
+
+Fix:      Better retrieval → top-3 most relevant chunks → ~1,000 tokens
+          5,000 → 1,000 tokens = 80% reduction on input cost alone
+
+$1,250/day → $250/day from retrieval tuning alone
+```
+
+This is the most mechanically direct lever: **fewer tokens sent = lower bill.** No model switching, no infrastructure change. The root cause is a retrieval quality problem dressed up as a cost problem.
+
+> ⚠️ **The trap:** Engineers reach for model switching and caching first because those are API-level knobs. Fixing retrieval requires understanding the RAG pipeline — but it's the highest-impact change when input tokens are the problem.
+
+**Lever 3: Response caching at temperature=0**
+
+Many users in a 10,000/day system ask similar or identical questions. Cache the response keyed to the exact request. Cache hit = zero API cost.
+
+```python
+# If 30% of requests are cache hits:
+10,000 requests/day × 30% = 3,000 free responses
+Cost reduction: 30% of bill → meaningful at scale
+```
+
+Also: enable **provider-side prompt caching**. The 5,000-token context prefix is likely shared across many requests (same retrieved chunks). Anthropic caches this at 0.10× the normal input price on cache reads.
+
+---
+
+**What `max_tokens` does NOT help here:**
+`max_tokens` caps **output** tokens. The $1,250 bill is from **input** tokens. Output in a RAG pipeline is ~200–500 tokens — roughly $0.001–0.002/request — a rounding error when input cost is $0.013/request. Always set `max_tokens`, but it doesn't address this specific problem.
+
+---
+
+**Combined effect:**
+
+| Change | Cost After |
+|---|---|
+| Baseline | $1,250/day |
+| Switch to gpt-4o-mini | ~$74/day |
+| Reduce context 5K → 1K tokens | ~$15/day |
+| 30% cache hit rate | ~$10/day |
+
+That's a **99% cost reduction** — well past the 80% target — without degrading quality.
