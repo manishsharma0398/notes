@@ -25,11 +25,18 @@ class UrgencyLevel(str, Enum):
     CRITICAL = "critical"
 
 
-class TicketClassification(BaseModel):
-    prompt: str
+class ClassifyTicket(BaseModel):
     urgency_level: UrgencyLevel
     classification_reason: str
     confidence_score: float = Field(ge=0.0, le=1.0)
+
+
+class TicketExecutionResult(ClassifyTicket):
+    time_taken_ms: int
+
+
+class TicketClassification(TicketExecutionResult):
+    prompt: str
     success: bool
     error: str | None = None
 
@@ -40,6 +47,7 @@ class TicketClassificationResponse(BaseModel):
     success_tickets_count: int
     failed_tickets_count: int
     time_taken_in_ms: int
+    total_individual_time: int
 
 
 @lru_cache(maxsize=1)
@@ -49,11 +57,12 @@ def get_openai_client() -> AsyncOpenAI:
 
 async def classify_ticket(
     user_message: str, client: AsyncOpenAI
-) -> TicketClassification:
+) -> TicketExecutionResult:
     async with semaphore:
+        start_time = time.perf_counter()
         response = await client.responses.parse(
             model="gpt-5.1-2025-11-13",
-            text_format=TicketClassification,
+            text_format=ClassifyTicket,
             input=[
                 {
                     "role": "system",
@@ -62,9 +71,13 @@ async def classify_ticket(
                 {"role": "user", "content": user_message},
             ],
         )
+        time_taken = int((time.perf_counter() - start_time) * 1000)
         if response.output_parsed is None:
             raise ValueError("No parsed output returned by the model.")
-        return response.output_parsed
+        return TicketExecutionResult(
+            **response.output_parsed.model_dump(),
+            time_taken_ms=time_taken,
+        )
 
 
 @app.post(
@@ -87,8 +100,15 @@ async def classify_route(
     res: list[TicketClassification] = []
 
     for query, result in zip(payload.user_query, response):
-        if isinstance(result, TicketClassification):
-            res.append(result)
+        if isinstance(result, TicketExecutionResult):
+
+            res.append(
+                TicketClassification(
+                    **result.model_dump(),
+                    prompt=query,
+                    success=True,
+                )
+            )
         else:
             res.append(
                 TicketClassification(
@@ -98,6 +118,7 @@ async def classify_route(
                     classification_reason="",
                     confidence_score=0.0,
                     urgency_level=UrgencyLevel.LOW,
+                    time_taken_ms=0,
                 )
             )
             failed_tickets_count += 1
@@ -105,10 +126,15 @@ async def classify_route(
     processed_tickets_count = len(payload.user_query)
     success_tickets_count = processed_tickets_count - failed_tickets_count
 
+    total_individual_time = sum(
+        r.time_taken_ms for r in response if isinstance(r, TicketExecutionResult)
+    )
+
     return TicketClassificationResponse(
         result=res,
         failed_tickets_count=failed_tickets_count,
         processed_tickets_count=processed_tickets_count,
         success_tickets_count=success_tickets_count,
         time_taken_in_ms=time_taken,
+        total_individual_time=total_individual_time,
     )
