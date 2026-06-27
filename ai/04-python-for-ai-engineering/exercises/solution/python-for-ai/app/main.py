@@ -1,20 +1,21 @@
-from fastapi import FastAPI, Body
+from fastapi import FastAPI, Body, Depends
 from pydantic import BaseModel, Field
-from typing import List
 import time
 from enum import Enum
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 import asyncio
+from functools import lru_cache
 
 load_dotenv()
 
+MAX_CONCURRENT_REQUESTS = 5
 app = FastAPI()
-client = AsyncOpenAI()
+semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
 
 class ClassifyPrompt(BaseModel):
-    user_query: List[str] = Field(min_length=1, max_length=20)
+    user_query: list[str] = Field(min_length=1, max_length=20)
 
 
 class UrgencyLevel(str, Enum):
@@ -41,7 +42,14 @@ class TicketClassificationResponse(BaseModel):
     time_taken_in_ms: int
 
 
-async def classify_ticket(semaphore: asyncio.Semaphore, user_message):
+@lru_cache(maxsize=1)
+def get_openai_client() -> AsyncOpenAI:
+    return AsyncOpenAI()
+
+
+async def classify_ticket(
+    user_message: str, client: AsyncOpenAI
+) -> TicketClassification:
     async with semaphore:
         response = await client.responses.parse(
             model="gpt-5.1-2025-11-13",
@@ -54,6 +62,8 @@ async def classify_ticket(semaphore: asyncio.Semaphore, user_message):
                 {"role": "user", "content": user_message},
             ],
         )
+        if response.output_parsed is None:
+            raise ValueError("No parsed output returned by the model.")
         return response.output_parsed
 
 
@@ -65,16 +75,40 @@ async def classify_ticket(semaphore: asyncio.Semaphore, user_message):
 )
 async def classify_route(
     payload: ClassifyPrompt = Body(),
+    client: AsyncOpenAI = Depends(get_openai_client),
 ):
     start_time = time.perf_counter()
-    semaphore = asyncio.Semaphore(5)
-    tasks = [classify_ticket(semaphore, query) for query in payload.user_query]
-    response = await asyncio.gather(*tasks)
+    tasks = [classify_ticket(query, client) for query in payload.user_query]
+    response = await asyncio.gather(*tasks, return_exceptions=True)
     time_taken = int((time.perf_counter() - start_time) * 1000)
+
+    failed_tickets_count = 0
+
+    res: list[TicketClassification] = []
+
+    for query, result in zip(payload.user_query, response):
+        if isinstance(result, TicketClassification):
+            res.append(result)
+        else:
+            res.append(
+                TicketClassification(
+                    prompt=query,
+                    error=f"{type(result).__name__}: {result}",
+                    success=False,
+                    classification_reason="",
+                    confidence_score=0.0,
+                    urgency_level=UrgencyLevel.LOW,
+                )
+            )
+            failed_tickets_count += 1
+
+    processed_tickets_count = len(payload.user_query)
+    success_tickets_count = processed_tickets_count - failed_tickets_count
+
     return TicketClassificationResponse(
-        result=response,
-        failed_tickets_count=0,
-        processed_tickets_count=1,
-        success_tickets_count=1,
+        result=res,
+        failed_tickets_count=failed_tickets_count,
+        processed_tickets_count=processed_tickets_count,
+        success_tickets_count=success_tickets_count,
         time_taken_in_ms=time_taken,
     )
