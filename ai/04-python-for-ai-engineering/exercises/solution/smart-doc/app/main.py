@@ -1,60 +1,13 @@
-from fastapi import FastAPI, Body
-from pydantic import BaseModel, Field
-from datetime import datetime
-from uuid import UUID, uuid4
+from fastapi import FastAPI
+from dotenv import load_dotenv
 
+load_dotenv()
 
-class Payload(BaseModel):
-    payload: str
-
-
-class Document(BaseModel):
-    id: UUID
-    content: str
-    word_count: int
-    created_at: datetime
-
-
-class AskRequest(BaseModel):
-    document_id: UUID
-    question: str = Field(
-        min_length=10,
-        max_length=500,
-    )
-
+from .routes.ask import ask_router
+from .routes.health import health_router
+from .routes.documents import document_router
 
 app = FastAPI()
-
-database: dict[UUID, Document] = {}
-
-
-@app.post(
-    path="/documents",
-    response_model=Document,
-    response_model_exclude_none=True,
-    response_model_exclude_unset=True,
-)
-def doc(payload: str = Body(media_type="text/plain")):
-    document_id = uuid4()
-    created_at = datetime.now()
-
-    document = Document(
-        id=document_id,
-        created_at=created_at,
-        content=payload,
-        word_count=len(payload.split()),
-    )
-
-    database[document_id] = document
-
-    return document
-
-
-@app.get(path="/documents/{document_id}")
-def get_metadata():
-    pass
-
-
-@app.get(path="/health")
-def get_health():
-    return {"status": "ok", "documents_loaded": 0}
+app.include_router(document_router, prefix="/documents")
+app.include_router(health_router, prefix="/health")
+app.include_router(ask_router, prefix="/ask")

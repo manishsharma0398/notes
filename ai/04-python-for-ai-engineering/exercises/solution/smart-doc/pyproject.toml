@@ -6,4 +6,6 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "fastapi[standard]>=0.138.1",
+    "openai>=2.44.0",
+    "python-dotenv>=1.2.2",
 ]
