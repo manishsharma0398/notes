@@ -1,21 +1,17 @@
-from uuid import UUID
-from ..utils.models import AskLLMResponse
+from ..utils.models import LLMCall
 from ..clients.openai import get_openai_client
 
 
-from ..utils.models import Document
-
-database: dict[UUID, Document] = {}
-
-
-async def ask_question_to_llm(question: str) -> AskLLMResponse:
+async def ask_question_to_llm(document: str, question: str) -> LLMCall:
     response = await get_openai_client().responses.parse(
-        model="gpt-5.1-mini",
-        text_format=AskLLMResponse,
+        model="gpt-5.1-2025-11-13",
+        text_format=LLMCall,
         input=[
             {
                 "role": "system",
-                "content": "You are a support assistant. You need to answer user queries.",
+                "content": f"""You will be provided with a document and you need to answer the question regarding the document.
+                {document}
+                """,
             },
             {"role": "user", "content": question},
         ],

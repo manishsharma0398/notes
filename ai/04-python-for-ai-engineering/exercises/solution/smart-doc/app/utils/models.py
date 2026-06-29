@@ -1,4 +1,3 @@
-from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel, Field
 from .constants import ConfidenceLevel
@@ -9,14 +8,14 @@ class Payload(BaseModel):
 
 
 class Document(BaseModel):
-    id: UUID
+    id: str
     content: str
     word_count: int
     created_at: datetime
 
 
 class AskRequest(BaseModel):
-    document_id: UUID
+    document_id: str
     question: str = Field(
         min_length=10,
         max_length=500,
@@ -31,11 +30,11 @@ class LLMCall(BaseModel):
 
 
 class AskLLMResponse(LLMCall):
-    token_usage: int = Field(
+    token_usage: int | None = Field(
         description="Total input and output token used",
     )
 
 
 class AskLLMRequest(BaseModel):
-    document_id: int
+    document_id: str
     question: str
