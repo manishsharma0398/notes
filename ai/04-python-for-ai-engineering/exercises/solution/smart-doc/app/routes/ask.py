@@ -1,9 +1,7 @@
-import json
-import asyncio
-from ..utils.db import database
-from fastapi import APIRouter, Depends
-from ..utils.functions import get_semaphore
-from ..utils.models import AskLLMRequest, AskLLMResponse, Document
+from ..utils.db import get_db
+from fastapi import APIRouter, HTTPException
+from ..utils.constants import semaphore
+from ..utils.models import AskRequest, AskLLMResponse
 from ..controllers.ask_controller import ask_question_to_llm
 
 ask_router = APIRouter()
@@ -16,23 +14,22 @@ ask_router = APIRouter()
     response_model_exclude_unset=True,
 )
 async def ask_llm(
-    payload: AskLLMRequest,
-    semaphore: asyncio.Semaphore = Depends(get_semaphore),
+    payload: AskRequest,
 ):
     async with semaphore:
-        try:
-            with open("database.json", "r", encoding="utf-8") as db:
-                data = json.load(db)
-                print("loaded database: ", data)
-        except FileNotFoundError:
-            data = {}
-        except json.JSONDecodeError:
-            raise ValueError("Error: The file is not a valid JSON format.")
+        db = get_db()
 
-        document = Document(**data[payload.document_id])
+        doc = db.get(str(payload.document_id))
+
+        if doc is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Document not found",
+            )
 
         llm_answer = await ask_question_to_llm(
-            document=document.content,
+            document=doc.content,
             question=payload.question,
         )
+
         return llm_answer

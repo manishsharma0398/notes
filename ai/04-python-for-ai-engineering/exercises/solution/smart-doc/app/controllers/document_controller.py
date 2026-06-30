@@ -1,14 +1,14 @@
 import json
-from uuid import UUID, uuid4
+from uuid import uuid4
 from datetime import datetime
+from ..utils.db import get_db, add_to_db
 
 from ..utils.models import Document
 
-database: dict[UUID, Document] = {}
 
-
-def get_document_metadata(document_id: int):
-    pass
+def get_document_metadata(document_id: str) -> Document | None:
+    db = get_db()
+    return db.get(document_id)
 
 
 def create_document(payload: str) -> Document:
@@ -22,18 +22,4 @@ def create_document(payload: str) -> Document:
         word_count=len(payload.split()),
     )
 
-    try:
-        with open("database.json", "r", encoding="utf-8") as db:
-            data = json.load(db)
-            print("loaded database: ", data)
-    except FileNotFoundError:
-        data = {}
-    except json.JSONDecodeError:
-        raise ValueError("Error: The file is not a valid JSON format.")
-
-    data[document_id] = document.model_dump(mode="json")
-
-    with open("database.json", "w", encoding="utf-8") as db:
-        json.dump(data, db)
-
-    return document
+    return add_to_db(document)

@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Body
-from ..controllers.document_controller import database
+from fastapi import APIRouter
+from ..utils.db import get_db
 
 health_router = APIRouter()
 
@@ -12,5 +12,5 @@ health_router = APIRouter()
 def get_health():
     return {
         "status": "ok",
-        "documents_loaded": len(database),
+        "documents_loaded": len(get_db()),
     }
