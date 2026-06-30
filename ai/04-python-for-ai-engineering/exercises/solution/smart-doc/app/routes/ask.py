@@ -1,4 +1,5 @@
 from ..utils.db import get_db
+from ..utils.logger import logger
 from fastapi import APIRouter, HTTPException
 from ..utils.constants import semaphore
 from ..utils.models import AskRequest, AskLLMResponse
@@ -16,6 +17,16 @@ ask_router = APIRouter()
 async def ask_llm(
     payload: AskRequest,
 ):
+    logger.info(
+        "[ask_llm] request payload info: %s",
+        {
+            "context": {
+                "document_id": payload.document_id,
+                "question": payload.question,
+                "question_length": len(payload.question),
+            }
+        },
+    )
     async with semaphore:
         db = get_db()
 
