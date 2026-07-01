@@ -1,33 +1,55 @@
 import time
-from ..utils.logger import logger
 from fastapi import HTTPException
+from ..utils.logger import logger
 from ..clients.openai import get_openai_client
 from ..utils.models import LLMCall, AskLLMResponse
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_fixed,
+    wait_random_exponential,
+    retry_if_exception,
+)
 
 
 class LLMError(HTTPException):
     pass
 
 
+def should_retry() -> bool:
+    """Returns True if the exception is an HTTPError with a 429 or 5xx status code."""
+    return False
+
+
+@retry(
+    retry=retry_if_exception(should_retry),
+    stop=stop_after_attempt(3),
+    wait=wait_fixed(1) + wait_random_exponential(multiplier=1, max=60),
+)
+async def llm_call(document: str, question: str):
+    return await get_openai_client().responses.parse(
+        model="gpt-5.1-2025-11-13",
+        # model="gpt-5.5-mini",
+        text_format=LLMCall,
+        input=[
+            {
+                "role": "system",
+                "content": f"""You will be provided with a document and you need to answer the question regarding the document.
+                    {document}
+                    """,
+            },
+            {"role": "user", "content": question},
+        ],
+        max_output_tokens=200,
+        temperature=0.0,
+    )
+
+
 async def ask_question_to_llm(document: str, question: str) -> AskLLMResponse:
     try:
         start = time.perf_counter()
-        response = await get_openai_client().responses.parse(
-            model="gpt-5.1-2025-11-13",
-            # model="gpt-5.5-mini",
-            text_format=LLMCall,
-            input=[
-                {
-                    "role": "system",
-                    "content": f"""You will be provided with a document and you need to answer the question regarding the document.
-                    {document}
-                    """,
-                },
-                {"role": "user", "content": question},
-            ],
-            max_output_tokens=200,
-            temperature=0.0,
-        )
+
+        response = await llm_call(document, question)
 
         if response.output_parsed is None:
             raise LLMError(
