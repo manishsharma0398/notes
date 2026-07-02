@@ -1,14 +1,13 @@
-import time
 from fastapi import HTTPException
-from ..utils.logger import logger
 from ..clients.openai import get_openai_client
 from ..utils.models import LLMCall, AskLLMResponse
+from openai import RateLimitError, APIConnectionError, InternalServerError
 from tenacity import (
     retry,
     stop_after_attempt,
     wait_fixed,
     wait_random_exponential,
-    retry_if_exception,
+    retry_if_exception_type,
 )
 
 
@@ -16,15 +15,13 @@ class LLMError(HTTPException):
     pass
 
 
-def should_retry() -> bool:
-    """Returns True if the exception is an HTTPError with a 429 or 5xx status code."""
-    return False
-
-
 @retry(
-    retry=retry_if_exception(should_retry),
-    stop=stop_after_attempt(3),
+    retry=retry_if_exception_type(
+        (RateLimitError, APIConnectionError, InternalServerError),
+    ),
+    stop=stop_after_attempt(4),
     wait=wait_fixed(1) + wait_random_exponential(multiplier=1, max=60),
+    reraise=True,
 )
 async def llm_call(document: str, question: str):
     return await get_openai_client().responses.parse(
@@ -47,7 +44,6 @@ async def llm_call(document: str, question: str):
 
 async def ask_question_to_llm(document: str, question: str) -> AskLLMResponse:
     try:
-        start = time.perf_counter()
 
         response = await llm_call(document, question)
 
@@ -59,18 +55,6 @@ async def ask_question_to_llm(document: str, question: str) -> AskLLMResponse:
 
         input_tokens = response.usage.input_tokens if response.usage else 0
         output_tokens = response.usage.output_tokens if response.usage else 0
-
-        logger.info(
-            "[ask_question_to_llm] response data: %s",
-            {
-                "context": {
-                    "input_tokens": input_tokens,
-                    "output_tokens": output_tokens,
-                    "latency_ms": time.perf_counter() - start,
-                    "confidence": response.output_parsed.confidence,
-                }
-            },
-        )
 
         return AskLLMResponse(
             **response.output_parsed.model_dump(),
