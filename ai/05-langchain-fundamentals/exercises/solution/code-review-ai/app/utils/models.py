@@ -30,7 +30,7 @@ class CodeReview(BaseModel):
     )
     bugs: list[CodeIssue]
     best_practices: list[CodeIssue]
-    security: list[CodeIssue]
+    security: str
     summary: str
     success: bool
     error: str | None

@@ -1,3 +1,5 @@
+import json
+import logging
 import time
 from uuid import UUID, uuid4
 from pydantic import RootModel
@@ -5,7 +7,7 @@ from ..clients.openai import llm
 from fastapi import APIRouter, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnableParallel
+from langchain_core.runnables import RunnableParallel, RunnableLambda
 from langchain_core.output_parsers import StrOutputParser, PydanticOutputParser
 from ..utils.models import BatchReview, PostReview, CodeIssue, CodeReview
 
@@ -14,21 +16,58 @@ review_router = APIRouter()
 
 reviews: dict[str, CodeReview] = {}
 
-pydantic_parser = PydanticOutputParser(pydantic_object=RootModel[list[CodeIssue]])
-format_instructions = pydantic_parser.get_format_instructions()
+pydantic_parser = llm.with_structured_output(RootModel[list[CodeIssue]])
+
+logger = logging.getLogger(__name__)
+
+
+def _make_log_runnable(chain_name: str) -> RunnableLambda:
+    """Return a passthrough runnable that prints the raw LLM text output."""
+
+    def _log(text: str) -> str:
+        print(f"\n{'='*60}")
+        print(f"[{chain_name}] raw LLM output:")
+        print(text)
+        print(f"{'='*60}\n", flush=True)
+        return text
+
+    return RunnableLambda(_log)
+
+
+def _normalize_to_list(text: str) -> str:
+    """Ensure the LLM output is a JSON array before parsing.
+
+    The LLM occasionally returns a single JSON object instead of an array
+    when it finds only one issue (or no issues). This function detects that
+    case and wraps the object in a list so PydanticOutputParser doesn't fail.
+    """
+    stripped = text.strip()
+    # Find the first meaningful JSON token
+    start = next((i for i, c in enumerate(stripped) if c in ("{", "[")), None)
+    if start is not None and stripped[start] == "{":
+        # Single object — wrap it in an array
+        try:
+            obj = json.loads(stripped[start:])
+            return json.dumps([obj])
+        except json.JSONDecodeError:
+            pass  # Let the original parser surface a clearer error
+    return text
+
+
+normalize_runnable = RunnableLambda(_normalize_to_list)
 
 bugs_chain = (
     ChatPromptTemplate.from_messages(
         [
             (
                 "system",
-                "Review the following {language} code for bugs. Follow these instructions: {format_instructions}",
+                "Review the following {language} code for bugs",
             ),
             ("human", "{code}"),
         ],
-    ).partial(format_instructions=format_instructions)
+    )
     | llm
-    | pydantic_parser
+    | _make_log_runnable("bugs_chain")
     | (lambda x: x.root)
 )
 
@@ -37,13 +76,13 @@ best_practices_chain = (
         [
             (
                 "system",
-                "Review the following {language} code for best practices. Follow these instructions: {format_instructions}",
+                "Review the following {language} code for best practices.",
             ),
             ("human", "{code}"),
         ],
-    ).partial(format_instructions=format_instructions)
+    )
     | llm
-    | pydantic_parser
+    | _make_log_runnable("best_practices_chain")
     | (lambda x: x.root)
 )
 
@@ -78,10 +117,10 @@ async def process_document_task(review_id, payload: PostReview):
         review_id=review_id,
         best_practices=[],
         bugs=[],
-        security=[],
+        security="",
         error=None,
         language=payload.language,
-        overall_score=0,
+        overall_score=2,
         processing_time_ms=0,
         success=True,
         summary="",
@@ -97,7 +136,7 @@ async def process_document_task(review_id, payload: PostReview):
         data.processing_time_ms = (time.perf_counter() - start) * 1000
         data.best_practices = response.get("best_practices_chain", [])
         data.bugs = response.get("bugs_chain", [])
-        data.security = response.get("security_chain", [])
+        data.security = response.get("security_chain", "")
     except Exception as e:
         data.processing_time_ms = (time.perf_counter() - start) * 1000
         data.success = False
@@ -155,10 +194,10 @@ async def post_batch_review(payload: BatchReview):
         data = CodeReview(
             review_id=review_id,
             language=snippet.language,
-            overall_score=0,
+            overall_score=2,
             best_practices=response.get("best_practices_chain", []),
             bugs=response.get("bugs_chain", []),
-            security=response.get("security_chain", []),
+            security=response.get("security_chain", ""),
             error=None,
             processing_time_ms=processing_time,
             success=True,
