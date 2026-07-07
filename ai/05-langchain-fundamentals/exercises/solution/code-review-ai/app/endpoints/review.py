@@ -1,6 +1,6 @@
 import json
-import logging
 import time
+import logging
 from uuid import UUID, uuid4
 from pydantic import RootModel
 from ..clients.openai import llm
@@ -8,39 +8,53 @@ from fastapi import APIRouter, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableParallel, RunnableLambda
-from langchain_core.output_parsers import StrOutputParser, PydanticOutputParser
 from ..utils.models import BatchReview, PostReview, CodeIssue, CodeReview
+from langchain_core.output_parsers import (
+    StrOutputParser,
+    PydanticOutputParser,
+    JsonOutputParser,
+)
 
 review_router = APIRouter()
 
 
 reviews: dict[str, CodeReview] = {}
 
-pydantic_parser = llm.with_structured_output(RootModel[list[CodeIssue]])
+code_issue_list_parser = PydanticOutputParser(
+    pydantic_object=RootModel[list[CodeIssue]]
+)
+code_issue_format_instructions = code_issue_list_parser.get_format_instructions()
 
 logger = logging.getLogger(__name__)
 
 
-def _make_log_runnable(chain_name: str) -> RunnableLambda:
-    """Return a passthrough runnable that prints the raw LLM text output."""
-
-    def _log(text: str) -> str:
-        print(f"\n{'='*60}")
-        print(f"[{chain_name}] raw LLM output:")
-        print(text)
-        print(f"{'='*60}\n", flush=True)
-        return text
-
-    return RunnableLambda(_log)
-
-
-def _normalize_to_list(text: str) -> str:
+def _normalize_to_list(text: str | object) -> str:
     """Ensure the LLM output is a JSON array before parsing.
 
-    The LLM occasionally returns a single JSON object instead of an array
-    when it finds only one issue (or no issues). This function detects that
-    case and wraps the object in a list so PydanticOutputParser doesn't fail.
+    The LLM sometimes returns a chat message object instead of raw text,
+    and it may also return a single JSON object when there is one issue.
+    It also sometimes wraps JSON in markdown code blocks.
+    This function extracts the text, strips code blocks, normalizes it,
+    and wraps a single object in a JSON array if needed.
     """
+    if hasattr(text, "content"):
+        text = text.content
+    elif hasattr(text, "output_text"):
+        text = text.output_text
+    elif isinstance(text, dict):
+        text = text.get("content") or text.get("text") or json.dumps(text)
+
+    if not isinstance(text, str):
+        text = str(text)
+
+    # Strip markdown code blocks
+    text = text.strip()
+    if text.startswith("```"):
+        # Remove opening code fence (e.g. ```json)
+        text = text.lstrip("`").lstrip("json").lstrip("JSON").lstrip()
+        # Remove closing code fence
+        text = text.rstrip("`").rstrip()
+
     stripped = text.strip()
     # Find the first meaningful JSON token
     start = next((i for i, c in enumerate(stripped) if c in ("{", "[")), None)
@@ -48,27 +62,53 @@ def _normalize_to_list(text: str) -> str:
         # Single object — wrap it in an array
         try:
             obj = json.loads(stripped[start:])
-            return json.dumps([obj])
-        except json.JSONDecodeError:
+            result = json.dumps([obj])
+            return result
+        except json.JSONDecodeError as e:
+            print(f"[DEBUG normalize] JSON parse error: {e}", flush=True)
             pass  # Let the original parser surface a clearer error
+
     return text
 
 
+def _validate_code_issues(parsed_list):
+    """Validate and convert parsed list items to CodeIssue objects."""
+    if not isinstance(parsed_list, list):
+        parsed_list = [parsed_list]
+
+    result = []
+    for item in parsed_list:
+        if isinstance(item, dict):
+            result.append(CodeIssue(**item))
+        elif isinstance(item, CodeIssue):
+            result.append(item)
+        else:
+            result.append(CodeIssue(**json.loads(str(item))))
+
+    return result
+
+
 normalize_runnable = RunnableLambda(_normalize_to_list)
+validate_code_issues_runnable = RunnableLambda(_validate_code_issues)
+
+json_parser = JsonOutputParser()
 
 bugs_chain = (
     ChatPromptTemplate.from_messages(
         [
             (
                 "system",
-                "Review the following {language} code for bugs",
+                "Review the following {language} code for bugs.\n\n"
+                "Output format instructions:\n{format_instructions}",
             ),
             ("human", "{code}"),
         ],
     )
     | llm
-    | _make_log_runnable("bugs_chain")
-    | (lambda x: x.root)
+    | normalize_runnable
+    | StrOutputParser()
+    | json_parser
+    | validate_code_issues_runnable
 )
 
 best_practices_chain = (
@@ -76,14 +116,17 @@ best_practices_chain = (
         [
             (
                 "system",
-                "Review the following {language} code for best practices.",
+                "Review the following {language} code for best practices.\n\n"
+                "Output format instructions:\n{format_instructions}",
             ),
             ("human", "{code}"),
         ],
     )
     | llm
-    | _make_log_runnable("best_practices_chain")
-    | (lambda x: x.root)
+    | normalize_runnable
+    | StrOutputParser()
+    | json_parser
+    | validate_code_issues_runnable
 )
 
 security_chain = (
@@ -131,6 +174,7 @@ async def process_document_task(review_id, payload: PostReview):
             {
                 "code": payload.code,
                 "language": payload.language,
+                "format_instructions": code_issue_format_instructions,
             }
         )
         data.processing_time_ms = (time.perf_counter() - start) * 1000
@@ -174,7 +218,13 @@ async def post_batch_review(payload: BatchReview):
     try:
         start = time.perf_counter()
         responses = await parallel_analyzer.abatch(
-            [snippet.model_dump() for snippet in payload.snippets],
+            [
+                {
+                    **snippet.model_dump(),
+                    "format_instructions": code_issue_format_instructions,
+                }
+                for snippet in payload.snippets
+            ],
             config={
                 "max_concurrency": 3,
             },
