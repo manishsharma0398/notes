@@ -10,4 +10,6 @@ dependencies = [
     "langchain-text-splitters>=1.1.2",
     "openai>=2.45.0",
     "python-dotenv>=1.2.2",
+    "qdrant-client>=1.18.0",
+    "tiktoken>=0.13.0",
 ]

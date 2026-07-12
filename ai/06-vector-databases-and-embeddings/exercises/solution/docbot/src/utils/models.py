@@ -1,3 +1,4 @@
+from uuid import UUID
 from pydantic import BaseModel
 
 
@@ -13,6 +14,37 @@ class DocumentUploadResponse(BaseModel):
     estimated_tokens: int
 
 
+class Chunk(BaseModel):
+    text: str
+    token_count: int
+    chunk_index: int
+    name: str
+    document_id: str
+
+
+class EmbeddedChunk(Chunk):
+    embedding: list[float]
+
+
 class EmbedDocsBatch(BaseModel):
     tokens: int
-    embeddings: list[float]
+    embedded_chunks: list[EmbeddedChunk]
+
+
+class SearchRequest(BaseModel):
+    query: str
+    top_k: int = 3
+    document_id: UUID | None = None
+
+
+class SearchResult(BaseModel):
+    score: float
+    text: str
+    name: str
+    chunk_index: int
+    document_id: str
+
+
+class SearchResponse(BaseModel):
+    results: list[SearchResult]
+    query_embedding_tokens: int
