@@ -1,9 +1,13 @@
-from uuid import uuid4
+from uuid import UUID, uuid4
 from fastapi import APIRouter
-from qdrant_client.models import PointStruct
 from ..controllers.documents import chunk_document, embed_docs_batch
 from ..utils.models import DocumentUploadRequest, DocumentUploadResponse
-from ..clients.qdrant import scroll_collection, upsert_collection, create_collection
+from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchValue
+from ..clients.qdrant import (
+    scroll_collection,
+    upsert_collection,
+    delete_collection_data,
+)
 
 document_router = APIRouter()
 
@@ -13,8 +17,8 @@ async def post_document(payload: DocumentUploadRequest):
     document_id = str(uuid4())
     chunked_doc = chunk_document(payload, document_id)
     embeddings = await embed_docs_batch(chunked_doc)
-    create_collection("docs_collection", 1536)
-    upsert_collection(
+
+    await upsert_collection(
         collection="docs_collection",
         vectors=[
             PointStruct(
@@ -41,10 +45,10 @@ async def post_document(payload: DocumentUploadRequest):
 
 
 @document_router.get("")
-def get_document():
+async def get_document():
     seen = set()
     docs = []
-    chunks = scroll_collection("docs_collection")
+    chunks = await scroll_collection("docs_collection")
     for chunk in chunks:
         doc_id = chunk.payload.get("document_id")
         if not doc_id in seen:
@@ -59,5 +63,13 @@ def get_document():
 
 
 @document_router.delete("/{id}")
-def delete_document():
-    pass
+async def delete_document(id: UUID):
+    return await delete_collection_data(
+        "docs_collection",
+        criteria=Filter(
+            must=FieldCondition(
+                key="document_id",
+                match=MatchValue(value=str(id)),
+            ),
+        ),
+    )

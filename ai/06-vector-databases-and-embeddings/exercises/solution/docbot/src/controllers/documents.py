@@ -35,16 +35,10 @@ def chunk_document(document: DocumentUploadRequest, document_id: str) -> list[Ch
 
 
 async def embed(text: str) -> tuple[list[float], int]:
-    doc = []
-    tokens = 0
-    for i in range(0, len(text), EMBED_BATCH_SIZE):
-        res = await (await get_openai_client()).embeddings.create(
-            model=EMBEDDING_MODEL, input=text[i : i + EMBED_BATCH_SIZE]
-        )
-        tokens += res.usage.total_tokens
-        for re in res.data:
-            doc.extend(re.embedding)
-    return (doc, tokens)
+    res = await (await get_openai_client()).embeddings.create(
+        model=EMBEDDING_MODEL, input=[text]
+    )
+    return res.data[0].embedding, res.usage.total_tokens
 
 
 async def embed_docs_batch(docs: list[Chunk]):

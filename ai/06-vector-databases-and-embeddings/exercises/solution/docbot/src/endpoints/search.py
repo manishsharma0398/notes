@@ -7,7 +7,7 @@ from ..utils.models import SearchRequest, SearchResult, SearchResponse
 search_router = APIRouter()
 
 
-@search_router.post("")
+@search_router.post("", response_model=SearchResponse)
 async def search(payload: SearchRequest):
     search_vector, tokens = await embed(payload.query)
     query_filter = None
@@ -20,7 +20,7 @@ async def search(payload: SearchRequest):
                 ),
             ]
         )
-    searches = query_collections(
+    searches = await query_collections(
         "docs_collection",
         query=search_vector,
         query_filter=query_filter,

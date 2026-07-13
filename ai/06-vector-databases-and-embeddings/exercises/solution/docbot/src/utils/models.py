@@ -48,3 +48,19 @@ class SearchResult(BaseModel):
 class SearchResponse(BaseModel):
     results: list[SearchResult]
     query_embedding_tokens: int
+
+
+class AskRequest(BaseModel):
+    question: str
+    document_id: UUID | None = None
+    top_k: int = 4
+
+
+class LLMResponse(BaseModel):
+    answer: str
+    sources: list[str]  # list of source document names used
+
+
+class AskResponse(LLMResponse):
+    chunks_used: int
+    question: str
