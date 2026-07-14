@@ -44,8 +44,7 @@ async def embed(text: str) -> tuple[list[float], int]:
 async def embed_docs_batch(docs: list[Chunk]):
     tokens = 0
     # chunk_tokens = 0
-    all_embeddings: list[list[float]] = []
-    embedded_chunks = []
+    embedded_chunks: list[EmbeddedChunk] = []
 
     for i in range(0, len(docs), EMBED_BATCH_SIZE):
         batch_texts = []
@@ -69,7 +68,6 @@ async def embed_docs_batch(docs: list[Chunk]):
             )
 
         tokens += res.usage.total_tokens
-        all_embeddings.extend(item.embedding for item in res.data)
 
     return EmbedDocsBatch(
         embedded_chunks=embedded_chunks,

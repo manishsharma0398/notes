@@ -1,4 +1,5 @@
 from qdrant_client import AsyncQdrantClient
+from ..utils.models import SearchResult
 from qdrant_client.models import Distance, VectorParams, Filter
 
 
@@ -31,7 +32,7 @@ async def upsert_collection(collection: str, vectors, wait: bool = True):
 
 async def scroll_collection(
     collection: str,
-    scroll_filter: Filter = Filter(),
+    scroll_filter: Filter | None = None,
     limit: int = 500,
 ):
     all_points = []
@@ -57,9 +58,9 @@ async def scroll_collection(
 async def query_collections(
     collection: str,
     query: list[float] = [],
-    query_filter: Filter | None = Filter(),
+    query_filter: Filter | None = None,
     top_k: int = 3,
-):
+) -> list[SearchResult]:
     client = await get_qdrant_client()
     points = await client.query_points(
         collection_name=collection,
@@ -68,7 +69,17 @@ async def query_collections(
         query_filter=query_filter,
         limit=top_k,
     )
-    return points.points
+    return [
+        SearchResult(
+            score=p.score,
+            text=p.payload.get("text", ""),
+            name=p.payload.get("name", ""),
+            chunk_index=p.payload.get("chunk_index", 0),
+            document_id=p.payload.get("document_id", ""),
+        )
+        for p in points.points
+        if p.payload  # guard against None payload
+    ]
 
 
 async def delete_collection_data(collection: str, criteria: Filter):

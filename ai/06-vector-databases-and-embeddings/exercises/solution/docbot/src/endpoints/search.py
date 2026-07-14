@@ -1,8 +1,8 @@
 from fastapi import APIRouter
 from ..controllers.documents import embed
 from ..clients.qdrant import query_collections
+from ..utils.models import SearchRequest, SearchResponse
 from qdrant_client.models import Filter, FieldCondition, MatchValue
-from ..utils.models import SearchRequest, SearchResult, SearchResponse
 
 search_router = APIRouter()
 
@@ -26,18 +26,7 @@ async def search(payload: SearchRequest):
         query_filter=query_filter,
         top_k=payload.top_k,
     )
-    results: list[SearchResult] = []
-    for search in searches:
-        results.append(
-            SearchResult(
-                score=search.score,
-                text=search.payload.get("text", ""),
-                name=search.payload.get("name", ""),
-                chunk_index=search.payload.get("chunk_index", -1),
-                document_id=search.payload.get("document_id", ""),
-            )
-        )
     return SearchResponse(
-        results=results,
+        results=searches,
         query_embedding_tokens=tokens,
     )

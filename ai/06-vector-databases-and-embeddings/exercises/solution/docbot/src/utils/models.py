@@ -38,7 +38,7 @@ class SearchRequest(BaseModel):
 
 
 class SearchResult(BaseModel):
-    score: float
+    score: float | None
     text: str
     name: str
     chunk_index: int
@@ -58,9 +58,9 @@ class AskRequest(BaseModel):
 
 class LLMResponse(BaseModel):
     answer: str
-    sources: list[str]  # list of source document names used
 
 
 class AskResponse(LLMResponse):
+    sources: list[str]  # list of source document names used
     chunks_used: int
     question: str
