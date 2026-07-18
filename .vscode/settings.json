@@ -1,3 +1,4 @@
 {
-  "python.analysis.extraPaths": ["${workspaceFolder}"]
+  "python.analysis.extraPaths": ["${workspaceFolder}"],
+  "python-envs.defaultEnvManager": "ms-python.python:pipenv"
 }

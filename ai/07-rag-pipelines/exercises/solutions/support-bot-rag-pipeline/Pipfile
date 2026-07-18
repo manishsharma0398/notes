@@ -8,8 +8,12 @@ openai = "*"
 langchain = "*"
 langchain-openai = "*"
 qdrant-client = "*"
+pydantic = "*"
 
 [dev-packages]
+
+[scripts]
+start = "python -m src.main ingest --folder ./docs"
 
 [requires]
 python_version = "3.13"
