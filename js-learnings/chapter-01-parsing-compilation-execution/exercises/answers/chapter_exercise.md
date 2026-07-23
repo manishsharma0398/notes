@@ -11,7 +11,7 @@ Reason: At line 1 var x is hoisted. on line 2 x is assigned a value = 5. At line
 console.log(typeof y);
 let y = 10;
 ```
-Output: Reference Error: y is not defined
+Output: cannot access y before initialization
 Error or not? Error
 Reason: y is not hoisted but in TDZ
 
