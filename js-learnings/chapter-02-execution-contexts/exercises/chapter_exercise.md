@@ -29,10 +29,11 @@ console.log(result);
 ```
 
 **Trace:**
+
 1. List all ECs created and their types.
 2. At `// << SNAPSHOT`, draw the call stack (top to bottom).
 3. For `add`'s EC, what is in its Variable Environment and Lexical Environment at the creation phase?
-4. Final output: ___________
+4. Final output: ****\_\_\_****
 
 ---
 
@@ -48,7 +49,7 @@ function run() {
     console.log(x, y, z); // << SNAPSHOT A
   }
 
-  console.log(x, z);      // << SNAPSHOT B
+  console.log(x, z); // << SNAPSHOT B
   // console.log(y);       // what would happen if you uncommented this?
 }
 
@@ -56,6 +57,7 @@ run();
 ```
 
 **Trace:**
+
 1. How many ECs are created? List them.
 2. Does entering the `{}` block create a new EC? What does it create instead?
 3. At SNAPSHOT A: what is accessible? From which environment?
@@ -89,6 +91,7 @@ first();
 ```
 
 **Trace:**
+
 1. How many ECs are pushed before SNAPSHOT? List them in order.
 2. Draw the outer reference chain for `third`'s EC.
 3. What does `console.log(level)` print and why?
@@ -113,6 +116,7 @@ console.log(results[2]()); // ?
 ```
 
 **Trace:**
+
 1. How many ECs exist when `results[0]()` is called?
 2. Where does `i` live (which environment record)?
 3. Explain precisely why all three functions return the same value.
@@ -126,8 +130,12 @@ console.log(results[2]()); // ?
 function c() {
   throw new Error("boom");
 }
-function b() { c(); }
-function a() { b(); }
+function b() {
+  c();
+}
+function a() {
+  b();
+}
 
 try {
   a();
@@ -137,6 +145,7 @@ try {
 ```
 
 **Trace:**
+
 1. At the moment the error is thrown, what is the call stack?
 2. As the error propagates through b → a → global, what happens to each EC?
 3. `err.stack` is a string. What information does it expose about the EC history?

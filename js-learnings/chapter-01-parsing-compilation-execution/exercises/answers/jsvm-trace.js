@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 
-const REGEX_VAR_DECL = /\bvar\s+([A-Za-z_$][\w$]*)\s*=\s*.+?(?=;|\n|$)/gm;
+const REGEX_VAR_DECL = /\bvar\s+([A-Za-z_$][\w$]*)(?:\s*=\s*.+?)?(?=;|\n|$)/gm;
 
 const REGEX_FUNCTION_DECL =
   /\b(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/gm;
@@ -18,6 +18,16 @@ const REGEX_ARROW_FUNCTION =
 
 function getNames(source, regex) {
   return [...source.matchAll(regex)].map((match) => match[1]);
+}
+
+function stripComments(source) {
+  return (
+    source
+      // block comments
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      // line comments
+      .replace(/\/\/.*$/gm, "")
+  );
 }
 
 function scanDeclarations(source) {
@@ -45,8 +55,6 @@ function scanDeclarations(source) {
 
   // Detect `var <name> = function` patterns
   result.functionDeclarations = getNames(source, REGEX_FUNCTION_DECL);
-
-  console.log("Debug result", result);
 
   return result;
 }
@@ -108,9 +116,18 @@ const main = async () => {
 
   const code = await fs.readFile(filePath, { encoding: "utf-8" });
 
-  const declarations = scanDeclarations(code);
+  try {
+    new Function(code);
 
-  printReport(declarations);
+    const cleanedCode = stripComments(code);
+
+    const declarations = scanDeclarations(cleanedCode);
+
+    printReport(declarations);
+  } catch (error) {
+    console.log("\nError detected: \n");
+    console.error(error);
+  }
 };
 
 main();
