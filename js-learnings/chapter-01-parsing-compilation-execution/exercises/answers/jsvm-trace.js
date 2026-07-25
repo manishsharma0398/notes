@@ -1,12 +1,20 @@
+import fs from "node:fs/promises";
+
 const REGEX_VAR_DECL = /\bvar\s+([A-Za-z_$][\w$]*)\s*=\s*.+?(?=;|\n|$)/gm;
 
-const REGEX_VAR_FUNCTION_DECL =
-  /\bvar\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?function\b/gm;
+const REGEX_FUNCTION_DECL =
+  /\b(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/gm;
 
 const REGEX_LET_CONST_DECL =
   /(?:let|const)\s+([A-Za-z_$][\w$]*)\s*=\s*.+?(?=;|\n|$)/gm;
 
-const REGEX_FUNCTION_EXPR = /\bfunction\s+([A-Za-z_$][\w$]*)\s*\(/gm;
+// Classic function expressions
+const REGEX_FUNCTION_EXPR =
+  /\b(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?function\b/gm;
+
+// Arrow functions
+const REGEX_ARROW_FUNCTION =
+  /\b(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/gm;
 
 function getNames(source, regex) {
   return [...source.matchAll(regex)].map((match) => match[1]);
@@ -23,14 +31,22 @@ function scanDeclarations(source) {
   // Detect `var <name>` patterns
   result.vars = getNames(source, REGEX_VAR_DECL);
 
+  // Detect `function <name>(` patterns
+  result.functionExpressions = [
+    ...getNames(source, REGEX_FUNCTION_EXPR),
+    ...getNames(source, REGEX_ARROW_FUNCTION),
+  ];
+
   // Detect `let <name>` and `const <name>` patterns
   result.letConst = getNames(source, REGEX_LET_CONST_DECL);
-
-  // Detect `function <name>(` patterns
-  result.functionDeclarations = getNames(source, REGEX_FUNCTION_EXPR);
+  result.letConst = result.letConst.filter(
+    (name) => !result.functionExpressions.includes(name),
+  );
 
   // Detect `var <name> = function` patterns
-  result.functionExpressions = getNames(source, REGEX_VAR_FUNCTION_DECL);
+  result.functionDeclarations = getNames(source, REGEX_FUNCTION_DECL);
+
+  console.log("Debug result", result);
 
   return result;
 }
@@ -87,12 +103,14 @@ function printReport(declarations) {
   }
 }
 
-const main = () => {
-  const args = process.argv.slice(2);
+const main = async () => {
+  const filePath = process.argv.slice(2)[0];
 
-  const data = scanDeclarations(code);
+  const code = await fs.readFile(filePath, { encoding: "utf-8" });
 
-  printReport(data);
+  const declarations = scanDeclarations(code);
+
+  printReport(declarations);
 };
 
 main();

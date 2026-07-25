@@ -1,19 +1,19 @@
 function add(a, b) {
-    return a + b;
+  return a + b;
 }
 
-var x = 5
+var x = 5;
 
 const count = 10;
 
 const fn = function () {
-    console.log("function expression");
-}
+  console.log("function expression");
+};
 
-var y = "I am var y"
+var y = "I am var y";
 
 function greet(name) {
-    return `hello ${name}`;
+  return `hello ${name}`;
 }
 
-let PI = 3.14
+let PI = 3.14;
