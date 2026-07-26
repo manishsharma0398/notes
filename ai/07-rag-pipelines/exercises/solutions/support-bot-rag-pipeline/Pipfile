@@ -9,11 +9,14 @@ langchain = "*"
 langchain-openai = "*"
 qdrant-client = "*"
 pydantic = "*"
+langchain-text-splitters = "*"
+python-dotenv = "*"
 
 [dev-packages]
 
 [scripts]
-start = "python -m src.main ingest --folder ./docs"
+ingest = "python -m src.main ingest --folder ./docs"
+question = "python -m src.main query --question 'How many integrations can I use on the Free plan?'"
 
 [requires]
 python_version = "3.13"
