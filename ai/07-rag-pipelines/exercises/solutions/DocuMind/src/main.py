@@ -1,3 +1,5 @@
+import argparse
+import sys
 import asyncio
 import tiktoken
 from uuid import uuid4
@@ -34,6 +36,19 @@ from .utils.constants import (
 )
 
 load_dotenv()
+
+
+SYSTEM_PROMPT = {
+    "role": "system",
+    "content": (
+        "You are a helpful support agent for a SaaS product. "
+        "Answer the user's question using ONLY the provided context. "
+        "Each context block is preceded by a bracketed number, e.g. [1] [Source: filename.md]. "
+        "Cite the sources you used inline with their bracketed number, e.g. [Source: filename.md], right after the claim they support. "
+        "If the context does not contain the answer, respond with: "
+        "'I don't have relevant information about that in my knowledge base.'"
+    ),
+}
 
 
 def chunk_docs(docs: list[Document]) -> list[Chunk]:
@@ -148,34 +163,85 @@ def assemble_context(relevant_chunks: list[RetrievedChunk]) -> str:
     return "\n\n\n\n".join(context)
 
 
-async def generate_answer(question: str, context: str) -> str:
+async def generate_answer(messages, stream: bool = False) -> str:
     client = await get_openai_client()
-    response = await client.chat.completions.create(
-        model=OPENAI_MODEL,
-        temperature=TEMPERATURE,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are a helpful support agent for a SaaS product. "
-                    "Answer the user's question using ONLY the provided context. "
-                    "Each context block is preceded by a bracketed number, e.g. [1] [Source: filename.md]. "
-                    "Cite the sources you used inline with their bracketed number, e.g. [1], right after the claim they support. "
-                    "If the context does not contain the answer, respond with: "
-                    "'I don't have relevant information about that in my knowledge base.'"
-                ),
-            },
-            {
-                "role": "user",
-                "content": f"Context:\n{context}\n\nQuestion: {question}",
-            },
-        ],
-    )
-    return response.choices[0].message.content or "No Results"
+    if stream:
+        full = ""
+        print("Assistant: ", end="")
+        response = await client.chat.completions.create(
+            model=OPENAI_MODEL,
+            temperature=TEMPERATURE,
+            stream=True,
+            messages=messages,
+        )
+        async for ans in response:
+            chunk = ans.choices[0].delta.content or ""
+            print(chunk, end="", flush=True)
+            full += chunk
+        print()
+        return full
+    else:
+        response = await client.chat.completions.create(
+            model=OPENAI_MODEL,
+            temperature=TEMPERATURE,
+            stream=False,
+            messages=messages,
+        )
+        return response.choices[0].message.content or "No Results"
 
 
-async def query():
-    question, top_k = "", 5
+def user_question_in_chat():
+    return str(input("DocuMind > ")).strip()
+
+
+def ask_user_question():
+    try:
+        user_msg = user_question_in_chat()
+        while not user_msg:
+            print("Please enter a proper question or query.")
+            user_msg = user_question_in_chat()
+        if user_msg.lower() == "exit":
+            print("Exiting\n")
+            sys.exit(0)
+        return user_msg
+    except (KeyboardInterrupt, EOFError):
+        print("\nExiting DocuMind.")
+        sys.exit(0)
+
+
+async def chat():
+    messages = [SYSTEM_PROMPT]
+    history = []
+    while True:
+        print()
+        user_msg = ask_user_question()
+
+        if user_msg.lower() == "clear":
+            history = []
+            print("DocuMind > history cleared")
+        elif user_msg.lower() == "sources":
+            pass
+        else:
+            emb_question = await embed(user_msg)
+            relevant_chunks = await query_collections(
+                QDRANT_COLLECTION,
+                query=emb_question.data[0].embedding,
+                score_threshold=SCORE_THRESHOLD,
+                top_k=5,
+            )
+            context = assemble_context(relevant_chunks)
+            history.append(
+                {
+                    "role": "user",
+                    "content": f"Context:\n{context}\n\nQuestion: {user_msg}",
+                },
+            )
+            answer = await generate_answer(messages=messages + history, stream=True)
+            history.append({"role": "assistant", "content": answer})
+            history = history[-4:]
+
+
+async def query(question, top_k=5):
     emb_question = await embed(question)
     relevant_chunks = await query_collections(
         QDRANT_COLLECTION,
@@ -184,15 +250,18 @@ async def query():
         score_threshold=SCORE_THRESHOLD,
     )
     context = assemble_context(relevant_chunks)
-    return await generate_answer(question, context)
+    return await generate_answer(
+        messages=[
+            SYSTEM_PROMPT,
+            {
+                "role": "user",
+                "content": f"Context:\n{context}\n\nQuestion: {question}",
+            },
+        ]
+    )
 
 
-async def main():
-    pass
-
-
-async def ingest():
-    docs_folder = Path("./docs")
+async def ingest(docs_folder):
     docs = get_all_files(docs_folder)
     chunks = chunk_docs(docs)
     tokens, batch_count, ebd_chunks = await embed_docs_batch(chunks)
@@ -242,5 +311,35 @@ async def ingest():
         d.write(manifest.model_dump_json(indent=4))
 
 
+async def main():
+    parser = argparse.ArgumentParser(description="Documind")
+    subparsers = parser.add_subparsers(dest="command")
+
+    ingest_parser = subparsers.add_parser("ingest")
+    ingest_parser.add_argument("--folder", required=True)
+
+    subparsers.add_parser("chat")
+
+    query_parser = subparsers.add_parser("query")
+    query_parser.add_argument("--question", required=True)
+    query_parser.add_argument("--top-k", type=int, default=5)
+
+    args = parser.parse_args()
+
+    if args.command == "ingest":
+        await ingest(Path(args.folder))
+    elif args.command == "query":
+        answer = await query(args.question, args.top_k)
+        print(f"\nAnswer: {answer}")
+    elif args.command == "chat":
+        await chat()
+    else:
+        parser.print_help()
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nExiting DocuMind.")
+        sys.exit(0)
