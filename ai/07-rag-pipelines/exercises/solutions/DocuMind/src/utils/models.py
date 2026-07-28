@@ -23,3 +23,19 @@ class Chunk(BaseModel):
 
 class EmbedChunk(Chunk):
     embedding: list[float]
+
+
+class IndexManifest(BaseModel):
+    collection: str
+    model: str
+    indexed_at: str
+    file_count: int
+    chunk_count: int
+
+
+class CollectionData(Chunk):
+    pass
+
+
+class RetrievedChunk(CollectionData):
+    score: float

@@ -1,7 +1,7 @@
 {
     "collection": "documind",
     "model": "text-embedding-3-small",
-    "indexed_at": "2026-07-27T19:58:33Z",
+    "indexed_at": "2026-07-28T10:45:05Z",
     "file_count": 10,
-    "chunk_count": 12
+    "chunk_count": 39
 }
