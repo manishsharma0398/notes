@@ -33,20 +33,36 @@ from .utils.constants import (
     OPENAI_MODEL,
     TEMPERATURE,
     SCORE_THRESHOLD,
+    CHAT_HISTORY_LENGTH,
 )
 
 load_dotenv()
 
 
-SYSTEM_PROMPT = {
+QUERY_SYSTEM_PROMPT = {
     "role": "system",
     "content": (
         "You are a helpful support agent for a SaaS product. "
         "Answer the user's question using ONLY the provided context. "
         "Each context block is preceded by a bracketed number, e.g. [1] [Source: filename.md]. "
-        "Cite the sources you used inline with their bracketed number, e.g. [Source: filename.md], right after the claim they support. "
+        "Cite the sources you used inline, e.g. [Source: filename.md], right after the claim they support. "
         "If the context does not contain the answer, respond with: "
         "'I don't have relevant information about that in my knowledge base.'"
+    ),
+}
+
+CHAT_SYSTEM_PROMPT = {
+    "role": "system",
+    "content": (
+        "You are a helpful support agent for a SaaS product, having an ongoing conversation with the user. "
+        "For questions about the product or its documentation, answer using ONLY the provided context — "
+        "do not use the conversation history as a source of new factual claims about the product. "
+        "Each context block is preceded by a bracketed number, e.g. [1] [Source: filename.md]. "
+        "Cite the sources you used inline, e.g. [Source: filename.md], right after the claim they support. "
+        "If the context does not contain the answer, respond with: "
+        "'I don't have relevant information about that in my knowledge base.' "
+        "For questions about the conversation itself (e.g. what was asked earlier, or a summary of this chat), "
+        "you may answer directly from the conversation history instead."
     ),
 }
 
@@ -210,8 +226,8 @@ def ask_user_question():
 
 
 async def chat():
-    messages = [SYSTEM_PROMPT]
     history = []
+    sources = []
     while True:
         print()
         user_msg = ask_user_question()
@@ -220,7 +236,7 @@ async def chat():
             history = []
             print("DocuMind > history cleared")
         elif user_msg.lower() == "sources":
-            pass
+            print(sources)
         else:
             emb_question = await embed(user_msg)
             relevant_chunks = await query_collections(
@@ -229,16 +245,25 @@ async def chat():
                 score_threshold=SCORE_THRESHOLD,
                 top_k=5,
             )
+            sources = relevant_chunks
             context = assemble_context(relevant_chunks)
-            history.append(
+            messages = [
+                CHAT_SYSTEM_PROMPT,
+                *history,
                 {
                     "role": "user",
                     "content": f"Context:\n{context}\n\nQuestion: {user_msg}",
                 },
+            ]
+            answer = await generate_answer(messages=messages, stream=True)
+            history.append(
+                {
+                    "role": "user",
+                    "content": user_msg,
+                },
             )
-            answer = await generate_answer(messages=messages + history, stream=True)
             history.append({"role": "assistant", "content": answer})
-            history = history[-4:]
+            history = history[-(CHAT_HISTORY_LENGTH * 2) :]
 
 
 async def query(question, top_k=5):
@@ -252,7 +277,7 @@ async def query(question, top_k=5):
     context = assemble_context(relevant_chunks)
     return await generate_answer(
         messages=[
-            SYSTEM_PROMPT,
+            QUERY_SYSTEM_PROMPT,
             {
                 "role": "user",
                 "content": f"Context:\n{context}\n\nQuestion: {question}",
