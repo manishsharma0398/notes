@@ -41,6 +41,26 @@
 - On block exit, the pointer restores
 - `var` is immune to blocks — it lives in `VariableEnvironment` (function-level, unchanging)
 
+### The Two Pointers You Must Not Confuse (Block Entry/Exit)
+
+There is only **one** real link between environments, and it is easy to draw the arrow backwards.
+
+| Pointer | Lives on | Mutable? | Direction |
+|---|---|---|---|
+| **EC's `LexicalEnvironment` field** | The Execution Context itself | ✅ Reassigned every block entry/exit | Not a link between ERs at all — just "which ER do I start looking in right now" |
+| **ER's `[[OuterEnv]]` / outer reference** | Each Environment Record | ❌ Set once, at creation, never changed | The *only* real link: inner ER → outer ER, never the reverse |
+
+Walking through `run() { var x; { let y; var z; } }`:
+
+- **Before the block**: `EC.LexicalEnvironment` = `run`'s own ER.
+- **Block entered**: a new block ER is created for `y`. Its outer reference is set once, to whatever `EC.LexicalEnvironment` held at that instant (`run`'s ER). Then `EC.LexicalEnvironment` is **reassigned** to point at this new block ER.
+- **`run`'s ER is never touched.** It has no forward pointer into the block ER, no awareness the block even exists. It doesn't "point at" the block — the block's outer reference points at *it*.
+- **Block exited**: `EC.LexicalEnvironment` is reassigned back to `run`'s ER. The block ER is simply abandoned (GC'd if nothing — like a closure — still references it).
+
+**The rule:** the EC's field is bookkeeping ("where do I start"), reassigned constantly. The outer reference is the only persistent, one-directional link (inner scope → enclosing scope), and it is what actually forms the scope chain. Nothing ever points from an outer ER into an inner one.
+
+---
+
 ### Call Stack Rules
 - LIFO stack of ECs
 - Global EC is always at the bottom, never popped
