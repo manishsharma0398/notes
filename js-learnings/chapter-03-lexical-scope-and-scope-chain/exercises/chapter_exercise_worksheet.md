@@ -108,16 +108,19 @@ sayHello("Charlie");
 ```
 
 1. How many times is a new Function EC created for `makeGreeter` during this program's execution?
-   Answer:
+   Answer: 2 - sayHello and sayHi initialization
 
 2. How many separate `greeting` bindings exist in memory after the three calls below are set up? Where do they live?
-   Answer:
+   Answer: 2 - inside closure's captured Environment Record
 
 3. Predicted output (all three lines): `__________`
    Answer:
+   Hello, Alice!
+   Hi, Bob!
+   Hello, Charlie!
 
 4. Can `sayHi` ever access `sayHello`'s `greeting`? Why or why not?
-   Answer:
+   Answer: no. Each call to makeGreeter creates a separate greet function object with its own [[Environment]] slot, pointing to a different captured ER. There is no path sayHi can walk to ever reach sayHello's captured ER.
 
 ---
 
@@ -145,16 +148,16 @@ process();
 ```
 
 1. How many Environment Records exist at SNAPSHOT A? List them and what each holds.
-   Answer:
+   Answer: Global ER , process ER -> level="function", level1 block ER -> level="block-1", level2 block ER -> level="block-2"
 
 2. At each snapshot, which `level` is printed?
-   Answer:
+   Answer: A -> level="block-2", B -> level="block-1", C -> level="function",
 
 3. When the inner `{}` block exits, what happens to its ER?
-   Answer:
+   Answer: its Lexical Environment gets destroyed
 
 4. `var level` is in `process()`'s VE. If you changed it to `let level`, would anything observable change? Explain why or why not.
-   Answer:
+   Answer: No, observable change to this program. changing from var to let will remove the var reference from Variable Environment to its Lexical Environment, both LE and VE point to same Environment Record.
 
 ---
 
@@ -172,13 +175,13 @@ console.log(config.retries); // ?
 ```
 
 1. What is the output?
-   Answer:
+   Answer: 3
 
 2. Walk through the scope chain lookup for `config` at the assignment line. What happens when the engine reaches the end of the chain?
-   Answer:
+   Answer: In setup execution, JS tries to find config in setup ER it can't find there so it tries to find it in Global ER as in sloppy instead of throwing config is attached to Global ER
 
 3. Is `config` now a variable or a property? What is the difference?
-   Answer:
+   Answer: config is a property of global object, retries is a propery of config.
 
 4. What single change to the file would make this throw a `ReferenceError` instead?
-   Answer:
+   Answer: adding let or const before config = {retries:3}
