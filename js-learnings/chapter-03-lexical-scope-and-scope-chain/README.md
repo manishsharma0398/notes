@@ -13,7 +13,7 @@ This is called **lexical scope**, and understanding it precisely is the key to u
 
 Every time you write a function in JavaScript, you create a **bubble** around it. Each bubble:
 
-- Sees everything *inside* it
+- Sees everything _inside_ it
 - Sees everything in any **outer bubble** wrapping it
 - Cannot see inside **sibling or inner** bubbles
 
@@ -46,11 +46,11 @@ The bubbles are nested by **source code structure**, not by call order.
 
 ## What "Lexical" Means
 
-The word *lexical* comes from *lexicon* — the text of the source code. Lexical analysis is the phase where the engine reads your raw characters and produces tokens (Chapter 1).
+The word _lexical_ comes from _lexicon_ — the text of the source code. Lexical analysis is the phase where the engine reads your raw characters and produces tokens (Chapter 1).
 
-**Lexical scope** = scope determined by the *text* of the program.
+**Lexical scope** = scope determined by the _text_ of the program.
 
-The engine sets up scope during parsing — *before execution*. When the compiler (Chapter 1) processes a function definition, it records:
+The engine sets up scope during parsing — _before execution_. When the compiler (Chapter 1) processes a function definition, it records:
 
 1. Which identifiers are declared inside this function
 2. What the function's **outer environment** is — i.e., the scope that textually surrounds it
@@ -83,16 +83,57 @@ This chain of outer references is the **scope chain**. It is built at **parse/co
 
 ---
 
+## Anatomy of an Execution Context
+
+The "Environment Record" mentioned above doesn't float on its own — it's one piece of a larger structure the engine creates every time a function is invoked: the **Execution Context**.
+
+```
+Execution Context
+│
+├── thisBinding
+├── arguments
+│
+├── Lexical Environment
+│      │
+│      ├── Environment Record
+│      │      │
+│      │      ▼
+│      │  Function Environment Record
+│      │      ├── parameters
+│      │      ├── let
+│      │      ├── const
+│      │      ├── var
+│      │      ├── function
+│      │      ├── class
+│      │      ├── [[ThisValue]]
+│      │      ├── [[NewTarget]]
+│      │      └── ...
+│      │
+│      └── Outer Environment Reference ─────► Parent Lexical Environment
+│
+└── Variable Environment
+       │
+       └── points to the same Function Environment Record
+```
+
+A few things worth noting:
+
+- The **Environment Record** is where identifiers actually live (`parameters`, `let`, `const`, `var`, `function`, `class`, etc.), plus a few internal-only slots like `[[ThisValue]]` and `[[NewTarget]]`.
+- The **Outer Environment Reference** is exactly what gets walked during the scope chain lookup described above — it's the pointer that comes from the function's `[[Environment]]` slot.
+- **Lexical Environment** and **Variable Environment** point to the *same* Function Environment Record in modern engines. Historically they were separate (Variable Environment held `var`/`function` declarations, Lexical Environment held `let`/`const`/block scoping), but the current spec unifies them for a plain function call — the split only becomes visible with constructs like `with` or catch-clause bindings.
+
+---
+
 ## The Critical Distinction: Lexical vs. Dynamic Scope
 
 JavaScript uses **lexical scope**. Some languages (e.g., old Bash, Emacs Lisp in some modes) use **dynamic scope**.
 
-| Property | Lexical Scope (JS) | Dynamic Scope |
-|---|---|---|
-| Scope determined by | **Where function is written** | Where function is called |
-| Known at | Parse time | Runtime |
-| Outer reference set | When function definition is compiled | When function is invoked |
-| Predictable? | ✅ Yes — read the source | ❌ No — must trace call graph |
+| Property            | Lexical Scope (JS)                   | Dynamic Scope                 |
+| ------------------- | ------------------------------------ | ----------------------------- |
+| Scope determined by | **Where function is written**        | Where function is called      |
+| Known at            | Parse time                           | Runtime                       |
+| Outer reference set | When function definition is compiled | When function is invoked      |
+| Predictable?        | ✅ Yes — read the source             | ❌ No — must trace call graph |
 
 **Example showing the difference:**
 
@@ -111,8 +152,8 @@ function callIt() {
 callIt();
 ```
 
-In dynamic scope: `readX` would print `"local"` because it was *called from* `callIt`.  
-In JavaScript (lexical scope): `readX` prints `"global"` because it was *written* in the global scope — the `x` in `callIt` is invisible to it.
+In dynamic scope: `readX` would print `"local"` because it was _called from_ `callIt`.  
+In JavaScript (lexical scope): `readX` prints `"global"` because it was _written_ in the global scope — the `x` in `callIt` is invisible to it.
 
 ---
 
@@ -143,18 +184,18 @@ This is exactly why scope doesn't change when you call the function from a diffe
 ```javascript
 // --- 01-scope-chain-walk.js ---
 
-var planet = "Earth";        // (A) Global scope
+var planet = "Earth"; // (A) Global scope
 
 function galaxy() {
-  var star = "Sun";          // (B) galaxy's scope
+  var star = "Sun"; // (B) galaxy's scope
 
   function system() {
-    var rock = "Mars";       // (C) system's scope
+    var rock = "Mars"; // (C) system's scope
 
     // Identifier lookup chain for each variable:
-    console.log(rock);       // (C) found immediately in system's ER
-    console.log(star);       // (B) not in system → walk to galaxy → found
-    console.log(planet);     // (A) not in system → galaxy → global → found
+    console.log(rock); // (C) found immediately in system's ER
+    console.log(star); // (B) not in system → walk to galaxy → found
+    console.log(planet); // (A) not in system → galaxy → global → found
   }
 
   system();
@@ -178,36 +219,36 @@ The engine never "jumps" — it always walks up one level at a time.
 If an inner scope declares a name that already exists in an outer scope, the inner one **shadows** the outer. The outer binding becomes unreachable from the inner scope for that name.
 
 ```javascript
-var color = "blue";   // outer
+var color = "blue"; // outer
 
 function paint() {
-  var color = "red";  // shadows outer `color`
+  var color = "red"; // shadows outer `color`
   console.log(color); // "red" — inner ER is checked first
 }
 
 paint();
-console.log(color);   // "blue" — paint's `color` is invisible here
+console.log(color); // "blue" — paint's `color` is invisible here
 ```
 
 **Shadowing is not mutation.** Both `color` bindings exist simultaneously. `paint` simply can't reach the outer one through normal lookup.
 
-> **Interview trap:** You *can* still reach the global `color` inside a function via `globalThis.color` in a browser, or `global.color` in Node. That bypasses scope lookup entirely.
+> **Interview trap:** You _can_ still reach the global `color` inside a function via `globalThis.color` in a browser, or `global.color` in Node. That bypasses scope lookup entirely.
 
 ---
 
 ## Block Scope and the Scope Chain
 
-As you learned in Chapter 2, a `{}` block does NOT create a new EC. But it *does* create a new **block Environment Record** that gets chained onto the current Lexical Environment.
+As you learned in Chapter 2, a `{}` block does NOT create a new EC. But it _does_ create a new **block Environment Record** that gets chained onto the current Lexical Environment.
 
 ```javascript
 function outer() {
-  let a = 1;           // outer's ER
+  let a = 1; // outer's ER
 
   {
-    let b = 2;         // block ER — outer ref points to outer's ER
+    let b = 2; // block ER — outer ref points to outer's ER
 
     {
-      let c = 3;       // nested block ER — outer ref points to block ER above
+      let c = 3; // nested block ER — outer ref points to block ER above
 
       console.log(a, b, c); // all found by walking the chain: c→b→a
     }
@@ -236,6 +277,7 @@ lookup();
 In **strict mode** (and ES modules): an undeclared identifier → `ReferenceError` immediately.
 
 In **sloppy mode** (legacy):
+
 - On a **read** (`console.log(x)`) → `ReferenceError`
 - On a **write** (`x = 5` with no declaration) → creates a property on the **global object**. This is an accidental global — a frequent source of bugs.
 
@@ -265,7 +307,7 @@ function greet() {
 
 function wrapper() {
   var msg = "local"; // Irrelevant to greet
-  greet();           // Still prints "global"
+  greet(); // Still prints "global"
 }
 
 wrapper();
@@ -289,9 +331,9 @@ function makeLogger() {
 
 var logger = makeLogger();
 
-(function() {
+(function () {
   var x = "caller scope"; // Completely irrelevant
-  logger();               // Prints "captured"
+  logger(); // Prints "captured"
 })();
 ```
 

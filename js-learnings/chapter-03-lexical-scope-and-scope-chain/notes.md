@@ -9,11 +9,11 @@ Scope in JavaScript is **lexical** — determined by **where code is written**, 
 
 | Term | Definition |
 |---|---|
-| **Lexical scope** | Scope determined by source code structure at parse time |
-| **Scope chain** | Linked list of Environment Records walked during identifier lookup |
-| **`[[Environment]]`** | Internal slot on every function object; stores outer ER captured at definition |
-| **Shadowing** | Inner declaration hides outer binding of the same name — not mutation |
-| **Accidental global** | Undeclared write in sloppy mode creates a property on `globalThis` |
+| **Lexical scope** | Scope determined by where a function is *written* in the source, fixed at parse time — never by where or how it's later called. Contrast with dynamic scope, which JS does not have. |
+| **Scope chain** | The chain of outer references linking Environment Records together. Identifier lookup walks this chain one level at a time — current ER, then its outer, and so on — until the name is found or the chain runs out (`ReferenceError`). |
+| **`[[Environment]]`** | An internal slot every function object carries, set once when the function is *defined*: a pointer to the Lexical Environment that surrounded it at that moment. Calling the function later builds its new EC's outer reference from this slot — which is why scope never depends on call site. |
+| **Shadowing** | When an inner scope declares a name that already exists in an outer scope. Both bindings exist simultaneously in memory; the inner one is simply checked first, making the outer one unreachable by plain lookup from inside. |
+| **Accidental global** | In sloppy mode, assigning to an undeclared identifier (`x = 5` with no `var`/`let`/`const`) doesn't throw — the engine creates a new property on `globalThis` instead. Strict mode turns this into a `ReferenceError` at the assignment. |
 
 ---
 

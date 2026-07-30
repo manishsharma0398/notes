@@ -61,14 +61,14 @@
 ### Key Terms
 | Term | Meaning |
 |---|---|
-| **Variable Environment** | Where `var` and function decls live — fixed for function lifetime |
-| **Lexical Environment** | Where `let`/`const` live — shifts per block |
-| **Environment Record (ER)** | The actual name→value map inside an environment |
-| **Outer reference (`[[OuterEnv]]`)** | Chain link forming the scope chain |
-| **Creation Phase** | Before execution: declarations registered, TDZs set |
-| **Execution Phase** | Actual line-by-line running of code |
-| **Object ER** | Global-only: binds to properties of a real object |
-| **Declarative ER** | All other scopes: internal binding storage |
+| **Variable Environment** | The part of an EC holding `var` and function declarations. Created once when the EC is created and never changes shape for the rest of that function's lifetime, regardless of how many blocks execution passes through. |
+| **Lexical Environment** | The part of an EC holding `let`, `const`, and parameters. Unlike the Variable Environment, its "current" record shifts as execution enters and exits `{}` blocks — each block gets a fresh Environment Record chained onto the previous one. |
+| **Environment Record (ER)** | The actual data structure storing name→binding mappings for one scope. Every Lexical/Variable Environment points to one. This is the thing that's actually walked during a scope chain lookup. |
+| **Outer reference (`[[OuterEnv]]`)** | A pointer on every ER to its lexically enclosing ER — fixed at the moment the scope is *defined*, not when it's *entered*. The full chain of these pointers up to the Global ER is what "the scope chain" refers to. |
+| **Creation Phase** | The first of two steps whenever an EC is created: scan the code, register every declaration's binding (`var`→`undefined`, functions→full value, `let`/`const`→TDZ), determine `this` — all before any line actually runs. |
+| **Execution Phase** | The second step: the code body runs top to bottom, assignments update bindings, TDZs lift at their declaration lines, and nested calls trigger new ECs (pushing the call stack). |
+| **Object ER** | The Environment Record used only for the global scope — its bindings are literally properties on a real object (`globalThis`). This is why top-level `var x` also creates `globalThis.x`. |
+| **Declarative ER** | The Environment Record used everywhere else (functions, blocks, modules) — bindings are stored as internal engine slots, not as properties on any accessible object. |
 
 ### Common Misconceptions
 - ❌ "Each block creates a new EC" → ✅ Only function calls do; blocks create ERs

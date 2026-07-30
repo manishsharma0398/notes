@@ -40,13 +40,13 @@
 ### Key Terms
 | Term | Meaning |
 |---|---|
-| **AST** | Abstract Syntax Tree — structured representation of source |
-| **EC (Execution Context)** | Data structure holding scope, this, and outer reference |
-| **Call Stack** | LIFO stack of active ECs |
-| **Hoisting** | Compile-time registration of declarations |
-| **TDZ** | Temporal Dead Zone — `let`/`const` registered but not accessible |
-| **Lexical Scope** | Scope determined by source position, not call site |
-| **JIT** | Just-In-Time — compiling hot paths at runtime for speed |
+| **AST** | Abstract Syntax Tree — the tree structure the parser builds from tokens, capturing *meaning* (this is a function call, this is a binary expression) rather than raw characters. The compiler and engine work from the AST, never from the original text. |
+| **EC (Execution Context)** | The full runtime state needed to execute one chunk of code — Variable Environment, Lexical Environment, `this` binding, and the outer reference. Created for the global code and for every function call. |
+| **Call Stack** | The LIFO stack of active ECs. A call pushes a new EC on top; a return pops it. The engine always executes whatever EC is on top — this is why a `throw` inside deep recursion produces a full stack trace. |
+| **Hoisting** | The name for what you observe when the compilation phase registers every declaration's binding *before* execution runs — not code moving, but bindings existing early. What value each binding starts with depends on its declaration type (see Chapter 4). |
+| **TDZ** | Temporal Dead Zone — the window between a scope starting and a `let`/`const`/`class` declaration's line actually executing. The binding exists but is uninitialized; any read throws `ReferenceError`, even via `typeof`. |
+| **Lexical Scope** | Scope fixed by *where a function is written* in the source, decided at parse/compile time — never by where or how it's later called. This is why JS has closures and why static tooling (linters, bundlers) can reason about variables at all. |
+| **JIT** | Just-In-Time compilation — V8 starts by running unoptimized bytecode (Ignition), then recompiles "hot" (frequently run) functions into progressively faster machine code (Sparkplug → Maglev → TurboFan) while the program is still running. |
 
 ### Common Misconceptions
 - ❌ "JS runs line by line" → ✅ Parse → Compile → Execute
