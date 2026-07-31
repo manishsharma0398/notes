@@ -88,16 +88,16 @@ check();
 ```
 
 1. Predicted output: LINE A `__________`
-   Answer:
+   Answer: undefined
 
 2. Does LINE B print anything, or does control jump to the catch block? Predicted value of LINE C: `__________`
-   Answer:
+   Answer: ReferenceError
 
 3. Predicted output: LINE D `__________`
-   Answer:
+   Answer: string
 
 4. Explain precisely why `typeof neverDeclared` and `typeof inTdz` (before its declaration) behave differently, even though both are "not yet available" in some sense.
-   Answer:
+   Answer: There is a subtle diffrence neverDeclared does not exist in check()'s ER bindings whereas inTdz has a binding whose value is not set anything yet i.e it is in Temporal Dead Zone Phase
 
 ---
 
@@ -130,13 +130,13 @@ runBoth();
 ```
 
 1. What creation-phase binding exists for `alpha` before its declaration line? What about `beta`?
-   Answer:
+   Answer: alpha -> undefined (hoisted as var declared), beta -> memory created, bindng exists but no value for it yet, hoisted in TDZ.
 
 2. Predicted error type for the `alpha()` call: `__________`. For the `beta()` call: `__________`.
-   Answer:
+   Answer: alpha -> TypeError, beta -> ReferenceError
 
 3. Why are the two error types different, given that both `alpha` and `beta` are "function expressions assigned to a variable"?
-   Answer:
+   Answer: yes, both are function expression but their variable identifieres are differnt - var and let. function expressions behaviour depends on the behaviur of the varibale identifier attached to them.
 
 ---
 
@@ -159,10 +159,10 @@ console.log(typeof helper); // << LINE C
 ```
 
 1. Predicted output: LINE A `__________`, LINE B `__________`, LINE C `__________`
-   Answer:
+   Answer: undefined, function, function
 
 2. At LINE A, has the Annex B "copy to outer binding" step happened yet? Why or why not?
-   Answer:
+   Answer: no, it has not happened yet. the execution has not entered the if block yet.
 
 3. If this file had `"use strict"` at the top, which of the three lines would change, and to what?
-   Answer:
+   Answer: undefined, function, function -> undefined
