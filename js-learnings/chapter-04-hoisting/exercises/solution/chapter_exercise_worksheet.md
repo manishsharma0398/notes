@@ -29,10 +29,10 @@ function f() {
    Answer: undefined
 
 3. Predicted output for LINE B: `__________`
-   Answer: Reference Error: cannot be 'b' before initialization
+   Answer: Reference Error: cannot access 'b' before initialization
 
 4. Predicted output for LINE C: `__________`
-   Answer: function
+   Answer: function if line B is commented else it never runs
 
 5. Why does LINE A succeed (with a value) while LINE B throws, even though both `a` and `b` are declared after their respective log lines?
    Answer: var gets initialized with undefined while let is not initialized at hoisting during the function's creation phase. Since, for b there is a binding existing but in Temporal Dead zone.
@@ -58,13 +58,13 @@ console.log(typeof mode); // << LINE C
 ```
 
 1. During the creation phase, which is registered first — the `var` or the `function`? Which one's value "wins" by the time creation phase finishes, and why?
-   Answer: at creation var wins but at execution time function wins
+   Answer: var registers first with undefined (hoisting). In creation phase a function declaration always overwites the var declaration with the same name.
 
 2. Predicted output: LINE A `__________`, LINE B `__________`, LINE C `__________`
-   Answer: undefined, function, function
+   Answer: function, string, number
 
 3. Explain, in terms of creation-phase order vs. execution-phase order, why the three lines produce three different results.
-   Answer:
+   Answer: According to ECMAScript specs in creation phase if an identifier binding already exists for a function declaration then variable binding with the same identifier can't overwrite and skips/ignores it. At, the execution time, till the identifier is reassigned it will a function, only after reassignment it will be changed to the new assigned value , that's why snapshot at line A prints function and snapshot at line B prints string and at line C prints number
 
 ---
 

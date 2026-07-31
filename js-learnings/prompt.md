@@ -60,6 +60,10 @@ Exercises:
      - Starter code skeleton with `# TODO` markers where I need to fill in logic
      - A "hints" section (collapsed or at the bottom) — available if I get stuck
      - A "what to verify" checklist so I can self-assess my solution
+     - A **worksheet file** (`exercises/solution/chapter_exercise_worksheet.md`) that duplicates
+       every program and every question inline, with blank `Answer:` blocks ready to fill in.
+       This lets me work entirely in one file without switching back to `chapter_exercise.md`.
+       Do NOT pre-fill the answers — leave them blank for me to complete.
 
   2. **Cumulative exercise** (`cumulative_exercise.md`) — A small but complete project
      that integrates concepts from **all chapters learned so far**. Should take 1–3 hours.

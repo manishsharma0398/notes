@@ -41,19 +41,24 @@ function scanDeclarations(source) {
   // Detect `var <name>` patterns
   result.vars = getNames(source, REGEX_VAR_DECL);
 
-  // Detect `function <name>(` patterns
+  // Detect `var/let/const <name> = function` and arrow function patterns
   result.functionExpressions = [
     ...getNames(source, REGEX_FUNCTION_EXPR),
     ...getNames(source, REGEX_ARROW_FUNCTION),
   ];
 
-  // Detect `let <name>` and `const <name>` patterns
+  // Detect `let <name>` and `const <name>` patterns (exclude function expressions)
   result.letConst = getNames(source, REGEX_LET_CONST_DECL);
   result.letConst = result.letConst.filter(
     (name) => !result.functionExpressions.includes(name),
   );
 
-  // Detect `var <name> = function` patterns
+  // Exclude var-declared function expressions from vars (same as let/const filter above)
+  result.vars = result.vars.filter(
+    (name) => !result.functionExpressions.includes(name),
+  );
+
+  // Detect `function <name>(` declaration patterns
   result.functionDeclarations = getNames(source, REGEX_FUNCTION_DECL);
 
   return result;
@@ -92,32 +97,28 @@ function printReport(declarations) {
 
   console.log("\nHoisting note:");
   if (declarations.vars.length > 0) {
-    console.log(
-      sanitizeNames(declarations.vars),
-      " will be initialized to undefined",
-    );
+    console.log(`${sanitizeNames(declarations.vars)} will be initialized to undefined`);
   }
   if (declarations.functionDeclarations.length > 0) {
-    console.log(
-      sanitizeNames(declarations.functionDeclarations),
-      " will be fully available before execution",
-    );
+    console.log(`${sanitizeNames(declarations.functionDeclarations)} will be fully available before execution`);
   }
   if (declarations.letConst.length > 0) {
-    console.log(
-      sanitizeNames(declarations.letConst),
-      " will be in TDZ until its declaration line",
-    );
+    console.log(`${sanitizeNames(declarations.letConst)} will be in TDZ until its declaration line`);
   }
 }
 
 const main = async () => {
   const filePath = process.argv.slice(2)[0];
 
-  const code = await fs.readFile(filePath, { encoding: "utf-8" });
-
   try {
-    new Function(code);
+    const code = await fs.readFile(filePath, { encoding: "utf-8" });
+
+    // new Function() does not support ES module syntax (import/export).
+    // Skip the syntax check if the file uses ESM to avoid false SyntaxErrors.
+    const isESM = /\b(?:import|export)\b/.test(code);
+    if (!isESM) {
+      new Function(code);
+    }
 
     const cleanedCode = stripComments(code);
 
