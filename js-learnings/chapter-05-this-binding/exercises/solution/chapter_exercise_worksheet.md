@@ -43,41 +43,25 @@ r2 = { label: "ctx" }
 C:
 
 ```
-Rule:
-this =
-r3 =
+Rule: Explicit Binding
+this = ctx
+r3 = {label: "ctx"}
 ```
 
 D:
 
 ```
-Rule: ___________
-this = ___________
-r4 = ___________
-```
-
-Answer:
-
-```
-Rule:
-this =
-r4 =
+Rule: Explicit Binding
+this = ctx
+r4 = {label: "ctx"}
 ```
 
 E:
 
 ```
-Rule: ___________
-this = ___________
-r5 = ___________
-```
-
-Answer:
-
-```
-Rule:
-this =
-r5 =
+Rule: new Binding
+this = {} (a newly created empty object)
+r5 = {} (that same new empty object, returned implicitly)
 ```
 
 ---
@@ -110,10 +94,10 @@ console.log(boundToA.call(b)); // << LINE 4
 Answer:
 
 ```
-LINE 1:   (rule: )
-LINE 2:   (rule: )
-LINE 3:   (rule:  wins over )
-LINE 4:   (rule:  wins over )
+LINE 1: A  (rule: Implicit Binding)
+LINE 2: B  (rule: Implicit Binding)
+LINE 3: A  (rule: Explicit Binding (bind) wins over Implicit Binding)
+LINE 4: A  (rule: Explicit Binding (bind) wins over Explicit Binding (call))
 ```
 
 ---
@@ -153,46 +137,26 @@ const stolenArrow = m1.directArrow; // extracted
 console.log(stolenArrow()); // << LINE F
 ```
 
-```
-LINE A: ___________
-Explanation: ___________
-
-LINE B: ___________
-Explanation: ___________
-
-LINE C: ___________
-Explanation: ___________
-
-LINE D: ___________
-Explanation: ___________
-
-LINE E: ___________
-Explanation: ___________
-
-LINE F: ___________
-Explanation: ___________
-```
-
 Answer:
 
 ```
-LINE A:
-Explanation:
+LINE A: m1
+Explanation: m1 is created with new, so this inside the constructor is set to a new empty object {}. createArrow is called with implicit binding, so its this is m1. The inner arrow function will inherit this from createArrow which is m1 through the scope chain so this = m1.
 
-LINE B:
-Explanation:
+LINE B: m2
+Explanation: same as 1st one
 
-LINE C:
-Explanation:
+LINE C: m1
+Explanation: nothing can override arrow function's this because its this is captured at creation time by inheriting its parent's this through scope chain.
 
-LINE D:
-Explanation:
+LINE D: m1
+Explanation: arrow function inherits this from parent through the scope chain.
 
-LINE E:
-Explanation:
+LINE E: m1
+Explanation: nothing can override arrow function's this
 
-LINE F:
-Explanation:
+LINE F: m1
+Explanation: arrow function this is determined at creation time, if it was a normal function, it would have lost this from Maker, m1.
 ```
 
 ---
@@ -237,25 +201,28 @@ bus.emit("login", { userId: 42 }); // ← what happens here?
 
 1. What is actually stored in `bus.listeners["login"]`?
    Answer:
+   bus.listeners["login"] = function handleLogin(data) {
+   console.log(`${this.name} received login:`, data);
+   };
 
 2. What is `this` inside `handleLogin` when `emit` calls it?
-   Answer:
+   Answer: this = bus.listeners = { login: [Function: handleLogin] }
 
 3. What does the `console.log` print?
-   Answer:
+   Answer: undefined received login: { userId: 42 }
 
 4. Provide **two different fixes** that make `this.name` correctly resolve to `"UserService"`.
 
    Fix 1:
 
    ```javascript
-   // Write your fix here
+   make handleLogin an arrow function
    ```
 
    Fix 2:
 
    ```javascript
-   // Write your fix here
+   bus.on("login", service.handleLogin.bind(service));
    ```
 
 ---
@@ -266,6 +233,10 @@ Implement `simulateNew` that replicates `new Constructor(...args)` without using
 
 ```javascript
 function simulateNew(Constructor, ...args) {
+  const this = {}
+
+  simulateNew.p
+
   // TODO: implement the four steps that new performs
   // Step 1:
   // Step 2:
