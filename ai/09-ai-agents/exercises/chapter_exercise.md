@@ -10,6 +10,7 @@
 You will build a **file system assistant agent** — a simple but realistic agent that can answer questions about files in a directory by calling tools. You will implement the full agent loop from scratch using only the raw OpenAI API (no LangChain, no abstractions).
 
 The agent should be able to handle queries like:
+
 - "How many Python files are in this directory?"
 - "What is the total size in KB of all JSON files?"
 - "List all files larger than 10KB and show their sizes."
@@ -137,7 +138,7 @@ def dispatch_tool(tool_call) -> str:
     4. Call the function with validated args
     5. Catch any execution exceptions and return as error dict
     6. Return result as JSON string
-    
+
     Important: NEVER let this function raise — all errors must be returned
     as JSON strings so the LLM can reason about them.
     """
@@ -155,12 +156,12 @@ def dispatch_tool(tool_call) -> str:
 def run_agent(query: str, working_directory: str = ".") -> str:
     """
     TODO: Implement the agent loop.
-    
+
     The system prompt should tell the agent:
     - It's a file system assistant
     - The working directory it should operate on
     - To always use tools for file operations, not guess
-    
+
     The loop should:
     1. Call the API with current messages and tool definitions
     2. If finish_reason == "stop": return the final answer
@@ -170,19 +171,19 @@ def run_agent(query: str, working_directory: str = ".") -> str:
     """
     MAX_ITERATIONS = 8
     total_tokens = 0
-    
+
     messages = [
         # TODO: system message
         # TODO: user message with query
     ]
-    
+
     for iteration in range(MAX_ITERATIONS):
         # TODO: call API
         # TODO: check finish_reason
         # TODO: handle tool calls
         # TODO: handle stop
         pass
-    
+
     return f"Agent timed out after {MAX_ITERATIONS} iterations. Tokens used: {total_tokens}"
 
 
@@ -193,13 +194,13 @@ def run_agent(query: str, working_directory: str = ".") -> str:
 if __name__ == "__main__":
     # Test against the current directory (or change to any directory you have)
     test_dir = "."  # or "/path/to/your/project"
-    
+
     queries = [
         f"How many Python files are in {test_dir}?",
         f"What is the total size in KB of all files in {test_dir}?",
         f"List all files larger than 1KB in {test_dir} and show their sizes.",
     ]
-    
+
     for q in queries:
         print(f"\n{'='*60}")
         result = run_agent(q, working_directory=test_dir)
@@ -256,6 +257,7 @@ except Exception as e:
 <summary>Hint 4: Message structure for tool results</summary>
 
 After running a tool call, you need to append TWO messages:
+
 ```python
 # 1. The assistant message (contains the tool_calls)
 messages.append(response.choices[0].message)  # the OpenAI message object works directly

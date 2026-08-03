@@ -1,16 +1,41 @@
 from pathlib import Path
 from pydantic import BaseModel
+from openai import OpenAI
+import json
+from dotenv import load_dotenv
+
+load_dotenv()
+
+SKIP_DIRS = [".venv", "node_modules", ".git", "__pycache__"]
+
+openai_client = OpenAI()
 
 # ─────────────────────────────────────────────────────────────
 # SECTION 1: Pydantic arg models (validate what the LLM sends)
 # ─────────────────────────────────────────────────────────────
 
 
-class ListFilesArgs(BaseModel):
-    dir_path: Path
-    file_extension: str | None
+class ListFileArgs(BaseModel):
+    directory: str
+    extensions: list[str] = ["*"]
     recursive: bool = False
-    verbose: bool = False
+
+
+class FileInfo(BaseModel):
+    name: str
+    size_bytes: int
+    is_file: bool
+
+
+class GetFileInfoArgs(BaseModel):
+    file_path: str
+
+
+class FileMetadata(BaseModel):
+    exists: bool = False
+    size_bytes: int = 0
+    size_kb: float = 0
+    line_count: int = 0
 
 
 # ─────────────────────────────────────────────────────────────
@@ -20,49 +45,274 @@ class ListFilesArgs(BaseModel):
 
 def list_files(
     directory: str,
-    extension: str = "*",
+    extensions: list[str] = ["*"],
     recursive: bool = False,
-):
+) -> list[FileInfo] | dict:
     """
-    TODO: List files in the given directory.
     - Return: list of {"name": str, "size_bytes": int, "is_file": bool}
     - If extension is provided (e.g. ".py"), filter to only those files
     - Handle FileNotFoundError and PermissionError gracefully
     - Return at most 20 files to keep context small
     """
     dir = Path(directory)
-    if recursive:
-        files = [f.name for f in dir.rglob(extension) if f.is_file()]
+    results: list[Path] = []
+    try:
+        if recursive:
+            for root, dirs, filenames in dir.walk():
+                dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+                for file in filenames:
+                    path = Path(root) / file
+                    if "*" in extensions or any(
+                        file.endswith(ext) for ext in extensions
+                    ):
+                        results.append(path)
+        else:
+            for f in dir.glob("*"):
+                if f.is_file() and (
+                    "*" in extensions or any(f.name.endswith(ext) for ext in extensions)
+                ):
+                    results.append(f)
+    except (FileNotFoundError, PermissionError) as e:
+        return {"error": str(e)}
+
+    # Return at most 20 files
+    if len(results) > 20:
+        results = results[:20]
+
+    # Convert to the desired format
+    return [
+        FileInfo(
+            name=path.name,
+            size_bytes=path.stat().st_size if path.is_file() else 0,
+            is_file=path.is_file(),
+        )
+        for path in results
+    ]
+
+
+def get_file_info(file_path: str) -> FileMetadata:
+    """
+    - Return: {"exists": bool, "size_bytes": int, "size_kb": float, "line_count": int}
+    - line_count should only be populated for text files (skip binary)
+    - Handle errors gracefully
+    """
+    file = Path(file_path)
+    result = FileMetadata()
+    try:
+        if file.exists():
+            result.exists = True
+            size_in_bytes = file.stat().st_size
+            result.size_bytes = size_in_bytes
+            result.size_kb = size_in_bytes / 1024
+            try:
+                result.line_count = len(file.read_text(encoding="utf-8").splitlines())
+            except UnicodeDecodeError:
+                result.line_count = 0  # binary file — skip
+        return result
+    except PermissionError as e:
+        print("error", str(e))
+        return result
+
+
+# ─────────────────────────────────────────────────────────────
+# SECTION 3: Tool definitions (JSON schemas sent to the API)
+# ─────────────────────────────────────────────────────────────
+
+# TODO: Define TOOL_DEFINITIONS list with all 3 tools
+# Each entry should have "type": "function" and the function schema
+# Write descriptions that clearly distinguish when to use each tool
+TOOL_DEFINITIONS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "list_files",
+            "description": "List files in a directory",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "directory": {
+                        "type": "string",
+                        "description": "Directory to list files (e.g ./docs, ./files)",
+                    },
+                    "extensions": {
+                        "type": "array",
+                        "description": """list of extensions to filter out, list all files by default (e.g. [".py"], ["*"], [".txt", ".py", ".js"])""",
+                        "default": ["*"],
+                    },
+                    "recursive": {
+                        "type": "boolean",
+                        "description": "Whether to recursively search in the directory (e.g. False, True)",
+                        "default": False,
+                    },
+                },
+                "required": ["directory"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_file_info",
+            "description": ("Get info of provided file"),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "path of the file (e.g. ./docs/python.py)",
+                    }
+                },
+                "required": ["file_path"],
+            },
+        },
+    },
+    # TODO: read_file_head schema
+]
+
+# ─────────────────────────────────────────────────────────────
+# SECTION 4: Tool dispatch with validation
+# ─────────────────────────────────────────────────────────────
+
+TOOL_MAP = {
+    "list_files": (ListFileArgs, list_files),
+    "get_file_info": (GetFileInfoArgs, get_file_info),
+    # "read_file_head": (ReadFileHeadArgs, read_file_head),
+}
+
+
+def dispatch_tool(tool_call) -> str:
+    """
+    TODO: Implement tool dispatch with Pydantic validation.
+    Steps:
+    1. Get tool name and parse raw JSON arguments
+    2. Look up the arg model and function in TOOL_MAP
+    3. Validate arguments with Pydantic (catch ValidationError)
+    4. Call the function with validated args
+    5. Catch any execution exceptions and return as error dict
+    6. Return result as JSON string
+
+    Important: NEVER let this function raise — all errors must be returned
+    as JSON strings so the LLM can reason about them.
+    """
+    name = tool_call.function.name
+    args = tool_call.function.arguments
+
+    print(f"\n  [TOOL CALL] {name}({args})")
+
+    if name not in TOOL_MAP:
+        result = {"error": f"Unknown tool: {name}"}
     else:
-        files = [f.name for f in dir.glob(extension) if f.is_file()]
-    print(files)
+        try:
+            result = TOOL_MAP[name](**args)
+        except TypeError as e:
+            result = {"error": f"Invalid arguments: {e}"}
+
+    print(f"  [TOOL RESULT] {result}")
+    return json.dumps(result)
 
 
-def main():
-    print("Hello from file-system-assistant!")
+# ─────────────────────────────────────────────────────────────
+# SECTION 5: The agent loop
+# ─────────────────────────────────────────────────────────────
+
+
+def run_agent(query: str, working_directory: str = ".") -> str:
+    """
+    TODO: Implement the agent loop.
+
+    The system prompt should tell the agent:
+    - It's a file system assistant
+    - The working directory it should operate on
+    - To always use tools for file operations, not guess
+
+    The loop should:
+    1. Call the API with current messages and tool definitions
+    2. If finish_reason == "stop": return the final answer
+    3. If finish_reason == "tool_calls": dispatch each tool, append results, loop
+    4. Stop after MAX_ITERATIONS (set to 8) and return a timeout message
+    5. Print token usage after each API call
+    """
+    MAX_ITERATIONS = 8
+    total_tokens = 0
+
+    messages = [
+        {
+            "role": "system",
+            "content": "You are a helpful file system assistant"
+            "Use tools to perform file and directories operations"
+            "If asked any other thing except file system, file and directory info meta, operations just answer I can't do it",
+        },
+        {"role": "user", "content": query},
+    ]
+
+    print(f"\n{'='*60}")
+    print(f"USER: {query}")
+    print(f"{'='*60}")
+
+    for iteration in range(MAX_ITERATIONS):
+        print(
+            f"\n[Iteration {iteration + 1}] Calling LLM with {len(messages)} messages..."
+        )
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            tools=TOOL_DEFINITIONS,
+            tool_choice="auto",
+            temperature=0,
+            max_completion_tokens=500,
+        )
+        answer = response.choices[0].message.content
+        finish_reason = response.choices[0].finish_reason
+        token_used = response.usage.total_tokens or 0
+        total_tokens += token_used
+
+        print(f"Token used in this iteration: {token_used}")
+        print(f"  finish_reason: {finish_reason}")
+
+        if finish_reason == "stop":
+            print(f"\nASSISTANT: {answer}")
+            return answer
+
+        if finish_reason == "tool_calls":
+            messages.append(answer)
+
+            for tool_call in response.choices[0].message.tool_calls:
+                result_str = dispatch_tool(tool_call)
+
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": result_str,
+                    }
+                )
+
+            continue
+
+    return f"Agent timed out after {MAX_ITERATIONS} iterations. Tokens used: {total_tokens}"
 
 
 if __name__ == "__main__":
-    list_files("./", "*.py")
+    test_dir = "./"  # or "/path/to/your/project"
 
-# Not with rglob itself — glob patterns can't express negation, and there's no exclude parameter. You have two real options, and the difference between them matters.
+    queries = [
+        f"How many Python files are in {test_dir}?",
+        f"What is the total size in KB of all files in {test_dir}?",
+        f"List all files larger than 1KB in {test_dir} and show their sizes.",
+    ]
 
-# Filter after — simplest, and fine for small trees:
+    for q in queries:
+        print(f"\n{'='*60}")
+        result = run_agent(q, working_directory=test_dir)
+        print(f"FINAL: {result}")
 
 
-# SKIP = {".venv", "node_modules", ".git", "__pycache__"}
-# files = [f for f in dir.rglob(pattern)
-#          if f.is_file() and not (SKIP & set(f.relative_to(dir).parts))]
-# The catch: rglob has already descended into .venv by the time you filter. You pay the full walk — every stat, every directory — and only then throw the results away. On the tree you just ran that's ~120 wasted entries; on a node_modules it's tens of thousands.
-
-# Prune during — actually skips the subtree. You're on 3.13, so Path.walk() (3.12+) does this:
-
-
-# for root, dirs, filenames in dir.walk():
-#     dirs[:] = [d for d in dirs if d not in SKIP]   # in-place slice assignment
-#     ...
-# The dirs[:] = ... is the whole trick, and it has to be the in-place slice — dirs = [...] rebinds a local and the walker never sees it. Mutating the list tells the walker which subdirectories to descend into, so .venv is never opened at all. (os.walk behaves identically if you prefer strings.)
-
-# Since you're already matching an extension, you'd combine that with fnmatch.fnmatch(name, pattern) on the filenames inside the loop, which also gets you the early-exit for your 20-file cap — you can return the moment you have 20 instead of walking the entire tree first. rglob can't do that for you either, though it is a generator, so itertools.islice over it gets you the same laziness if you stay with the filter-after approach.
-
-# For a file-system agent tool I'd lean toward Path.walk() with pruning: the skip-list is something you want to state explicitly anyway, since an LLM pointing this tool at a repo root is the normal case, not the edge case.
+# if __name__ == "__main__":
+#     print(
+#         list_files(
+#             directory="./",
+#             extensions=[".py"],
+#             recursive=True,
+#         )
+#     )
+#     print(get_file_info("./main.pys"))
