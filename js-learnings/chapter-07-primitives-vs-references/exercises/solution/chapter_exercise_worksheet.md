@@ -59,31 +59,31 @@ Answer:
 
 ```
 A: 10
-Why:
+Why: a's type is a number which is a primitive so doing b=a passes the value of a not the reference so doing any operation on b will not affect a
 
 B: 15
-Why:
+Why: a's type is a number which is a primitive so doing b=a passes the value not the reference
 
-C:
-Why:
+C: 99
+Why: assigning obj2=obj1 copies the reference of obj1 to obj2. Hence, making any changes in obj2 will directly affect obj1 as they are eventually pointing to the same memory location
 
-D:
-Why:
+D: 99
+Why: same as above
 
-E:
-Why:
+E: true
+Why: because obj1 and ob2 points to same memory location
 
-F:
-Why:
+F: 3
+Why: spread operation does a shallow copy. Here, the contents of arr1 are all primitives so their value gets copied and not their refereces
 
-G:
-Why:
+G: 4
+Why: arr2 is pointing to different memory location than arr1 hence, pushing to arr2 does not affect arr1. since arr1 had 3 items in it doing a push add one item to the array
 
-H:
-Why:
+H: false
+Why: because they don't point to same memory location
 
-I:
-Why:
+I: 42
+Why: passing object as params to a function passes the reference. reassigning obj inside function updates its local binding and not the actual object passed. Also, o is a const but its properties got updated because const hold the bindings not the contents
 ```
 
 ---
@@ -92,40 +92,40 @@ Why:
 
 ```
 1. [] === []
-Answer:
-Why:
+Answer: false
+Why: === on refrence type compares the memory location and each [] is created on  a new memory location
 
 2. "hello" === "hello"
-Answer:
-Why:
+Answer: true
+Why: === on primitive types comapres the value and hello really equals hello
 
 3. const a = {}; const b = a; → a === b
-Answer:
-Why:
+Answer: true
+Why: a and b both now points to the same memory location
 
 4. const a = [1,2]; const b = [...a]; b.push(3); → a.length === 3
-Answer:
-Why:
+Answer: false
+Why: spread operation does a shallow copy. Here, the contents of a are all primitives so their value gets copied and not their refereces hence, pushing to b has no affect in array a
 
 5. typeof null === "null"
-Answer:
-Why:
+Answer: false
+Why: typeof null equals "object" which is a historical bug in js and type of "null" is "string". Hence, the comparison now becomes primitives "object" === "string"
 
 6. const obj = { x: 1 }; obj.x = 99; → TypeError
-Answer:
-Why:
+Answer: NO, not a typeError it will be reassigned to 99
+Why: const holds the bindings not the contents
 
 7. "hello".toUpperCase() mutates the string "hello" in place
-Answer:
-Why:
+Answer: No
+Why: "hello" i.e a string is immutable so doing any change to it returns a new copy leaving the old value intact.
 
 8. const o = Object.freeze({ inner: { x: 1 } }); o.inner.x = 99; → TypeError
-Answer:
-Why:
+Answer: NO, error x actually updates to 99
+Why: Object.freeze does a shallow lock , i.e. only at the top level o.inner = 5, this in sloppy mode doesn't throw, js ignores it unless in strict mode it throws a TypeError
 
 9. if (new Boolean(false)) { console.log("runs"); } → nothing is logged
-Answer:
-Why:
+Answer: it logs "runs"
+Why: new Boolean(false) return an object and not the boolean false and evry object is truthy in a consdition, so the if passes.
 ```
 
 ---
@@ -159,20 +159,20 @@ replaceHistory(history);
 
 ```
 After setRetries(config):
-config.retries = ___
-Why:
+config.retries = 10
+Why: passing object as params passes the reference not the value hence muatating cfg actually mutates config
 
 After resetConfig(config):
-config = ___
-Why:
+config = { timeout: 3000, retries: 10 }
+Why: reassigning cfg inside function updates its local bindings and not the passed reference of config object hence no change in config
 
 After clearHistory(history):
-history = ___
-Why:
+history = []
+Why: passing array as params passes the reference of history so inside function clearHistory the actual hsitory length is set 0, meaning we are emptying the array
 
 After replaceHistory(history):
-history = ___
-Why:
+history = []
+Why: reassigning arr inside replaceHistory only updates the local bindings so, not affecting the history array. Note: [] inside the function and history's [] are entirely different.
 ```
 
 ---
@@ -183,7 +183,7 @@ Why:
 "use strict";
 
 function shallowEqual(a, b) {
-  // Write your implementation here
+  //
 }
 
 console.log(shallowEqual({ x: 1, y: 2 }, { x: 1, y: 2 })); // true
@@ -197,7 +197,21 @@ Your implementation:
 
 ```javascript
 function shallowEqual(a, b) {
-  // Write here
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+
+  if (aKeys.length !== bKeys.length) return false;
+
+  for (let i = 0; i < aKeys.length; i++) {
+    const key = aKeys[i];
+    // TODO: replace with Object.prototype.hasOwnProperty.call(b, key)
+    // after the objects chapter. Same result, but O(1) instead of
+    // includes() scanning the whole key array.
+    if (!bKeys.includes(key)) return false;
+    if (a[key] !== b[key]) return false;
+  }
+
+  return true;
 }
 ```
 
