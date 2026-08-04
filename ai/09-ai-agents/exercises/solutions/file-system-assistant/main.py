@@ -1,6 +1,9 @@
+from collections.abc import Callable
 from pathlib import Path
-from pydantic import BaseModel
+from typing import Any
+from pydantic import BaseModel, ValidationError
 from openai import OpenAI
+from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolUnionParam
 import json
 from dotenv import load_dotenv
 
@@ -47,7 +50,7 @@ def list_files(
     directory: str,
     extensions: list[str] = ["*"],
     recursive: bool = False,
-) -> list[FileInfo] | dict:
+) -> list[dict] | dict:
     """
     - Return: list of {"name": str, "size_bytes": int, "is_file": bool}
     - If extension is provided (e.g. ".py"), filter to only those files
@@ -79,18 +82,18 @@ def list_files(
     if len(results) > 20:
         results = results[:20]
 
-    # Convert to the desired format
+    # Convert to the desired format — model_dump() so the result is JSON-serializable
     return [
         FileInfo(
             name=path.name,
             size_bytes=path.stat().st_size if path.is_file() else 0,
             is_file=path.is_file(),
-        )
+        ).model_dump()
         for path in results
     ]
 
 
-def get_file_info(file_path: str) -> FileMetadata:
+def get_file_info(file_path: str) -> dict:
     """
     - Return: {"exists": bool, "size_bytes": int, "size_kb": float, "line_count": int}
     - line_count should only be populated for text files (skip binary)
@@ -108,10 +111,10 @@ def get_file_info(file_path: str) -> FileMetadata:
                 result.line_count = len(file.read_text(encoding="utf-8").splitlines())
             except UnicodeDecodeError:
                 result.line_count = 0  # binary file — skip
-        return result
+        return result.model_dump()
     except PermissionError as e:
         print("error", str(e))
-        return result
+        return result.model_dump()
 
 
 # ─────────────────────────────────────────────────────────────
@@ -121,7 +124,7 @@ def get_file_info(file_path: str) -> FileMetadata:
 # TODO: Define TOOL_DEFINITIONS list with all 3 tools
 # Each entry should have "type": "function" and the function schema
 # Write descriptions that clearly distinguish when to use each tool
-TOOL_DEFINITIONS = [
+TOOL_DEFINITIONS: list[ChatCompletionToolUnionParam] = [
     {
         "type": "function",
         "function": {
@@ -173,7 +176,8 @@ TOOL_DEFINITIONS = [
 # SECTION 4: Tool dispatch with validation
 # ─────────────────────────────────────────────────────────────
 
-TOOL_MAP = {
+# name -> (Pydantic model that validates the LLM's arguments, function to run)
+TOOL_MAP: dict[str, tuple[type[BaseModel], Callable[..., Any]]] = {
     "list_files": (ListFileArgs, list_files),
     "get_file_info": (GetFileInfoArgs, get_file_info),
     # "read_file_head": (ReadFileHeadArgs, read_file_head),
@@ -195,20 +199,31 @@ def dispatch_tool(tool_call) -> str:
     as JSON strings so the LLM can reason about them.
     """
     name = tool_call.function.name
-    args = tool_call.function.arguments
+    raw_args = tool_call.function.arguments
 
-    print(f"\n  [TOOL CALL] {name}({args})")
+    print(f"\n  [TOOL CALL] {name}({raw_args})")
 
     if name not in TOOL_MAP:
         result = {"error": f"Unknown tool: {name}"}
     else:
+        arg_model, func = TOOL_MAP[name]
         try:
-            result = TOOL_MAP[name](**args)
-        except TypeError as e:
-            result = {"error": f"Invalid arguments: {e}"}
+            validated = arg_model.model_validate_json(raw_args)
+        except ValidationError as e:
+            return json.dumps({"error": "invalid arguments", "details": e.errors()})
+
+        try:
+            result = func(**validated.model_dump())
+        except Exception as e:
+            return json.dumps({"error": f"{type(e).__name__}: {e}"})
 
     print(f"  [TOOL RESULT] {result}")
-    return json.dumps(result)
+
+    # Last line of defence: a non-serializable return value must not kill the loop.
+    try:
+        return json.dumps(result)
+    except TypeError as e:
+        return json.dumps({"error": f"Tool result was not serializable: {e}"})
 
 
 # ─────────────────────────────────────────────────────────────
@@ -235,11 +250,11 @@ def run_agent(query: str, working_directory: str = ".") -> str:
     MAX_ITERATIONS = 8
     total_tokens = 0
 
-    messages = [
+    messages: list[ChatCompletionMessageParam] = [
         {
             "role": "system",
-            "content": "You are a helpful file system assistant"
-            "Use tools to perform file and directories operations"
+            "content": "You are a helpful file system assistant\n"
+            f"Use tools to perform file and directories operations in directory:{working_directory}\n"
             "If asked any other thing except file system, file and directory info meta, operations just answer I can't do it",
         },
         {"role": "user", "content": query},
@@ -261,9 +276,10 @@ def run_agent(query: str, working_directory: str = ".") -> str:
             temperature=0,
             max_completion_tokens=500,
         )
-        answer = response.choices[0].message.content
+        res = response.choices[0].message
+        answer = res.content
         finish_reason = response.choices[0].finish_reason
-        token_used = response.usage.total_tokens or 0
+        token_used = response.usage.total_tokens if response.usage else 0
         total_tokens += token_used
 
         print(f"Token used in this iteration: {token_used}")
@@ -271,12 +287,14 @@ def run_agent(query: str, working_directory: str = ".") -> str:
 
         if finish_reason == "stop":
             print(f"\nASSISTANT: {answer}")
-            return answer
+            return answer or ""
 
         if finish_reason == "tool_calls":
-            messages.append(answer)
+            # Dump the assistant message back to a plain dict — the API accepts the
+            # model object at runtime, but the typed param is a TypedDict.
+            messages.append(res.model_dump(exclude_none=True))  # type: ignore[arg-type]
 
-            for tool_call in response.choices[0].message.tool_calls:
+            for tool_call in res.tool_calls or []:
                 result_str = dispatch_tool(tool_call)
 
                 messages.append(
@@ -305,14 +323,3 @@ if __name__ == "__main__":
         print(f"\n{'='*60}")
         result = run_agent(q, working_directory=test_dir)
         print(f"FINAL: {result}")
-
-
-# if __name__ == "__main__":
-#     print(
-#         list_files(
-#             directory="./",
-#             extensions=[".py"],
-#             recursive=True,
-#         )
-#     )
-#     print(get_file_info("./main.pys"))
