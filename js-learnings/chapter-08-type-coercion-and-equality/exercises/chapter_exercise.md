@@ -222,6 +222,62 @@ Using `==` in the **test harness** is not just allowed, it is the point — the 
 
 ---
 
+## Program 5 — Rapid-Fire Grid
+
+24 expressions, each evaluating to a boolean. Write the value **and** the deciding step for each. These are deliberately clustered so that near-identical pairs come out differently — the pairs are the lesson, so answer each one independently rather than by analogy to the line above it.
+
+Once you have all 24, feed them to `looseEqual` from Program 4: every `==` line here must agree with your implementation.
+
+**Grid A — `[]` and its negation**
+
+```javascript
+[]    == ![];   // << 1
+true  == [];    // << 2
+!![];           // << 3
+true  == ![];   // << 4
+false == [];    // << 5
+false == ![];   // << 6
+```
+
+**Grid B — nesting, double negation, identity**
+
+```javascript
+[[]] == 0;                 // << 7
+[[]] == "";                // << 8
+!!"true" == !!"false";     // << 9
+!!"true" === !!"false";    // << 10
+NaN === NaN;               // << 11
+Number.MIN_VALUE > 0;      // << 12
+```
+
+**Grid C — falsy values vs `==`, and chained relationals**
+
+```javascript
+!!null;          // << 13
+null == false;   // << 14
+0 == false;      // << 15
+"" == false;     // << 16
+1 < 2 < 3;       // << 17
+3 > 2 > 1;       // << 18
+```
+
+**Grid D — single-element arrays**
+
+```javascript
+[""] == "";        // << 19
+[0] == "";         // << 20
+[null] == "";      // << 21
+[null] == 0;       // << 22
+[undefined] == ""; // << 23
+[undefined] == 0;  // << 24
+```
+
+For each: the value, plus the mechanism — which `==` step ran, what `ToPrimitive` produced, or "this is `ToBoolean`, not `==`".
+
+Three of these (1, 14, 18) also appear in Programs 1–2. Answer them from scratch here; if your two answers disagree, that disagreement is the most useful thing on the page.
+
+---
+
 ## Hints
 
 <details>
@@ -253,6 +309,15 @@ Using `==` in the **test harness** is not just allowed, it is the point — the 
 - `toPrimitive`: check `v[Symbol.toPrimitive]` is a function, call it with `"default"`. Otherwise loop over `["valueOf", "toString"]`.
 - If your matrix test reports mismatches on the `{ valueOf: () => 1 }` row, check that you are calling `toPrimitive` on the *object* side only, and that you restart afterwards rather than comparing directly.
 
+**Program 5**
+- 1 vs 2 vs 4: `![]` is evaluated *before* the comparison — resolve the operand to a primitive first, then run `==` on what is left. Note that only one side of 1 is still an object.
+- 3, 13: no comparison happens at all — this is `ToBoolean` and its eight-value falsy list.
+- 7, 8: `ToPrimitive([[]])` goes through `join(",")`, and `join` stringifies each element. What does the inner `[]` stringify to?
+- 9 vs 10: both operands are already the same type here, so `==` and `===` cannot diverge. The trap is assuming they must.
+- 12: `Number.MIN_VALUE` is the smallest positive representable value, not the most negative one.
+- 17 vs 18: both chains are left-associative and produce a boolean that the second operator then converts with `ToNumber`. Work out that intermediate number for each.
+- 19–24: every one of these is `ToPrimitive` on a one-element array, i.e. `String(element)` — except that `String(null)` and `String(undefined)` inside `join` are not what `String(null)` is on its own. Check that before answering 21–24.
+
 </details>
 
 ---
@@ -266,3 +331,6 @@ Using `==` in the **test harness** is not just allowed, it is the point — the 
 - [ ] Program 4: `looseEqual` passes all 14 listed tests
 - [ ] Program 4: The 289-pair matrix reports zero mismatches
 - [ ] Program 4: No `==` or `!=` appears inside `looseEqual` or `toPrimitive`
+- [ ] Program 5: All 24 booleans correct, each with a named mechanism
+- [ ] Program 5: Every `==` line agrees with your `looseEqual` from Program 4
+- [ ] Program 5: Items 1, 14 and 18 match the answers you gave in Programs 1–2
