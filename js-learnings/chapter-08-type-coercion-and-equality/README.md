@@ -89,10 +89,13 @@ ToPrimitive(input, hint)
   input IS an object:
       │
       ├─ Does it have Symbol.toPrimitive? ──► call it with the hint,
-      │                                        return the result
-      │                                        (TypeError if it returns an object)
+      │    ↑ RARE. In the whole standard          return the result
+      │      library only Date and Symbol         (TypeError if it returns an object)
+      │      define it. Plus objects you
+      │      write that opt in.
       │
-      └─ No Symbol.toPrimitive? Try methods in an order set by the hint:
+      └─ No Symbol.toPrimitive? ── THE NORMAL PATH ──
+         Try methods in an order set by the hint:
               hint "string"  →  toString()  then  valueOf()
               hint "number"  →  valueOf()   then  toString()
               hint "default" →  treated as "number"   ← for almost everything

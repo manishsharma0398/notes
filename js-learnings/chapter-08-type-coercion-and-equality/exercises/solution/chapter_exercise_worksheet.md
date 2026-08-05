@@ -74,8 +74,16 @@ Why:
 0 + 0 + 0 => 0  (numeric throughout — no string operand ever appears)
 
 
-E:
-Why:
+E: true
+Why: [] == false
+ToPrimitive([], default) => valueOf([]) = [] not a primitive => ToString([]) => "" now a primitive
+toPrimitive(false, default) => already a primitive stop
+now "" == false
+ToNumber(false) = 0
+now we have string and number
+"" == 0 so convert the string to number
+Number("") which is 0
+so, 0 == 0 which is true
 
 F:
 Why:
