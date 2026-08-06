@@ -55,70 +55,103 @@ Answer:
 
 ```
 A: "123"
-Why: 1 + "2" = "12" as both primitive so we look at operator which is +, so, we convert the non-string to string and do the string concat.Now, we have "12"+3 for the same reason "123"
+Why: + is left-associative so the expression is (1 + "2") + 3.As, it is a binary + operation, the hint passed to toPrimtive(input, hint) will be default. As, here neither 1 or "2" is a Date hence the default args will be number. As, both the operands are primitive they pass straight through the function without changing anything.
+Now, since one operand is a string, the other operand will also be converted to string and string concat is done => 1 + "2" = "12". Now, we have "12"+3 which exactly fits as above discussed so, the result will be "123"
 
 B: "33"
-Why: 1+2 => both primitve(number) so a simple numeric addition = 3.Now, 3+"3" -> both primtive and the operator is + and one operand is a string so convert the non-string to string and do string concat
+Why: + is left-associative so the expression will be (1 + 2) + "3". As it is a binary + operation, the hint passed to toPrimtive(input, hint) will be default. As, here neither 1 or 2 is a Date hence the default args will be number. As, both the operands are primitive they pass straight through the function without changing anything.
+Now, since neither one operand is a string, both operand will be converted to number, which they already are. So, numeric addition is done => 1 + 2 = 3.
+3+"3" => both are primitives so toPrimtive() will be a noOp.The operator is + and one operand is a string.Hence, convert the non-string to string and do string concat that is why we have "33"
 
 C: "31"
-Why: "5" - "2" = 3 as both side primtive with - operator so both gets converted to number and normal subtraction is done. 3 + "1" = 31 as both primitive with + operator so convert both to string and do string concat
+Why: -,+ both are left-associative and both have the same priority so the expression will be ("5" - "2") + "1". As, it is a binary - operation, the hint passed to toPrimtive(input, hint) will be number. As, both the operands are primitive they pass straight through the function without changing anything.
+Now, since - is a numeric only operator both operand will be converted to number. So, subtraction is done => 5-2 = 3.
+3+"1" => both are primitives so toPrimtive() will be a noOp.The operator is + and one operand is a string.Hence, convert the non-string to string and do string concat that is why we have "31"
 
 D: 0
-Why:
-+""  => ToNumber("")  => StringToNumber("")  => 0
-+"0" => ToNumber("0") => StringToNumber("0") => 0
-+[]  => ToNumber([])  => ToPrimitive([], hint "number")
-          valueOf()  → returns [] itself, not a primitive → skip
-          toString() → [].join(",") → ""
-        => StringToNumber("") => 0
-0 + 0 + 0 => 0  (numeric throughout — no string operand ever appears)
-
+Why: + is left-associative so the expression will be (+"" + +"0") + +[].
++"" => ToNumber("") => Number("") => 0
++"0" => ToNumber("0") => Number("0") => 0
+Hence, 0 + 0 equals 0.
+Now, 0 + +[]
++[] = toPrimitive([], number) => [].valueOf() = [] => [].toString() = "". Now, +"" = Number("") which is 0
+Now, neither are string so, numeric addition , finally 0+0=0
 
 E: true
-Why: [] == false
-ToPrimitive([], default) => valueOf([]) = [] not a primitive => ToString([]) => "" now a primitive
-toPrimitive(false, default) => already a primitive stop
-now "" == false
-ToNumber(false) = 0
-now we have string and number
-"" == 0 so convert the string to number
-Number("") which is 0
-so, 0 == 0 which is true
+Why: Here, == rule triggers. Operands are of different type and neither both are undefined or null. Now, we have one operand boolean i.e false , it will first be converted to number Number(false) = 0. Now, [] is an object so [] will also need to be converted to primitive => toPrimitive([], "default") => since, [] is an Object and have no Symbol.toPrimitive. Hence, [].valueOf() = [] => [].toString() = ""
+Now, the expression is "" == 0
+"" needs to be converted to number , Number("") = 0
+finally 0 == 0 => true
 
-F:
-Why:
+F: true
+Why: == rule triggers.
+Number(false) = 0
+ToPrimitive([0], "default") => [0].valueOf() = [0] => [0].toString() => "0"
+Now, "0" == 0
+Number("0") => 0
+finally, 0 == 0 same type, so compare the value => true
 
-G:
-Why:
+G: true
+Why: == rule triggers.
+Number(true) = 1
+ToPrimitive([1], "default") => [1].valueOf() = [1] => [1].toString() => "1"
+Now, "1" == 1
+Number("1") => 1
+finally, 1 == 1 same type, so compare the value => true
 
-H:
-Why:
+H: false
+Why: == rule triggers.
+Number(true) = 1
+ToPrimitive([2], "default") => [2].valueOf() = [2] => [2].toString() => "2"
+Number("2") => 2
+finally, 1 == 2 same type, so compare the value => false
 
-I:
-Why:
+console.log(null == 0); // << I
+I: false
+Why: == rule triggers. Falls on the last case so , false
 
-J:
-Why:
+console.log(null >= 0); // << J
+J: true
+Why: Number(null) = 0
+finally, 0 >= 0 same type, so compare the value => true
 
-K:
-Why:
+console.log(undefined == null); // << K
+K: true
+Why: As, one is undefined and other is null (2nd == rule)
 
-L:
-Why:
+console.log(undefined >= null); // << L
+L: false
+Why: Number(undefined) = NaN
+Number(null) = 0
+NaN >= 0 => false. NaN comparision is always false in relational comparision.
 
-M:
-Why:
+"use strict";
 
-N:
-Why:
+const d = new Date(0);
+console.log(typeof (d + 1)); // << M
+console.log(typeof (d - 1)); // << N
 
-O:
-Why:
+M: string
+Why: toPrimitive(d, "default") => d is a Date hence, it has Symbol.toprimitive() hence, it will be called by deefault hint, for Date the default hint will be string that's why  d.toString() => "..... 2026 ...." now, primitive so skips valueOf()
+now, one operand is a string so a string concat happens , hence, final result "..... 2026 ....1"
 
-P:
-Why:
+N: number
+Why: toPrimitive(d, "number") => d.valueOf() = 0 now, primitive so, skips toString()
+0 -1 =-1
 
-Q:
+"use strict";
+
+console.log([NaN].includes(NaN)); // << O
+console.log([NaN].indexOf(NaN)); // << P
+console.log(new Set([0, -0, NaN, NaN]).size); // << Q
+
+O: true
+Why: includes uses SameValueZero
+
+P: true
+Why: indexOf uses ===
+
+Q: 2
 Why:
 ```
 
@@ -128,52 +161,69 @@ Why:
 
 ```
 1. "" == 0
-Answer:
-Why:
+Answer: true
+Why: Number("") => 0
 
 2. "" == "0"
-Answer:
-Why:
+Answer: false
+Why: As, same type so, compare value
 
 3. [] == ![]
-Answer:
+Answer: true
 Why:
+![] = !Boolean([]) => !true => false
+
+Now, [] == false
+Boolean(false) = false
+
+[] == false
+
+Number(false) = 0
+
+[] == 0
+
+toPrimitive([], "number") => [].valueOf() = [] => [].toString() = ""
+"" == 0
+Number("") = 0
+0 == 0 => true
 
 4. [] is falsy
-Answer:
-Why:
+Answer: false
+Why: Boolean([]) = true only false when false,NaN,null,undefined,0,-0,"",0n
 
 5. null == false
-Answer:
-Why:
+Answer: false
+Why: Boolean(false) = 0 => null == 0 => false
 
 6. "10" < "9"
-Answer:
-Why:
+Answer: true
+Why: Both side string so lexographic comparision 1 < 9 => true
 
 7. 3 > 2 > 1 evaluates to true
-Answer:
-Why:
+Answer: No
+Why: 3 > 2 = true => true > 1 => Number(true) = 1 => 1 > 1 => false
 
 8. Number("010") === 8
-Answer:
-Why:
+Answer: false
+Why: Number("010") = 10
 
 9. isNaN("hello") and Number.isNaN("hello") return the same value
-Answer:
-Why:
+Answer: false
+Why: isNaN("hello") = true
+Number.isNaN("hello") = false
 
 10. 1n == 1 is true but 1n === 1 is false
-Answer:
-Why:
+Answer: correct
+Why: 1n == 1 compares math numbers (1 vs 1), 1n === 1 compares types (big int vs number)
 
 11. Object.is(0, -0) and 0 === -0 return the same value
 Answer:
 Why:
 
 12. typeof (new Date() + 1) is "string"
-Answer:
-Why:
+Answer: yes
+Why: toPrimitive("new Date()", default) => since, date has Symbol.isPrimitive() it's default will be string => ".....2026....".toString() = ".....2026...." primitive now
+since one operand is string so we string concat it
 ```
 
 ---
