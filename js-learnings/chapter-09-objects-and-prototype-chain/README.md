@@ -332,12 +332,42 @@ Set the prototype at creation time (`Object.create`, `new`, `class`) instead of 
 
 ### Chains cannot loop
 
+Start with a normal chain:
+
 ```javascript
-const a = {}, b = Object.create(a);
+const a = {};
+const b = Object.create(a);   // b's prototype is a
+```
+
+```
+b  →  a  →  Object.prototype  →  null        ← ends at null ✓
+```
+
+Now try to point `a` back at `b`:
+
+```javascript
 Object.setPrototypeOf(a, b);  // TypeError: Cyclic __proto__ value
 ```
 
-The engine refuses, because lookup is a loop with only one exit condition — reaching `null`. A cycle would mean a missing property spins forever. The guarantee that every chain terminates is what makes `undefined` a safe answer.
+Had it been allowed, the chain would be a circle with no `null` in it:
+
+```
+b  →  a  →  b  →  a  →  b  →  ...forever
+```
+
+**Why that breaks reading.** Lookup walks until it reaches `null`. On a circular chain, a missing property never finds one:
+
+```
+b.missing
+  b has "missing"?  no  →  go to b's prototype, which is a
+  a has "missing"?  no  →  go to a's prototype, which is b
+  b has "missing"?  no  →  go to a
+  ...never terminates
+```
+
+Your program would hang on a typo. So the engine refuses to close the loop in the first place — `a`'s prototype is left untouched.
+
+**And that's what makes `undefined` trustworthy.** Because every chain is guaranteed to end at `null`, the engine can always *finish* searching and report "not found." If cycles were permitted, `obj.missing` would sometimes return `undefined` and sometimes hang, depending on how someone had wired the prototypes — and "a missing property is `undefined`" would stop being a rule you could rely on.
 
 ---
 
