@@ -138,6 +138,12 @@ Building an eval baseline for DocuMind. Key decision already made: the old `docs
 measure zero gain. **The corpus is this notes repo itself.** Full spec, golden-set schema,
 and metric definitions are in `ai/resume-roadmap.md`.
 
+## Keeping the record
+
+`HISTORY.md` at the repo root is a running log of what changed and why, newest first.
+**Update it with every meaningful change** — decisions, traps hit, things that cost real
+debugging. It is private to this repo; the portfolio projects must not reference it.
+
 ## Conventions
 
 - Python 3.13, `uv` for dependency management (`uv run python -m src.main`)
