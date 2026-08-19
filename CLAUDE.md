@@ -25,6 +25,8 @@ hints, mental models, and review. Ask before writing code into any `solution/` o
 
 Deferred stretch goals are deliberate, not oversights. Don't quietly complete them.
 
+The same rule covers the standalone DocuMind repo — see "DocuMind is a standalone repo".
+
 ## Chapter structure
 
 Each `ai/NN-topic/` folder follows the same shape:
@@ -50,28 +52,57 @@ exercises/   chapter_exercise.md + cumulative_exercise.md + solution(s)/  <- Man
 ## Active plan
 
 `ai/resume-roadmap.md` — turning the notes into two portfolio projects.
-**Currently on Phase 0.**
+**Currently on Phase 0.** This file and the roadmap are the private plan; see
+"Public framing" below for what the projects themselves are allowed to say.
 
 The two projects:
 
 | | Path |
 |---|---|
-| **DocuMind** — RAG service (flagship) | `ai/07-rag-pipelines/exercises/solutions/DocuMind/` |
+| **DocuMind** — RAG service (flagship) | `/home/manish/code/personal/documind` (separate repo) |
 | **Code Review Agent** — Chapter 9 cumulative | not started |
 
 **Standing rule: every future chapter deepens these two projects. Never start project #3.**
 LangGraph, memory, MCP, security, deployment all land as upgrades to DocuMind or the agent.
 
 Superseded, kept for history — do not extend: `docbot`, `smart-doc`, `semantic-search`,
-`support-bot-rag-pipeline`, `code-review-ai`. `docbot`'s FastAPI layer gets folded into
-DocuMind in Phase 2, then retired.
+`support-bot-rag-pipeline`, `code-review-ai`, and the in-repo
+`ai/07-rag-pipelines/exercises/solutions/DocuMind/`. That last one is the origin of the
+standalone project; its ~521 lines (`src/main.py`, Qdrant + OpenAI clients, Pydantic models)
+are still to be ported. Its `docs/` corpus is **not** ported — see Phase 0.
+
+## DocuMind is a standalone repo
+
+Since 2026-08-19 DocuMind lives at `/home/manish/code/personal/documind`, not under
+`exercises/solutions/`. Phase 4's "extract standalone repos" was pulled forward to the
+start, because `exercises/solutions/...` paths read as homework however good the code is.
+
+**The teaching contract extends there.** Manish writes all DocuMind implementation himself,
+including the mechanical port — it's a project he has to defend line by line, and code he
+didn't write is code he can't defend. Config, tooling and docs are fine to write when asked.
+
+Current state: `uv` scaffold with a FastAPI skeleton (app factory, `ingest`/`retrieve`
+routers, JSON logger), pre-commit hooks and lint config adapted from
+`prasaarit/services/upload`, `.gitignore` covering `.env` + `qdrant_storage/`, and a README.
+Pushed to `github.com/manishsharma0398/documind` (public, MIT, default branch `master`).
+Ingestion and retrieval are still stubs.
+
+## Public framing — important
+
+DocuMind's own README presents it as an **independent project**. It must not mention the
+notes repo, the chapter curriculum, the roadmap, phases, or exercises. Design decisions get
+stated as engineering rationale, never as steps in a plan someone set. Keep the roadmap
+private to this repo.
+
+Corollary: no unmeasured numbers in that README. Empty metric cells until
+`evals/results/` actually produces them.
 
 ## Phase 0 in progress
 
 Building an eval baseline for DocuMind. Key decision already made: the old `docs/` corpus
 (6 files / 39 chunks) has no headroom — hit@5 is ~100% before any work, so Chapter 8 would
-measure zero gain. **The corpus is being swapped to this notes repo itself.** Full spec,
-golden-set schema, and metric definitions are in `ai/resume-roadmap.md`.
+measure zero gain. **The corpus is this notes repo itself.** Full spec, golden-set schema,
+and metric definitions are in `ai/resume-roadmap.md`.
 
 ## Conventions
 
@@ -87,6 +118,11 @@ golden-set schema, and metric definitions are in `ai/resume-roadmap.md`.
 - `.venv/`, `qdrant_storage/`, `*.pyc`, `.env` are gitignored — but one `.pyc` under
   `ai/01-how-llms-work/exercises/solution/__pycache__/` was committed **before** the ignore
   rule existed. Fix with `git rm --cached`, not a `.gitignore` edit.
-- No tests, Dockerfiles, or `.env.example` exist in any project yet. Phase 2 adds them.
+- No tests or Dockerfiles exist in any project yet. Phase 2 adds them. DocuMind's
+  `.env.example` is still missing too — `.gitignore` already excludes `.env` but not it.
+- DocuMind's `pyproject.toml` has a broken script entry: `dev = "src:main"` resolves to an
+  attribute `main` in an empty `src/__init__.py`. Use `uv run fastapi dev src/main.py`.
+- DocuMind's `/retrieve` is a `GET`. Phase 2 wants an SSE-streamed answer with a request
+  body, which is a `POST` — cheaper to change while it's still a stub.
 - `generate.js` at the repo root is a scratch file generator for Node stream experiments,
   unrelated to the AI track.
