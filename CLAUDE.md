@@ -81,11 +81,45 @@ start, because `exercises/solutions/...` paths read as homework however good the
 including the mechanical port — it's a project he has to defend line by line, and code he
 didn't write is code he can't defend. Config, tooling and docs are fine to write when asked.
 
-Current state: `uv` scaffold with a FastAPI skeleton (app factory, `ingest`/`retrieve`
-routers, JSON logger), pre-commit hooks and lint config adapted from
-`prasaarit/services/upload`, `.gitignore` covering `.env` + `qdrant_storage/`, and a README.
-Pushed to `github.com/manishsharma0398/documind` (public, MIT, default branch `master`).
-Ingestion and retrieval are still stubs.
+Current state: `github.com/manishsharma0398/documind` — public, MIT, default branch
+`master`, released **v0.1.2**. A FastAPI skeleton (app factory, `ingest`/`retrieve`
+routers, JSON logger) with **ingestion and retrieval still stubs**. None of the ~521 lines
+have been ported yet.
+
+## DocuMind CI — how to work in that repo
+
+**`master` is strictly protected and there is no bypass for anyone**, including the owner
+(`bypass_actors: []`). A direct push is rejected with `GH013`. Every change goes:
+branch → push → `gh pr create --fill` → wait for green → `gh pr merge --squash
+--delete-branch`.
+
+- **Quality gate** (`ci.yml`): runs the same pre-commit hooks as local, plus pytest.
+  Required checks are `quality` and `version / version`. ~25s.
+- **Versioning** (`version.yml`): branch builds get `X.Y.Z-<slug>.<n>` SemVer plus a PEP 440
+  equivalent, where `n = git rev-list --count origin/master..HEAD`. Needs `fetch-depth: 0`.
+  The base `X.Y.Z` is read from `pyproject.toml`, so a release automatically shifts all
+  branch versions. CI validates both strings against the official specs.
+- **Releases** (`release-please.yml`): Conventional Commits drive the bump. Enforced locally
+  by a `commit-msg` hook — but the hook does **not** check PR titles, and the squash-merge
+  message comes from the PR title, so PR titles must be conventional too.
+- Lint/format config was adapted from `prasaarit/services/upload`, minus its monorepo
+  `--project services/upload` flags.
+
+Three traps found the hard way, all now fixed — do not reintroduce:
+
+1. release-please's `python` release type does **not** understand PEP 621
+   `[project] version`. It needs manifest mode with an explicit toml updater on
+   `$.project.version` (`release-please-config.json`).
+2. `uv.lock` records the project's own version, so a release desyncs it from
+   `pyproject.toml` and `uv sync --locked` fails. `release-please.yml` regenerates and
+   commits it onto the release branch.
+3. Branch slugs must collapse runs of non-alphanumerics. Per-character substitution leaves
+   `--`, which becomes `..` in the PEP 440 local label and is invalid.
+
+**Standing annoyance:** every release PR needs one manual workflow approval click
+(`approval_policy: first_time_contributors` treats `github-actions[bot]` as first-time
+every time). Left as-is deliberately — it is what stops hostile fork PRs running workflows
+on a public repo.
 
 ## Public framing — important
 
@@ -118,10 +152,14 @@ and metric definitions are in `ai/resume-roadmap.md`.
 - `.venv/`, `qdrant_storage/`, `*.pyc`, `.env` are gitignored — but one `.pyc` under
   `ai/01-how-llms-work/exercises/solution/__pycache__/` was committed **before** the ignore
   rule existed. Fix with `git rm --cached`, not a `.gitignore` edit.
-- No tests or Dockerfiles exist in any project yet. Phase 2 adds them. DocuMind's
-  `.env.example` is still missing too — `.gitignore` already excludes `.env` but not it.
-- DocuMind's `pyproject.toml` has a broken script entry: `dev = "src:main"` resolves to an
-  attribute `main` in an empty `src/__init__.py`. Use `uv run fastapi dev src/main.py`.
+- No tests or Dockerfiles exist in any project yet. Phase 2 adds them. DocuMind has a
+  `tests/` dir containing only `.gitkeep`, so pytest resolves its `testpaths`; the CI step
+  treats "no tests collected" (exit 5) as a pass until real tests exist.
+- DocuMind's `.env.example` is still missing — `.gitignore` excludes `.env` but the template
+  was never written, so a clone gives no signal about which keys are needed.
+- DocuMind's `[project.scripts] dev = "src.main:app"` is still broken: `app` is an ASGI
+  instance, not a zero-arg callable, so `uv run dev` fails. Use
+  `uv run fastapi dev src/main.py`.
 - DocuMind's `/retrieve` is a `GET`. Phase 2 wants an SSE-streamed answer with a request
   body, which is a `POST` — cheaper to change while it's still a stub.
 - `generate.js` at the repo root is a scratch file generator for Node stream experiments,
