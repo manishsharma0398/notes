@@ -9,6 +9,75 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-08-20 — Qdrant layer lands, and ingestion gets split at the Document boundary
+
+### v0.2.0: the connection and collection layer
+
+`AsyncQdrantClient` as a module-level singleton opened in `lifespan` and closed on
+shutdown, plus the operations the rest of the service builds on: `ensure_collection`
+treating a 409 as success (two workers starting concurrently would otherwise race, and the
+loser crashes on a collection that now exists), `upsert_collection`, `query_collection`
+exposing `top_k` / `score_threshold` / payload filter, and `delete_collection_data` by
+payload filter — the last of which is what makes re-indexing idempotent rather than
+duplicating chunks.
+
+The module is `src/clients/qdrant.py`, not `qdrant_client.py`. The latter shadows the
+third-party package it imports from; it resolves correctly today, but breaks confusingly
+the moment `src/clients/` lands on `sys.path`.
+
+### The architectural problem: the corpus is local, the service is not
+
+`ingest(docs_folder)` welded "walk a directory" to "chunk, embed, upsert", which is fine
+for a CLI and meaningless once FastAPI runs on a server that cannot see the laptop's
+filesystem.
+
+Split at the `Document` boundary: a **source adapter** yields `Iterable[Document]`, and the
+pipeline knows nothing about paths, requests or archives. Filesystem walk first — the
+Phase 0 eval harness runs locally and has to build an index without a server — with archive
+upload as a second adapter later.
+
+Upload beats S3 or a git-clone source here purely on numbers: the corpus is **460 markdown
+files, 4.5 MB raw, 1.06 MB gzipped, ~660k tokens**. A megabyte over multipart needs no
+infrastructure. The cost is that extracting a caller-supplied archive is a path-traversal
+and zip-bomb vector, which has to be handled deliberately.
+
+Make it an iterable rather than a list. Streaming files costs nothing now and is the
+difference at ten times the corpus.
+
+### Reading a folder as if the path is hostile
+
+The walker confines every request to `INGEST_ROOT`, refuses credentials by name and suffix
+independently of the extensions requested (asking for `*` does not opt into reading
+secrets), prunes vendor and cache directories during the walk rather than filtering after,
+sniffs for NUL bytes instead of trusting extensions, and caps file count, per-file size and
+total size.
+
+Two gaps remain, both recorded in CLAUDE.md: files are still read **through symlinks**,
+which routes around the deny-lists; and `.env.example` does not document `INGEST_ROOT`,
+which is the setting that bounds all of this.
+
+Configuration also moved from scattered `os.getenv` calls to `pydantic-settings`, so a
+missing `QDRANT_URL` fails at startup rather than at the first request. A blank
+`QDRANT_API_KEY=` normalises to `None` — the client otherwise reads `""` as a key being
+present and warns about sending it over plain http.
+
+### Decisions deferred, deliberately
+
+Chunk size is the one that matters: the old 100 tokens / 10 overlap is too small for
+technical prose with code blocks, and ~500/50 is the likely answer. But it is an **eval
+variable** — pick it, freeze it, then measure, because tuning it after the baseline exists
+invalidates every later delta.
+
+Two consequences follow from raising it. `EMBED_BATCH_SIZE` counts *chunks*, so 500 × 500
+tokens is 250k per request against OpenAI's ~300k cap — batching has to become token-aware.
+And accumulate-then-upsert stops fitting in memory at ~10k chunks; the loop has to embed a
+batch, upsert it, and discard.
+
+Also still true and worth not forgetting: the README claims re-ingesting an unchanged corpus
+is a no-op, and nothing implements that yet.
+
+---
+
 ## 2026-08-19 — DocuMind leaves the notes repo, and gets a real release pipeline
 
 ### The project moved out, and Phase 4 came first

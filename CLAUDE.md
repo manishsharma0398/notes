@@ -82,9 +82,44 @@ including the mechanical port — it's a project he has to defend line by line, 
 didn't write is code he can't defend. Config, tooling and docs are fine to write when asked.
 
 Current state: `github.com/manishsharma0398/documind` — public, MIT, default branch
-`master`, released **v0.1.2**. A FastAPI skeleton (app factory, `ingest`/`retrieve`
-routers, JSON logger) with **ingestion and retrieval still stubs**. None of the ~521 lines
-have been ported yet.
+`master`, released **v0.2.0**. The Qdrant layer is done (client lifecycle, collection
+management with the 409 race handled, upsert, query, payload-filtered delete). The
+filesystem document source, `pydantic-settings` config and API error handling are in
+PR #15. **Chunking, embedding and retrieval are still absent.**
+
+### The corpus lives on the laptop, the service runs on a server
+
+Ingestion is split at the `Document` boundary — a source adapter yields
+`Iterable[Document]`, and the pipeline (chunk → embed → upsert) knows nothing about where
+the bytes came from. Two adapters, one pipeline:
+
+- **filesystem walk** — built first, because the Phase 0 eval harness runs locally and
+  must build an index without a server
+- **archive upload** — later, for a deployed instance
+
+Upload wins over S3 or a git-clone source because the corpus is small: **460 markdown
+files, 4.5 MB raw, 1.06 MB gzipped, ~660k tokens**. Extracting a caller-supplied archive
+is a path-traversal and zip-bomb vector, so validate members resolve inside the target and
+cap both compressed and uncompressed size.
+
+### Ingestion decisions still open
+
+- **Chunk size.** The old code used 100 tokens / 10 overlap — too small for technical prose
+  with code blocks and tables. ~500/50 is the recommendation. This is an **eval variable**:
+  pick it, freeze it, then measure. Tuning it after the baseline is generated invalidates
+  every later delta.
+- **Batching must become token-aware.** `EMBED_BATCH_SIZE = 500` counts *chunks*. At 500
+  tokens each that is 250k tokens per request, against OpenAI's ~300k cap — one long chunk
+  tips it into a 400.
+- **Idempotency is claimed but not implemented.** The README says re-ingesting an unchanged
+  corpus is a no-op; the old code deletes by source filter and re-embeds everything. Needs a
+  per-file content hash in the payload, or the README claim has to soften.
+- **`document_id` is `uuid4()` per run**, so it cannot identify a document across ingests.
+  Only `src` is stable.
+- **Corpus scope.** Exclude `ai/07-rag-pipelines/exercises/solutions/DocuMind/docs/` — that
+  is customer-support fiction and would pollute the ambiguous-term queries.
+- Accumulate-then-upsert does not fit in memory at ~10k chunks. Stream: embed a batch,
+  upsert it, discard.
 
 ## DocuMind CI — how to work in that repo
 
@@ -161,8 +196,12 @@ debugging. It is private to this repo; the portfolio projects must not reference
 - No tests or Dockerfiles exist in any project yet. Phase 2 adds them. DocuMind has a
   `tests/` dir containing only `.gitkeep`, so pytest resolves its `testpaths`; the CI step
   treats "no tests collected" (exit 5) as a pass until real tests exist.
-- DocuMind's `.env.example` is still missing — `.gitignore` excludes `.env` but the template
-  was never written, so a clone gives no signal about which keys are needed.
+- DocuMind's `.env.example` documents `QDRANT_URL` and `QDRANT_API_KEY` but **not**
+  `INGEST_ROOT`, `EMBEDDING_DIMENSIONS` or `DEFAULT_TOP_K`, added with the settings model.
+  `INGEST_ROOT` matters most — it defaults to `Path(".")` and bounds what the walker may read.
+- DocuMind's filesystem walker reads files **through symlinks**. The root containment check
+  applies to the directory, so a symlink inside the tree pointing outside it is still read,
+  which routes around the credential deny-lists.
 - DocuMind's `[project.scripts] dev = "src.main:app"` is still broken: `app` is an ASGI
   instance, not a zero-arg callable, so `uv run dev` fails. Use
   `uv run fastapi dev src/main.py`.
