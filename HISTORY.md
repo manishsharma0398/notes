@@ -11,6 +11,8 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ## 2026-08-20 — Qdrant layer lands, and ingestion gets split at the Document boundary
 
+*Shipped as **v0.2.0** (Qdrant layer) and **v0.3.0** (document source, settings, error handling).*
+
 ### v0.2.0: the connection and collection layer
 
 `AsyncQdrantClient` as a module-level singleton opened in `lifespan` and closed on
