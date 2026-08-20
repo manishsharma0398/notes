@@ -84,8 +84,9 @@ didn't write is code he can't defend. Config, tooling and docs are fine to write
 Current state: `github.com/manishsharma0398/documind` — public, MIT, default branch
 `master`, released **v0.2.0**. The Qdrant layer is done (client lifecycle, collection
 management with the 409 race handled, upsert, query, payload-filtered delete). The
-filesystem document source, `pydantic-settings` config and API error handling are in
-PR #15. **Chunking, embedding and retrieval are still absent.**
+filesystem document source, `pydantic-settings` config and API error handling are merged
+(`src/settings.py`, `src/utils/filesystem.py`, `src/utils/models.py`); the 0.3.0 release PR
+is open. **Chunking, embedding and retrieval are still absent.**
 
 ### The corpus lives on the laptop, the service runs on a server
 
