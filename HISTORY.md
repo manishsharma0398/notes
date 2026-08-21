@@ -9,9 +9,54 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
-## 2026-08-21 — Chunking, and three bugs that only measurement found
+## 2026-08-21 — Chunking, the OpenAI client, and bugs that only measurement found
 
-*Shipped as **v0.4.0**.*
+*Shipped as **v0.4.0** (chunking) and **v0.5.0** (client and error mapping).*
+
+### The OpenAI client, and where errors are allowed to be caught
+
+Mirrors the qdrant client: an `AsyncOpenAI` singleton built from settings, opened and closed
+in the app lifespan, with `OPENAI_API_KEY` required rather than optional so a missing key
+fails at startup instead of at the first embed call.
+
+`embed()` deliberately does not catch. The client cannot decide what a failure *means* —
+only the ingest loop knows whether to skip a batch, abort, or record it and carry on.
+A first attempt caught `APIConnectionError` and `pass`ed, which returns `None` to a caller
+expecting a response and resurfaces as an `AttributeError` a long way from the cause.
+
+A second dead end worth remembering: subclassing the SDK's exceptions in order to catch
+them. `class APIConnectionError(openai.APIConnectionError)` creates a *new* class the SDK
+never raises. Inheritance runs the wrong way — catching a parent catches its children, never
+the reverse. To intercept a library's errors you register on the library's own classes.
+
+Two handlers cover all eight SDK exception types because Starlette dispatches on the MRO.
+Transport failures and their 5xx map to 503; 429 to 503 logged as a *warning*, since it is
+only reached after the client exhausted its own retries; 401/403 to 500 logged at *error*,
+because they are not transient and every request fails until the key is fixed; other 4xx to
+500, because we sent something malformed.
+
+One hierarchy difference bit: the qdrant handlers delegate to their own 503 case and it
+type-checks because `UnexpectedResponse` subclasses `ApiException`. `APIStatusError` is a
+**sibling** of `APIConnectionError`, not a subclass, so the shared handler needs their common
+parent. Pylance caught it; every runtime test passed, because annotations are not enforced.
+
+**Logs carry OpenAI's `request_id` as a structured field** — it is what their support asks
+for and nothing else identifies the failed call. The batch is never logged: for embeddings
+the request body *is* the corpus, so a failed batch in the log store is document text in the
+log store.
+
+`EMBEDDING_DIMENSIONS` and `DEFAULT_TOP_K` moved from settings to constants. Both define the
+index rather than the deployment — changing either means re-embedding everything, which is
+not something to expose as an env var.
+
+### The handlers do not cover ingest
+
+FastAPI exception handlers only run during request handling. Once `/ingest` is a background
+task, an embedding failure happens after the response has been sent and the handler never
+fires. The ingest loop needs its own error handling recording failure into job state. That
+is the answer to "where does try/except belong": not in the client, not only in `app.py`,
+but in the loop that owns the job.
+
 
 ### Header-aware chunking with breadcrumbs
 

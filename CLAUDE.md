@@ -82,12 +82,23 @@ including the mechanical port — it's a project he has to defend line by line, 
 didn't write is code he can't defend. Config, tooling and docs are fine to write when asked.
 
 Current state: `github.com/manishsharma0398/documind` — public, MIT, default branch
-`master`, released **v0.4.0**. The Qdrant layer is done (client lifecycle, collection
+`master`, released **v0.5.0**. The Qdrant and OpenAI clients are done (client lifecycle, collection
 management with the 409 race handled, upsert, query, payload-filtered delete). The
 filesystem document source, `pydantic-settings` config and API error handling are merged
 (`src/settings.py`, `src/utils/filesystem.py`, `src/utils/models.py`). Chunking is done
 (`src/utils/chunking.py`): markdown-header split, then token split, with a folder+heading
-breadcrumb prefixed to every chunk. **Embedding, upsert and retrieval are still absent.**
+breadcrumb prefixed to every chunk. The OpenAI client and its error mapping are done
+(`src/clients/openai_client.py`, handlers in `src/app.py`). **The embed/upsert loop and
+retrieval are still absent**, and `ensure_collection` still has no caller.
+
+Error-handling rules — settled, do not relitigate:
+
+- Clients **propagate**, never catch. Only the loop that owns the job knows whether to skip
+  a batch, abort, or record and continue.
+- Register handlers on the **library's own** exception classes. Subclassing them creates a
+  class the library never raises.
+- Never log batch contents: for embeddings the request body is the corpus.
+- FastAPI handlers do not fire for background tasks, so the ingest loop needs its own.
 
 Chunking invariants — do not break these:
 
