@@ -9,6 +9,77 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-08-21 — Chunking, and three bugs that only measurement found
+
+*Shipped as **v0.4.0**.*
+
+### Header-aware chunking with breadcrumbs
+
+Markdown header split first so chunks follow the document's structure, then a token split
+because a section can be far larger than the budget. Every chunk is prefixed with a
+breadcrumb — folder path plus the deepest two headings — so that "caching" under
+`terraform` is distinguishable from "caching" under `sql`, which is the whole discriminator
+the ambiguous-term queries rest on.
+
+The non-obvious part: the breadcrumb is applied **after** the token split, never before.
+Header-splitting alone leaves chunks 2..n of a section orphaned, because the heading only
+survives in chunk 1. Prefixing every chunk re-anchors them.
+
+### Three bugs, none visible by reading the code
+
+Chunking was reviewed by running it over the real 411-document corpus and looking at the
+distribution. Nothing here would have been caught by eye or by the linter.
+
+**TOKEN_SIZE was not a ceiling.** The breadcrumb was prepended after the splitter had
+already spent its whole budget, so stored chunks ran to 467 tokens against a nominal 400,
+with 4.6% over. The split now reserves the breadcrumb first, per section, because each
+section has a different breadcrumb and so a different budget. Max is now 399 with nothing
+over, at a cost of 120 extra chunks.
+
+**Headings were duplicated.** `strip_headers=False` kept the heading in the body while the
+breadcrumb prepended it again — 73% of chunks restated their own heading, sections nested
+two deep restated both, costing 6% of all tokens. Stripping is safe because a section's
+body always begins with its deepest heading and the breadcrumb always keeps the deepest, so
+what is removed is always the redundant copy.
+
+**`token_count` drifted to measuring the bare chunk** rather than the stored text,
+understating every chunk by ~29 tokens. Since batch sizing, cost and retrieval context
+budget all derive from it, that would have been a systematic drift toward OpenAI's 300k
+request cap showing up only as an occasional 400.
+
+A fourth was caught before it shipped: `content_tokens` was briefly `len(chunk)` — the
+*character* count under a field named tokens. It would not have crashed, and a content
+floor of "10 tokens" would silently have meant 10 characters.
+
+### Deferring the near-empty chunks properly
+
+Some chunks carry almost no content — a heading and a horizontal rule, or a heading and the
+lead-in sentence to content that lives in the next chunk. They matter because their
+embedding is dominated by the breadcrumb, so they match breadcrumb-shaped queries strongly
+while containing nothing. That is exactly the ambiguous-term query shape.
+
+Rather than dropping them at ingest, `content_tokens` is stored alongside `total_tokens`
+so a floor can be applied as a **query-time filter**. That converts a frozen ingest decision
+into a retrieval variable that can be swept during evaluation without re-ingesting. When
+retrieval exists it needs a Qdrant payload index on the field, and the floor must be ANDed
+with any caller-supplied filter rather than replacing it.
+
+`chunk_docs` also became a generator. Holding every chunk is survivable; holding every
+*embedded* chunk at 1536 floats each is not, and the consumer can only stream if this end
+does.
+
+### Corpus after chunking
+
+411 documents, 5,435 chunks, 938k tokens, about $0.019 to embed. Breadcrumb overhead is 17%
+of the corpus. `MIN_CHUNK_TOKENS` never engages — the longest breadcrumb is 141 tokens
+against a 300 threshold — so it is insurance, not a working part.
+
+Still not wired: the corpus-scope exclusions. `CLAUDE.md`, `HISTORY.md`, `ai/prompt.md`,
+`ai/resume-roadmap.md` and nine support-fiction files under the old in-repo DocuMind are all
+still ingested. That has to be fixed before any baseline is frozen.
+
+---
+
 ## 2026-08-20 — Qdrant layer lands, and ingestion gets split at the Document boundary
 
 *Shipped as **v0.2.0** (Qdrant layer) and **v0.3.0** (document source, settings, error handling).*

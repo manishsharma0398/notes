@@ -82,11 +82,22 @@ including the mechanical port — it's a project he has to defend line by line, 
 didn't write is code he can't defend. Config, tooling and docs are fine to write when asked.
 
 Current state: `github.com/manishsharma0398/documind` — public, MIT, default branch
-`master`, released **v0.3.0**. The Qdrant layer is done (client lifecycle, collection
+`master`, released **v0.4.0**. The Qdrant layer is done (client lifecycle, collection
 management with the 409 race handled, upsert, query, payload-filtered delete). The
 filesystem document source, `pydantic-settings` config and API error handling are merged
-(`src/settings.py`, `src/utils/filesystem.py`, `src/utils/models.py`).
-**Chunking, embedding and retrieval are still absent.**
+(`src/settings.py`, `src/utils/filesystem.py`, `src/utils/models.py`). Chunking is done
+(`src/utils/chunking.py`): markdown-header split, then token split, with a folder+heading
+breadcrumb prefixed to every chunk. **Embedding, upsert and retrieval are still absent.**
+
+Chunking invariants — do not break these:
+
+- The breadcrumb is applied **after** the token split. Before it, only chunk 1 of a section
+  would carry it and chunks 2..n would be orphaned prose.
+- The token budget is `TOKEN_SIZE - breadcrumb`, computed **per section**, never hoisted.
+  Hoisting it silently stops `TOKEN_SIZE` being a ceiling.
+- `total_tokens` is measured on the **stored** text, `content_tokens` on the bare chunk.
+  `total - content` equals the breadcrumb exactly on every chunk.
+- `strip_headers=True`: the breadcrumb already carries the heading.
 
 ### The corpus lives on the laptop, the service runs on a server
 
@@ -105,10 +116,9 @@ cap both compressed and uncompressed size.
 
 ### Ingestion decisions still open
 
-- **Chunk size.** The old code used 100 tokens / 10 overlap — too small for technical prose
-  with code blocks and tables. ~500/50 is the recommendation. This is an **eval variable**:
-  pick it, freeze it, then measure. Tuning it after the baseline is generated invalidates
-  every later delta.
+- **Chunk size: settled at `TOKEN_SIZE = 400`, overlap 40.** Chunks average 173 tokens
+  because the header split runs first and most sections are shorter than the budget — it is
+  a ceiling, not a target. Frozen: retuning after the baseline invalidates every later delta.
 - **Batching must become token-aware.** `EMBED_BATCH_SIZE = 500` counts *chunks*. At 500
   tokens each that is 250k tokens per request, against OpenAI's ~300k cap — one long chunk
   tips it into a 400.
@@ -117,8 +127,13 @@ cap both compressed and uncompressed size.
   per-file content hash in the payload, or the README claim has to soften.
 - **`document_id` is `uuid4()` per run**, so it cannot identify a document across ingests.
   Only `src` is stable.
-- **Corpus scope.** Exclude `ai/07-rag-pipelines/exercises/solutions/DocuMind/docs/` — that
-  is customer-support fiction and would pollute the ambiguous-term queries.
+- **Corpus scope — still not implemented.** `CLAUDE.md`, `HISTORY.md`, `ai/prompt.md`,
+  `ai/resume-roadmap.md` and nine support-fiction files under
+  `ai/07-rag-pipelines/exercises/solutions/DocuMind/docs/` are all still ingested. The first
+  four leak the private framing; the fiction pollutes the ambiguous-term queries and
+  contains a duplicate. Exclusion is **corpus policy, not service policy** — it belongs in a
+  caller-supplied pattern list, never in `SKIP_NAMES`, which ships in a public repo.
+  Excluding them takes 411 docs to 398.
 - Accumulate-then-upsert does not fit in memory at ~10k chunks. Stream: embed a batch,
   upsert it, discard.
 
