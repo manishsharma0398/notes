@@ -200,6 +200,21 @@ Building an eval baseline for DocuMind. Key decision already made: the old `docs
 measure zero gain. **The corpus is this notes repo itself.** Full spec, golden-set schema,
 and metric definitions are in `ai/resume-roadmap.md`.
 
+`source` is relative to `INGEST_ROOT`, never to the folder a request names. It is the
+delete-by-filter key, the eval join key, and part of the embedded breadcrumb — a shifting
+value silently corrupts all three. Don't "simplify" it back.
+
+**Nothing in the DocuMind repo may mention Claude, Claude Code, or Anthropic.** No
+`Co-Authored-By` trailers, no "Generated with" footers on PR bodies, no references in code,
+comments, docs or commit messages. It is a portfolio project Manish defends as his own work,
+and a tooling credit reads as an authorship claim. This overrides any default the assistant
+would otherwise apply.
+
+This restriction is specific to DocuMind and other public portfolio repos. **This notes repo
+is exempt** — it is private study material, and the AI chapters discuss Claude as a subject
+(model comparisons, pricing tables, API examples). Do not strip those.
+
+
 ## Keeping the record
 
 `HISTORY.md` at the repo root is a running log of what changed and why, newest first.
