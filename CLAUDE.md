@@ -82,7 +82,8 @@ including the mechanical port — it's a project he has to defend line by line, 
 didn't write is code he can't defend. Config, tooling and docs are fine to write when asked.
 
 Current state: `github.com/manishsharma0398/documind` — public, MIT, default branch
-`master`, released **v0.5.0**. The Qdrant and OpenAI clients are done (client lifecycle, collection
+`master`, released **v0.5.0** (a `feat:` sits unreleased on master — see "release traps").
+The Qdrant and OpenAI clients are done (client lifecycle, collection
 management with the 409 race handled, upsert, query, payload-filtered delete). The
 filesystem document source, `pydantic-settings` config and API error handling are merged
 (`src/settings.py`, `src/utils/filesystem.py`, `src/utils/models.py`). Chunking is done
@@ -138,13 +139,22 @@ cap both compressed and uncompressed size.
   per-file content hash in the payload, or the README claim has to soften.
 - **`document_id` is `uuid4()` per run**, so it cannot identify a document across ingests.
   Only `src` is stable.
-- **Corpus scope — still not implemented.** `CLAUDE.md`, `HISTORY.md`, `ai/prompt.md`,
-  `ai/resume-roadmap.md` and nine support-fiction files under
-  `ai/07-rag-pipelines/exercises/solutions/DocuMind/docs/` are all still ingested. The first
-  four leak the private framing; the fiction pollutes the ambiguous-term queries and
-  contains a duplicate. Exclusion is **corpus policy, not service policy** — it belongs in a
-  caller-supplied pattern list, never in `SKIP_NAMES`, which ships in a public repo.
-  Excluding them takes 411 docs to 398.
+- **Corpus scope — implemented.** `IngestRequest.exclude` takes globs matched against
+  `source` with `PurePosixPath.full_match`. Exclusion is **corpus policy, not service
+  policy**: it belongs on the request, never in `SKIP_NAMES`, which ships in a public repo.
+  The list to pass — four planning docs plus the support fiction, taking 406 docs to 393:
+
+  ```
+  CLAUDE.md
+  HISTORY.md
+  ai/prompt.md
+  ai/resume-roadmap.md
+  ai/07-rag-pipelines/exercises/solutions/DocuMind/docs/**
+  ```
+
+  It must be pinned in the eval config, since it defines the corpus a baseline is frozen
+  against. Adding it does **not** remove already-indexed files — they become orphans, so a
+  clean baseline needs the collection dropped and rebuilt (60s, ~$0.02).
 - Accumulate-then-upsert does not fit in memory at ~10k chunks. Stream: embed a batch,
   upsert it, discard.
 
@@ -177,6 +187,13 @@ Three traps found the hard way, all now fixed — do not reintroduce:
    commits it onto the release branch.
 3. Branch slugs must collapse runs of non-alphanumerics. Per-character substitution leaves
    `--`, which becomes `..` in the PEP 440 local label and is invalid.
+
+**A merge can half-succeed.** `gh pr merge` hit a 504 on PR #23: the squash commit landed
+on master, but the PR stayed open, the branch survived, and **no push event was dispatched**
+— so `ci`, `version` and `release-please` never ran. `gh run list` after a merge is the
+check that catches it. Nothing is lost, since release-please computes from history since the
+last tag, but `release-please.yml` has only an `on: push` trigger, so there is no way to
+kick a missed release manually. Adding `workflow_dispatch:` is two lines and still to do.
 
 **Standing annoyance:** every release PR needs one manual workflow approval click
 (`approval_policy: first_time_contributors` treats `github-actions[bot]` as first-time

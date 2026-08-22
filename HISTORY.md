@@ -9,6 +9,88 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-08-22 — Ingestion runs against the real corpus, and four things only that could show
+
+*Shipped: embed/upsert loop, re-ingest skip, corpus exclusions.*
+
+### The numbers
+
+406 documents, 5,453 chunks, 22 batches, 942,719 tokens, **$0.019**, 60 seconds through
+`POST /ingest`. Re-running: **0 documents, 406 skipped, 0.2 seconds.** Editing a file
+rebuilds only that file; touching its mtime rebuilds nothing; reverting an edit is detected
+as a change. Point count holds steady across rebuilds, so delete and upsert agree.
+
+### A hash cannot tell you the write finished
+
+The re-ingest skip recorded a hash per source and skipped when it matched. The reasoning
+for tolerating *sets* of hashes assumed an interrupted run leaves some chunks at the old
+hash and some at the new — but old points are deleted **before** new ones are written, so a
+crash mid-file leaves the survivors all carrying the **new** hash. Indistinguishable from
+success, and every later run skips it: the document stays indexed, truncated, retrievable
+and plausible. 20 of 406 files are large enough to straddle two embed batches.
+
+Fixed by recording `chunk_total` per chunk and requiring the payload's claim to match the
+actual point count. `entry.totals == {entry.point_count}` — what the writer said should
+exist, against what does.
+
+The general shape: **a hash proves content, a count proves completion.** No amount of
+hashing substitutes for the second.
+
+### Empty files could never converge
+
+Six 0-byte `README.md` scaffolds from `uv init` were re-processed on every single ingest.
+An empty file produces no chunks, so no points, so the next run finds no hash for that
+source and rebuilds it — producing no chunks again. Every run reported six documents
+ingested while writing nothing.
+
+Only visible because the full-corpus run was actually performed. At two files it never
+appeared.
+
+### Reading the index cost the size of the index
+
+`indexed_sources` scrolled every payload in the collection to use a fraction of them, while
+the delete twenty lines below already filtered on `source` — the same field, carrying a
+payload index created for exactly that purpose. The asymmetry was the tell. Scoped, the cost
+is the size of the request and stays there as the collection grows.
+
+### Streaming, measured
+
+`batch_embed` now takes an iterable, so `chunk_docs` is no longer materialised at its only
+call site: **24MB peak against 87MB accumulating**, same 5,453 chunks. The ratio matters
+less than the shape — streaming is flat in chunk count, accumulating is linear.
+
+`iter()` is what makes it work, and not obviously: it converts an iterable into something
+with a *position*, so successive `islice` calls resume rather than restart. Without it, on a
+list, the loop re-slices the first batch forever.
+
+### Corpus exclusions are the caller's business
+
+`IngestRequest.exclude` takes globs matched against `source`. Deliberately not `SKIP_NAMES`:
+that is the service's list of things no corpus should hold, and it ships in a public repo,
+where a hardcoded `CLAUDE.md` would be both wrong generically and a small disclosure. Four
+planning documents and nine support-fiction files take the corpus to 393.
+
+### Two traps worth not repeating
+
+**Config precedence.** The server kept rejecting the corpus path after `.env` was corrected
+and the process restarted. `INGEST_ROOT=.` was exported in the shell, and environment
+variables beat `.env` in pydantic-settings. The file was right, a fresh `Settings()` read it
+right, and the running process still disagreed — with nothing anywhere reporting the
+conflict. Only `/proc/<pid>/environ` showed it.
+
+**A merge can half-succeed.** `gh pr merge` returned a 504: the squash commit landed on
+master, the PR stayed open, the branch survived, and no push event was dispatched, so no
+workflow ran at all. Checking `gh run list` after a merge is what caught it.
+
+### Where retrieval starts from
+
+Ingestion is done and exercised end to end. Still absent: retrieval, answer generation
+(a second OpenAI path, with its own prompt and refusal behaviour), the golden set,
+`evals/run_eval.py`, and any tests at all — `tests/` is still a `.gitkeep`, while a dozen
+verification scenarios built today live only in scratch files.
+
+---
+
 ## 2026-08-21 — Chunking, the OpenAI client, and bugs that only measurement found
 
 *Shipped as **v0.4.0** (chunking) and **v0.5.0** (client and error mapping).*
