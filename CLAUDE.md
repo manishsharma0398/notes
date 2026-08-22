@@ -82,15 +82,27 @@ including the mechanical port — it's a project he has to defend line by line, 
 didn't write is code he can't defend. Config, tooling and docs are fine to write when asked.
 
 Current state: `github.com/manishsharma0398/documind` — public, MIT, default branch
-`master`, released **v0.5.0** (a `feat:` sits unreleased on master — see "release traps").
-The Qdrant and OpenAI clients are done (client lifecycle, collection
+`master`, released **v0.6.0**. The Qdrant and OpenAI clients are done (client lifecycle, collection
 management with the 409 race handled, upsert, query, payload-filtered delete). The
 filesystem document source, `pydantic-settings` config and API error handling are merged
 (`src/settings.py`, `src/utils/filesystem.py`, `src/utils/models.py`). Chunking is done
 (`src/utils/chunking.py`): markdown-header split, then token split, with a folder+heading
-breadcrumb prefixed to every chunk. The OpenAI client and its error mapping are done
-(`src/clients/openai_client.py`, handlers in `src/app.py`). **The embed/upsert loop and
-retrieval are still absent**, and `ensure_collection` still has no caller.
+breadcrumb prefixed to every chunk. **Ingestion is complete and exercised against the real
+corpus**: 393 documents into 5,345 chunks in ~60s for $0.019, and a re-run skips everything
+in 0.2s. **Retrieval is still absent** — `/retrieve` is a stub.
+
+Two things ingestion proved that only a full run could:
+
+- A hash proves content, a **count** proves the write finished. Old points are deleted
+  before new ones are written, so a run that dies mid-file leaves survivors carrying the
+  *new* hash — indistinguishable from success. `chunk_total` plus the indexed point count
+  is what closes it.
+- Empty files could never converge: no chunks means no points means no hash, so they were
+  rebuilt on every run forever. The walker skips them now.
+
+Known gaps, deliberately unbuilt: deleted files are never pruned (nothing scans for sources
+that vanished, and re-ingest cannot see them); point ids are `uuid4()` per run, which is why
+the delete exists at all; `/ingest` is synchronous.
 
 Error-handling rules — settled, do not relitigate:
 
@@ -175,7 +187,12 @@ branch → push → `gh pr create --fill` → wait for green → `gh pr merge --
   by a `commit-msg` hook — but the hook does **not** check PR titles, and the squash-merge
   message comes from the PR title, so PR titles must be conventional too.
 - Lint/format config was adapted from `prasaarit/services/upload`, minus its monorepo
-  `--project services/upload` flags.
+  `--project services/upload` flags. **pyright** was added on top: three type errors got
+  past black/isort/flake8/bandit in one week, and mypy catches only two of the three.
+  Pyright is Pylance's engine, so the hook agrees with the editor.
+- **Style rules for that repo, non-negotiable:** comments and docstrings 1-3 lines, commit
+  messages and PR bodies short and conversational. No archaeology comments recording a bug
+  already fixed. Depth belongs in this repo's `HISTORY.md`, not in the public one.
 
 Three traps found the hard way, all now fixed — do not reintroduce:
 

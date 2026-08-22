@@ -9,6 +9,74 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-08-22 (later) — Logging that can be read, and a type checker
+
+*Shipped as **v0.6.0**, alongside corpus exclusions.*
+
+### The logs were unreadable, for a boring reason
+
+`logging.getLogger()` with no name returns the *root* logger, and a handler there formats
+whatever any library emits as if the service had said it. One ingest produced ~90 lines of
+httpx request logs and watchfiles change notifications around the four lines that were ours.
+
+Named logger, `propagate = False`, and the noisy libraries pinned to WARNING. Root keeps its
+own handler at WARNING, though — without it a library error falls through to
+`logging.lastResort`, which prints bare text with no request id, and that is exactly the
+line worth having in production.
+
+### Correlation ids without threading a parameter
+
+A `ContextVar` set by middleware and read by a `logging.Filter`, so every record picks it up
+— including ones from `filesystem.py` and `qdrant.py`, which know nothing about HTTP. Task
+local, so concurrent requests cannot see each other's. Echoed as `x-request-id`, and an
+upstream one is honoured only if it matches `[A-Za-z0-9._-]{1,64}`: a header that lands in a
+log is otherwise a log-injection vector.
+
+Two lines per request rather than one, because a minute-long ingest is otherwise silent
+until it finishes.
+
+The logs immediately paid for themselves: they made a config failure diagnosable that had
+resisted a restart and a corrected `.env`. `INGEST_ROOT=.` was exported in the shell, and
+environment variables beat `.env` in pydantic-settings — the file was right, a fresh
+`Settings()` read it right, and the process still disagreed. Only `/proc/<pid>/environ`
+showed it.
+
+### pyright, because the linters were blind to a whole class of bug
+
+Three type errors in one week got past black, isort, flake8 and bandit: `APIStatusError`
+passed to a parameter typed `APIConnectionError` (siblings, not subclasses), a NamedTuple
+field named `count` shadowing `tuple.count`, and an override with a renamed parameter after
+python-json-logger 4.0 renamed it upstream. None break at runtime; none show up in tests.
+
+Tested mypy first — it catches two of the three, missing the override. Pyright catches all
+three, and being Pylance's engine it agrees with the editor rather than offering a second
+opinion.
+
+### A style correction worth keeping
+
+The comments had grown into design documents — 37% of `logger.py`, one 16-line block. On a
+portfolio repo that reads as machine-written regardless of whether it is right. Cut to 1-3
+lines each, docstrings added where they were missing (`get_files_from_folder` had none at 85
+lines), and the archaeology removed: comments whose only content was a bug already fixed are
+working notes, not something a reader needs. Losing the protective ones is fine now that
+pyright enforces what they were asking a reader to remember.
+
+Same rule applies to commit messages and PR bodies in that repo. This file is the place for
+depth.
+
+### Also
+
+A `gh pr merge` returned 504 and half-succeeded: the squash commit landed on master, the PR
+stayed open, the branch survived, and no push event fired, so no workflow ran. Nothing was
+lost — release-please computes from history since the last tag — but `release-please.yml`
+has only an `on: push` trigger, so a missed release cannot be kicked off manually. Adding
+`workflow_dispatch:` is two lines and still outstanding.
+
+Branch protection has `strict_required_status_checks_policy`, so parallel PRs merge
+serially: each one goes `BEHIND` when master moves and needs a rebase and a re-run.
+
+---
+
 ## 2026-08-22 — Ingestion runs against the real corpus, and four things only that could show
 
 *Shipped: embed/upsert loop, re-ingest skip, corpus exclusions.*
