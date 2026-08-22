@@ -9,6 +9,117 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-08-22 — Embedding, and skipping the files that have not changed
+
+### Embedding streams; chunking does not
+
+`batch_embed` is an async generator yielding one batch at a time so the caller can upsert
+and discard. Measured, that is the difference between holding the corpus and holding a
+batch: a 1536-dimension vector plus its text is ~49KB, so accumulating 6k chunks would sit
+at ~288MB before the first write, growing with the corpus rather than with the batch.
+
+`chunk_docs` also yields, but the caller materialises it deliberately, and the asymmetry is
+worth stating because it looks inconsistent. A `Chunk` without a vector is ~3KB, so the whole
+corpus is 18.5MB — against 288MB for the embedded form. The chunk list is also what makes
+the pre-flight token count possible.
+
+A generator only pays off when the consumer streams. A generator that is `list()`-ed at its
+only call site is strictly worse than a list: identical memory, minus `len()`, minus
+indexing, minus re-iteration, plus an exhaustion footgun.
+
+Two bugs on the way, both silent, both caught by running rather than reading:
+
+- `zip(chunks, embeddings)` instead of `zip(window, embeddings)`. The count stayed right —
+  6,000 in, 6,000 out — while every batch after the first attached other chunks' vectors and
+  everything past index 255 was never emitted.
+- Iterating an `EmbeddedBatch` walks its *fields*, not its chunks. It is a NamedTuple, so
+  `for x in batch` yields the chunk list, then the token count, then the batch number.
+
+`EmbeddedBatch` carries `number` but not a total. The total was computed as
+`ceil(len / BATCH)`, which re-implemented the loop's own stepping rule and would have gone
+quietly wrong the day batching stopped being fixed-size. The count was always derivable
+anyway: the last batch's `number` is how many it took.
+
+### The skip: what "already ingested" has to mean
+
+Re-ingesting cost a full re-embed. Each chunk now carries a hash of its source file; a run
+reads those back and rebuilds only what differs.
+
+The hash covers **content and the pipeline that produced the chunk** — chunker version,
+token size, overlap, header depth, breadcrumb separator, heading levels, embedding model. A
+content-only digest is the trap: retune the chunker, every hash still matches, the run skips
+exactly the files that needed rebuilding, and the eval shows the retune achieving nothing.
+Phase 1 is that loop, so this is not a hypothetical.
+
+Consistency across runs took three fixes:
+
+- **Content, never mtime.** A checkout rewrites mtimes without changing a byte.
+- **CRLF and BOM normalised.** `read_text_file` opens binary and decodes, so Python's
+  universal-newline translation never runs; a file touched by a Windows editor or by
+  `core.autocrlf` would hash as changed and re-embed the corpus for nothing.
+- **Canonical JSON, not a joined string.** `"|".join` is not injective: `["a|b","c"]` and
+  `["a","b|c"]` both render `a|b|c`, so two configurations could share a fingerprint.
+  Nothing unordered may go in — a set renders in an order that varies per process, because
+  string hashing is randomised.
+
+**A source maps to a set of hashes, not one.** Measured on the corpus: 20 of 406 files have
+chunks spanning two embed batches, so a run that dies in between leaves some chunks at the
+old hash and some at the new. Collapsing to a single value would mark a half-written file
+complete and never rebuild it. Skip only when the set is exactly the current hash; absent,
+mismatched and mixed all rebuild. Rebuilding needlessly costs one embedding call; skipping
+wrongly leaves the index quietly wrong forever.
+
+### Delete by identity, not by content
+
+Old points for rebuilt files are deleted before the new ones are written, filtered on
+`source`. Deleting by `file_hash` was considered and is unsafe: the hash identifies content,
+and **412 files in this corpus produce only 398 distinct hashes** — six `README.md` files are
+byte-identical and the whole `DocuMind/docs/` corpus is duplicated under
+`support-bot-rag-pipeline/docs/`. Editing one README would have deleted five other files'
+chunks. A compound `source AND hash` filter is collision-safe but worse: it preserves exactly
+the orphaned chunks a rebuild is trying to clear.
+
+Deleting up front used to have no good answer — it opens a window where data is missing. The
+skip logic closes it: only changed files are deleted, and if the run dies they are absent, so
+the next run finds no hash and rebuilds. Self-healing, which is also why random point ids are
+still fine and deterministic ids were not needed.
+
+`source` gained a keyword payload index, since every delete filters on it, and the delete is
+skipped entirely when the collection is empty. `reindex=true` rebuilds regardless of hashes —
+for when the index is wrong in a way the hash cannot see — still scoped to the request's
+sources, because a request may name a subfolder.
+
+### Token accounting
+
+Ingest reports documents, skipped, chunks, batches, tokens and cost, and warns when
+tiktoken's count and the API's disagree. They should match exactly: `text-embedding-3-small`
+uses `cl100k_base`, which is what `tiktoken.encoding_for_model` returns. Divergence would
+mean `TOKEN_SIZE` is not the ceiling it claims, `BATCH = 256` is no longer provably under the
+per-request cap, and every cost figure has drifted — three silent failures from one signal.
+
+### Constants moved to their consumers
+
+`constants.py` had 18 names and **16 had exactly one consumer**. A constant used in one module
+belongs at the top of that module, not in a shared bucket, and a `constants/` package would
+have recreated the bucket with more files. The embedding model and its dimension stayed
+together — the collection is created with a fixed vector width, so a dimension disagreeing
+with the model builds an index that rejects every point. The collection name and `top_k`
+became settings: per-deployment, not fixed.
+
+### Not done
+
+Nothing here has touched a live Qdrant. `scroll_all` paging past 1000 points,
+`create_payload_index` on repeat calls, and `MatchAny` with ~400 sources are all unexercised.
+
+Files deleted from disk are never removed from the index — that needs a reconciliation pass,
+and it is only correct when a request covers the whole corpus. "Re-ingesting is a no-op" is
+now true; "the index reflects the corpus" is not.
+
+The endpoint is still synchronous, and a full ingest is ~22 batches over minutes. That is the
+202-plus-worker decision finally coming due.
+
+---
+
 ## 2026-08-22 — Single tenant, by assumption rather than by oversight
 
 Re-ingest identifies a file by `source` alone, and nothing else scopes it. That is correct
