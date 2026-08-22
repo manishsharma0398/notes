@@ -9,6 +9,52 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-08-22 — Single tenant, by assumption rather than by oversight
+
+Re-ingest identifies a file by `source` alone, and nothing else scopes it. That is correct
+for one user and wrong the moment there are two: both would have a `notes/caching.md`, both
+would hash to the same key, and the two of them would share chunks in the index.
+
+The delete is the obvious failure — `delete where source in [...]` would clear both users'
+chunks. The retrieval path is the serious one. `/retrieve` applies no filter, so one user's
+query can return another user's documents. A wrong delete is recoverable by re-ingesting; a
+cross-tenant read is not recoverable at all.
+
+Recording it here because it is a decision, not an omission. Multi-tenancy is not a field to
+bolt on later without noticing what it touches.
+
+### What it would take
+
+Identity becomes `(tenant_id, source)`, not `source`. Four places change: the point payload,
+the delete filter, the `indexed_hashes` scroll (unscoped, it reads every tenant's hashes),
+and every retrieval query.
+
+Two isolation strategies, and they fail differently:
+
+- **Collection per tenant.** Strongest isolation: a mis-scoped query returns nothing rather
+  than someone else's data. Qdrant carries real per-collection overhead — separate segments
+  and indexes — so this works at tens of tenants and not at thousands.
+- **Shared collection with an indexed `tenant_id`.** The standard approach at scale, and
+  Qdrant has an optimisation for a designated tenant field so points cluster on disk. It
+  **fails open**: miss the filter on one query path and it leaks silently, with no error and
+  no failing test.
+
+If the shared collection is ever chosen, the mitigation has to be structural — tenant as a
+required parameter on every repository call, so omitting it is a type error rather than a
+judgement call. An optional filter argument is a leak waiting for a tired evening.
+
+### Two things break before any of that matters
+
+`INGEST_ROOT` is one deployment-wide directory. Per-tenant roots reopen the path-traversal
+surface the containment check closed — and at that point the premise is wrong anyway: a
+hosted multi-user service should not be reading the server's filesystem. It would be uploads
+or a per-tenant connector, which is the ingest-boundary decision already deferred to Phase 2.
+
+There is also no authentication anywhere in the service. "User" is not a concept the code
+has. Multi-tenancy is identity plus authorisation on every path, not a payload field.
+
+---
+
 ## 2026-08-21 — Chunking, the OpenAI client, and bugs that only measurement found
 
 *Shipped as **v0.4.0** (chunking) and **v0.5.0** (client and error mapping).*
