@@ -9,6 +9,111 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-08-23 (later) — Search, and a corpus that was lying
+
+*Shipped as **v0.7.0**, with the diagram correction as **v0.7.1**.*
+
+### The retriever was fine. The corpus was not.
+
+First real query — "what is AWS ?" — returned five `prompt.md` files: mentor instructions
+like *"Act as a principal AWS security engineer and systems interviewer."* Not knowledge.
+An S3 consistency question returned SQL transaction notes.
+
+Both were **correct behaviour**. `aws/storage/` contains exactly one file and it is a
+mentor prompt. `docker`, `k8s`, `linux`, `ci-cd-pipelines` and `scripting` are one file
+each, and that file is a prompt too. Five of the fourteen advertised domains have no
+content at all; 400 of 423 real files sit in five domains. There was no S3 content to find,
+so the retriever returned the nearest neighbour — and "read-after-write consistency"
+genuinely does live in database land.
+
+Twenty-one prompt files, 191 chunks, all indexed. They win generic queries precisely
+because they are short and topic-dense: little other text to dilute the match. `ai/prompt.md`
+was already excluded; the glob should always have been `**/prompt.md`.
+
+Dropping them and rebuilding — 373 documents, 5,154 chunks, 77s, $0.018 — moved exactly
+what it should:
+
+| query | before | after |
+|---|---|---|
+| Node backpressure | 0.731 | 0.731 |
+| terraform state locking | 0.666 | 0.666 |
+| **"what is AWS ?"** | **0.567** | **0.499** |
+| chocolate cake | 0.214 | 0.214 |
+
+Real-content scores did not move, because nothing about those documents changed. The junk
+query fell 0.07 once the scaffolding inflating it was gone. The gap between "here is your
+answer" and "nothing good here" went from ~0.10 to ~0.15, which is what makes a threshold
+viable at all.
+
+The lesson worth keeping: **a retrieval system can only be debugged by looking at scores and
+sources.** Had `/retrieve` returned a generated answer, this would have surfaced as a fluent
+paragraph synthesised from mentor prompts, and the corpus problem would have stayed
+invisible behind good prose. That is the argument for `/retrieve` and `/ask` being separate,
+independent of the eval-cost argument.
+
+### `/retrieve` and `/ask` are separate on purpose
+
+Two reasons, and the second is the one that survives scrutiny:
+
+- The eval scores hit@5 across ~30 golden questions and must not pay for a completion each
+  time. Retrieval quality and answer quality also fail differently — sharing an endpoint
+  makes a bad answer unattributable.
+- Query rewrite, hybrid search and reranking stay on `/retrieve`, because their gain **is**
+  a retrieval metric. Push them behind `/ask` and Chapter 8's headline number — "hybrid
+  lifted hit@5 from X to Y" — becomes unmeasurable. Conversational rewrite is the one
+  exception: it needs history a stateless endpoint does not have.
+
+They should be per-request flags, not just present, so the eval can attribute the gain to
+each component rather than to all three at once.
+
+### Things that only showed up by running it
+
+- **`result.section or "" + "\n\n"`** parses as `result.section or ("" + "\n\n")` — `+`
+  binds tighter than `or`. Every result kept its leading blank line, and a sectionless chunk
+  stripped a bare newline pair instead. Valid code, wrong meaning; no linter can see it.
+- **The response echoed `top_k` it never used.** Defaults were resolved into locals and then
+  the *raw* payload values were passed to the query, so a request without `top_k` returned 3
+  results while reporting 5. The wrapper exists to tell an eval what was applied; reporting a
+  number that was never applied is worse than reporting nothing.
+- **`payload` is `dict[str, Any] | None`**, not an object. Attribute access fails, and
+  narrowing `with_payload` to four fields means `Chunk.model_validate` can no longer be used
+  — it requires the bookkeeping you deliberately stopped fetching. That is the point: fetch
+  what you return, and nothing added to `Chunk` later can leak into the API.
+- **Pydantic v2 does not expose fields as class attributes.** `RetrieveResult.text` is an
+  `AttributeError`. Payload keys are storage keys; they only happen to match field names.
+- **A bare `except:` hid three separate bugs in a row**, each time turning an immediate
+  one-line fix into a silent wrong answer — once as a 200 carrying `{"message": "Error"}`.
+  flake8 flagged it as E722 and bugbear as B001 the entire time.
+
+### Small things that were not small
+
+`MAX_TOP_K` now bounds the request field *and* the settings default: `le=20` on the request
+was bypassable by setting `DEFAULT_TOP_K=1000`, and a bad config should fail at startup
+rather than quietly ignore a documented limit.
+
+Optional numeric knobs resolve with `is None`, never `or`. A caller sending `score_threshold:
+0.0` means "no floor" — which is exactly what you send while debugging a query that returns
+nothing — and `or` silently replaces it with the default.
+
+A missing collection returns **503 `index does not exist`** rather than 500, and never an
+empty 200. Empty-with-200 would make "the corpus has nothing on X" indistinguishable from
+"there is no corpus", and the eval would record it as a retrieval miss.
+
+`embed_query` checks the API returned exactly one embedding at the expected width. A
+mis-sized vector is not a crash — it produces plausible garbage rankings, which is the worst
+possible failure for a search system.
+
+### Open
+
+`content_tokens` is still not wired as a query filter. 6.9% of chunks are under 30 tokens
+and they rank — the best query's top hit is 19 tokens, too short to answer anything. Wire it
+as a knob defaulting to 0; the golden set picks the value.
+
+Still no tests. This endpoint alone produced six live bugs today, including a precedence bug
+that passed flake8 *and* pyright, and every check was a throwaway script.
+
+---
+
 ## 2026-08-23 — A failed ingest that reported success
 
 *Shipped as **v0.6.2**.*

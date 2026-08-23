@@ -82,14 +82,42 @@ including the mechanical port — it's a project he has to defend line by line, 
 didn't write is code he can't defend. Config, tooling and docs are fine to write when asked.
 
 Current state: `github.com/manishsharma0398/documind` — public, MIT, default branch
-`master`, released **v0.6.2**. The Qdrant and OpenAI clients are done (client lifecycle, collection
+`master`, released **v0.7.1**. The Qdrant and OpenAI clients are done (client lifecycle, collection
 management with the 409 race handled, upsert, query, payload-filtered delete). The
 filesystem document source, `pydantic-settings` config and API error handling are merged
 (`src/settings.py`, `src/utils/filesystem.py`, `src/utils/models.py`). Chunking is done
 (`src/utils/chunking.py`): markdown-header split, then token split, with a folder+heading
 breadcrumb prefixed to every chunk. **Ingestion is complete and exercised against the real
-corpus**: 393 documents into 5,345 chunks in ~60s for $0.019, and a re-run skips everything
-in 0.2s. **Retrieval is still absent** — `/retrieve` is a stub.
+corpus**: 373 documents into 5,154 chunks in ~77s for $0.018, and a re-run skips everything
+in 0.2s. **Search is done** — `POST /retrieve` embeds the question, queries Qdrant and
+returns ranked chunks with scores, sources and section breadcrumbs. **`/ask` is not built**:
+context assembly and grounded generation are the next piece.
+
+Retrieval decisions worth keeping:
+
+- **`/retrieve` and `/ask` are separate endpoints.** The eval scores hit@5 over the golden
+  set and must not pay for a completion per question; retrieval quality and answer quality
+  also fail differently, and one endpoint makes them unattributable. `/ask` calls the same
+  retrieval function.
+- **Query rewrite, hybrid search and reranking belong to `/retrieve`,** because their gain
+  *is* a retrieval metric. Conversational rewrite is the exception — it needs history
+  `/retrieve` does not have. They should be per-request flags so the eval can attribute the
+  gain to each rather than to all three together.
+- The response is its **own model**, not a subclass of the storage `Chunk`. Subclassing
+  leaks `file_hash`, `chunk_total` and the per-run `document_id`, and silently publishes any
+  field added to `Chunk` later. Only the four payload fields it returns are fetched from
+  Qdrant, ~30% less over the wire.
+- **Effective `top_k` and score floor are echoed in the response.** Both fall back to
+  settings, so a bare result list cannot say what a baseline measured against. `MAX_TOP_K`
+  bounds the request field *and* the settings default, so a config value cannot walk past
+  the documented API limit — an out-of-range `DEFAULT_TOP_K` fails at startup.
+- `default_score_threshold` is **0 on purpose** until the golden set picks a floor: a
+  baseline needs the whole score distribution, not a pre-filtered slice.
+- Resolve optional numeric knobs with `is None`, never `or`. A caller sending `0.0` means
+  "no floor" — exactly what you send while debugging — and `or` silently overrides it.
+- A missing collection is a **503 `index does not exist`**, not a 500 and not an empty 200.
+  Returning 200 makes "the corpus has nothing on X" indistinguishable from "there is no
+  corpus", and the eval would score it as a retrieval miss.
 
 Two things ingestion proved that only a full run could:
 
@@ -166,15 +194,21 @@ cap both compressed and uncompressed size.
 - **Corpus scope — implemented.** `IngestRequest.exclude` takes globs matched against
   `source` with `PurePosixPath.full_match`. Exclusion is **corpus policy, not service
   policy**: it belongs on the request, never in `SKIP_NAMES`, which ships in a public repo.
-  The list to pass — four planning docs plus the support fiction, taking 406 docs to 393:
+  The list to pass — planning docs, the support fiction, and every mentor prompt:
 
   ```
   CLAUDE.md
   HISTORY.md
-  ai/prompt.md
+  **/prompt.md
   ai/resume-roadmap.md
   ai/07-rag-pipelines/exercises/solutions/DocuMind/docs/**
   ```
+
+  `**/prompt.md` covers all 21 mentor prompts, not just `ai/`. They are instructions
+  ("Act as a principal AWS security engineer..."), not knowledge, and they *win* generic
+  queries because they are short and topic-dense. Dropping them took the corpus from 393
+  documents to 373, and "what is AWS" fell from 0.567 to 0.499 while real-content queries
+  did not move — a wider, more separable gap.
 
   It must be pinned in the eval config, since it defines the corpus a baseline is frozen
   against. Adding it does **not** remove already-indexed files — they become orphans, so a
@@ -249,6 +283,31 @@ Building an eval baseline for DocuMind. Key decision already made: the old `docs
 measure zero gain. **The corpus is this notes repo itself.** Full spec, golden-set schema,
 and metric definitions are in `ai/resume-roadmap.md`.
 
+**The corpus is 9 domains, not 14.** Once `**/prompt.md` is excluded, `docker`, `k8s`,
+`linux`, `ci-cd-pipelines` and `scripting` disappear entirely — a mentor prompt was their
+only file. `aws` drops to 3 (SES only), which is why "what is AWS" and an S3 question both
+returned nonsense: there is nothing to find. 400 of 423 content files sit in five domains —
+`ai` 121, `node-learnings` 81, `terraform` 78, `js-learnings` 73, `sql` 47.
+
+**Golden-set questions must come from those five.** Anything about AWS, Docker, K8s, Linux,
+CI/CD or scripting measures the corpus's holes, not the retriever.
+
+Measured score ladder on the cleaned corpus, which is where the eventual floor comes from:
+
+| query | top-3 |
+|---|---|
+| "how does Node handle backpressure in streams" | 0.731 0.723 0.718 |
+| "terraform state locking" | 0.666 0.632 0.627 |
+| "what is AWS ?" (no such content) | 0.499 0.496 0.455 |
+| "how do I bake a chocolate cake" | 0.214 0.178 0.173 |
+
+~0.6 separates real answers from confidently-wrong ones, but that is four queries and an
+eyeball, **not a measurement**. The golden set decides.
+
+`content_tokens` is still unwired as a query filter. 6.9% of chunks are under 30 tokens and
+they do rank — the best query's top hit is 19 tokens. Wire it as a knob defaulting to 0 so
+the eval can sweep it; do not pick a value by hand.
+
 `source` is relative to `INGEST_ROOT`, never to the folder a request names. It is the
 delete-by-filter key, the eval join key, and part of the embedded breadcrumb — a shifting
 value silently corrupts all three. Don't "simplify" it back.
@@ -300,7 +359,12 @@ debugging. It is private to this repo; the portfolio projects must not reference
   identical, identically named class from a different distribution — assigning one where the
   other is expected fails at runtime and only pyright sees it. `httpx2` is a declared
   dependency now because it is imported directly.
-- DocuMind's `/retrieve` is a `GET`. Phase 2 wants an SSE-streamed answer with a request
-  body, which is a `POST` — cheaper to change while it's still a stub.
+- `payload` on a Qdrant `ScoredPoint` is `dict[str, Any] | None` — a plain dict, so
+  attribute access fails, and pyright wants the `None` narrowed. `with_payload` naming
+  fields means `Chunk.model_validate` no longer works: it requires the ingest bookkeeping
+  you deliberately stopped fetching.
+- Pydantic v2 does **not** expose fields as class attributes: `RetrieveResult.text` is an
+  `AttributeError`. Use string literals for payload keys — they are storage keys that only
+  happen to match the model's field names.
 - `generate.js` at the repo root is a scratch file generator for Node stream experiments,
   unrelated to the AI track.
