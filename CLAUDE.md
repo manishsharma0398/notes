@@ -82,7 +82,7 @@ including the mechanical port — it's a project he has to defend line by line, 
 didn't write is code he can't defend. Config, tooling and docs are fine to write when asked.
 
 Current state: `github.com/manishsharma0398/documind` — public, MIT, default branch
-`master`, released **v0.6.0**. The Qdrant and OpenAI clients are done (client lifecycle, collection
+`master`, released **v0.6.2**. The Qdrant and OpenAI clients are done (client lifecycle, collection
 management with the 409 race handled, upsert, query, payload-filtered delete). The
 filesystem document source, `pydantic-settings` config and API error handling are merged
 (`src/settings.py`, `src/utils/filesystem.py`, `src/utils/models.py`). Chunking is done
@@ -112,6 +112,18 @@ Error-handling rules — settled, do not relitigate:
   class the library never raises.
 - Never log batch contents: for embeddings the request body is the corpus.
 - FastAPI handlers do not fire for background tasks, so the ingest loop needs its own.
+- **Never `return` inside a `finally`.** Python discards the in-flight exception, so a dead
+  run comes back as a 200 with plausible partial numbers. `finally` holds logging only; the
+  `return` sits below the whole block. Neither flake8 (without bugbear) nor pyright catches
+  this — it is control flow, not types.
+- Use `try`/`finally` with a `completed` flag, not `except`/re-raise: a bare
+  `except Exception` misses `CancelledError`, which is what a client disconnect raises.
+- Split counters by what they assert. Money facts (`billed`, `counted`, `batches`) increment
+  **before** the upsert — the embedding was charged the moment the API answered, so a Qdrant
+  failure must not erase it. Index facts (`chunk_count`) increment after. `embedded > indexed`
+  on a partial run is correct, not a discrepancy.
+- The loop's failure line is `warning`; the app handler already logs the error with a trace
+  and OpenAI's `request_id`. Two error-level lines for one event is noise.
 
 Chunking invariants — do not break these:
 
@@ -187,9 +199,11 @@ branch → push → `gh pr create --fill` → wait for green → `gh pr merge --
   by a `commit-msg` hook — but the hook does **not** check PR titles, and the squash-merge
   message comes from the PR title, so PR titles must be conventional too.
 - Lint/format config was adapted from `prasaarit/services/upload`, minus its monorepo
-  `--project services/upload` flags. **pyright** was added on top: three type errors got
-  past black/isort/flake8/bandit in one week, and mypy catches only two of the three.
-  Pyright is Pylance's engine, so the hook agrees with the editor.
+  `--project services/upload` flags. **pyright** was added on top: four type errors got
+  past black/isort/flake8/bandit, and mypy catches only two of them. Pyright is Pylance's
+  engine, so the hook agrees with the editor.
+- **`flake8-bugbear` is not installed yet.** Its B012 is the return-in-`finally` check; it
+  comes back clean against `src/`, so it is a one-line addition to the `lint` group.
 - **Style rules for that repo, non-negotiable:** comments and docstrings 1-3 lines, commit
   messages and PR bodies short and conversational. No archaeology comments recording a bug
   already fixed. Depth belongs in this repo's `HISTORY.md`, not in the public one.
@@ -281,6 +295,10 @@ debugging. It is private to this repo; the portfolio projects must not reference
 - DocuMind's `[project.scripts] dev = "src.main:app"` is still broken: `app` is an ASGI
   instance, not a zero-arg callable, so `uv run dev` fails. Use
   `uv run fastapi dev src/main.py`.
+- **openai 3.x is built on `httpx2`, not `httpx`.** `httpx.Timeout` is a structurally
+  identical, identically named class from a different distribution — assigning one where the
+  other is expected fails at runtime and only pyright sees it. `httpx2` is a declared
+  dependency now because it is imported directly.
 - DocuMind's `/retrieve` is a `GET`. Phase 2 wants an SSE-streamed answer with a request
   body, which is a `POST` — cheaper to change while it's still a stub.
 - `generate.js` at the repo root is a scratch file generator for Node stream experiments,

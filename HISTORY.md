@@ -9,6 +9,85 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-08-23 — A failed ingest that reported success
+
+*Shipped as **v0.6.2**.*
+
+### The money record was the thing being lost
+
+The ingest loop had no error handling at all, which was half deliberate: the client
+propagates, and partial writes were already safe, since a source that dies mid-run fails the
+`chunk_total` vs point-count check and rebuilds next time. Nothing corrupts.
+
+What was lost was the accounting. `billed`, `counted` and `batches` accumulate inside the
+loop and the summary log sits *after* it, so a run that died at batch 12 had spent real money
+on eleven batches and said nothing about it. Not a correctness bug — an operability one. You
+cannot decide whether to re-run something when you do not know what the last attempt cost.
+
+Subtler, and found only while writing the fix: the counters were incremented *after* the
+upsert. So a **Qdrant** failure dropped that batch's token count entirely, even though the
+embedding call had already succeeded and already been charged. A `finally` layered on top of
+that ordering would have faithfully reported a wrong number.
+
+The split that fixes it is by what each counter asserts. `billed`, `counted`, `batches` are
+facts about money, true the moment the API answered — they increment before the upsert.
+`chunk_count` is a fact about the index — it increments after. On a partial run
+`embedded > indexed` is then the expected shape rather than a discrepancy.
+
+### `return` inside `finally` swallows the exception
+
+The first attempt put the `return` in the `finally`. Python discards an in-flight exception
+when the `finally` returns, so a dead run stopped reaching the handlers and came back as
+**HTTP 200** with plausible partial numbers. Strictly worse than the no-handling version,
+which at least produced a 503.
+
+Nothing in the toolchain caught it. flake8 without bugbear has no such check and pyright
+reports zero errors — it is a control-flow bug, not a type error. The only thing that flagged
+anything was `F841` on the now-unused `completed` flag, which pointed at the omission
+sideways.
+
+So: `finally` holds **logging only**. The `return` and the drift check sit below the whole
+block, where an exception simply never reaches them. `try`/`finally` with a `completed` flag
+rather than `except`/re-raise, because a bare `except Exception` misses `CancelledError` —
+which is what a client disconnect mid-ingest raises, and the case where silence is least
+affordable.
+
+The failure line is `warning`, not `error`: the app-level handler already logs what broke
+with a stack trace and OpenAI's `request_id`. The loop's line answers a different question —
+what it cost — and says outright that the in-flight documents rebuild next run, so nobody has
+to reason about `chunk_total` at 2am.
+
+### openai 3.x is built on `httpx2`, not `httpx`
+
+The flat `OPENAI_TIMEOUT = 500` had no reasoning behind it. A 256-chunk batch returns in
+single-digit seconds; at 500s one hung socket stalls the run for eight minutes before the
+first of five retries. Replaced with a granular `Timeout(connect=10, read=60, write=30,
+pool=10)` — a dead host now fails in ten seconds instead of waiting on a read that will never
+come.
+
+Writing `httpx.Timeout` for that is wrong, and wrong in a way nothing but a type checker sees:
+
+```
+"httpx._config.Timeout" is not assignable to "httpx2._config.Timeout"
+```
+
+openai 3.3.1 depends on `httpx2` 2.12. The two classes are structurally identical and
+identically named, so the failure would have surfaced at runtime inside client construction.
+Fourth type error pyright has caught past black/isort/flake8/bandit, and probably beyond mypy
+too — it needs the installed distribution's own stubs to see that two same-named classes come
+from different packages.
+
+`httpx2` is now a declared dependency, since it is imported directly rather than reached
+through openai.
+
+### Open
+
+`flake8-bugbear`'s **B012** is exactly the return-in-`finally` check, and it comes back clean
+against the current `src/`, so it is a one-line addition to the `lint` group. Deliberately
+left to its own change rather than folded into a fix.
+
+---
+
 ## 2026-08-22 (later) — Logging that can be read, and a type checker
 
 *Shipped as **v0.6.0**, alongside corpus exclusions.*
