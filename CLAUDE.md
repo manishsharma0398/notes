@@ -114,8 +114,8 @@ Error-handling rules — settled, do not relitigate:
 - FastAPI handlers do not fire for background tasks, so the ingest loop needs its own.
 - **Never `return` inside a `finally`.** Python discards the in-flight exception, so a dead
   run comes back as a 200 with plausible partial numbers. `finally` holds logging only; the
-  `return` sits below the whole block. Neither flake8 (without bugbear) nor pyright catches
-  this — it is control flow, not types.
+  `return` sits below the whole block. Pyright cannot see it — control flow, not types — so
+  bugbear's B012 is the only thing guarding it.
 - Use `try`/`finally` with a `completed` flag, not `except`/re-raise: a bare
   `except Exception` misses `CancelledError`, which is what a client disconnect raises.
 - Split counters by what they assert. Money facts (`billed`, `counted`, `batches`) increment
@@ -202,8 +202,9 @@ branch → push → `gh pr create --fill` → wait for green → `gh pr merge --
   `--project services/upload` flags. **pyright** was added on top: four type errors got
   past black/isort/flake8/bandit, and mypy catches only two of them. Pyright is Pylance's
   engine, so the hook agrees with the editor.
-- **`flake8-bugbear` is not installed yet.** Its B012 is the return-in-`finally` check; it
-  comes back clean against `src/`, so it is a one-line addition to the `lint` group.
+- **`flake8-bugbear` is in the `lint` group** for its B012, the return-in-`finally` check —
+  added after that exact bug passed every other hook. The flake8 hook runs via
+  `uv run --group lint`, so it picked the checks up with no hook change.
 - **Style rules for that repo, non-negotiable:** comments and docstrings 1-3 lines, commit
   messages and PR bodies short and conversational. No archaeology comments recording a bug
   already fixed. Depth belongs in this repo's `HISTORY.md`, not in the public one.

@@ -80,11 +80,20 @@ from different packages.
 `httpx2` is now a declared dependency, since it is imported directly rather than reached
 through openai.
 
-### Open
+### The guard, added separately
 
-`flake8-bugbear`'s **B012** is exactly the return-in-`finally` check, and it comes back clean
-against the current `src/`, so it is a one-line addition to the `lint` group. Deliberately
-left to its own change rather than folded into a fix.
+`flake8-bugbear`'s **B012** is exactly the return-in-`finally` check, so it went into the
+`lint` group as its own change rather than folded into the fix — a linter addition and a bug
+fix answer different questions, and squashing them together makes both harder to read later.
+
+Verified by running it against the original bug shape rather than trusting the install:
+
+```
+B012 return/continue/break inside finally blocks cause exceptions to be silenced.
+```
+
+Clean against `src/` as it stands, so nothing had to be retrofitted. The flake8 hook already
+runs through `uv run --group lint`, so no hook change was needed.
 
 ---
 
