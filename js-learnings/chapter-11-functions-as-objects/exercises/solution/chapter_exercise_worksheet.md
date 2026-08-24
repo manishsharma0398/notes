@@ -190,11 +190,26 @@ const wrapped = logCalls(handler);
 Answer without running:
 
 ```
-Q: wrapped.name          →
-R: wrapped.length        →
-S: wrapped === logCalls(handler)  →
-T: Why does a framework that dispatches on fn.length now misbehave?
+Q: wrapped.name          → ""
+R: wrapped.length        → 0
+S: wrapped === logCalls(handler)  → false
+T: Why does a framework that dispatches on fn.length now misbehave? frameworks like Express diaptches error handler function by fn.length
 U: Write the two lines that fix Q and R.
+
+function logCalls(fn) {
+  function closure (...args) {
+    console.log(`calling ${fn.name}`);
+    return fn(...args);
+  }
+  Object.defineProperty(closure, "name", {
+    value: fn.name,
+  });
+  Object.defineProperty(closure, "length", {
+    value: fn.length,
+  });
+  return closure;
+}
+
 ```
 
 Then a harder one — this wrapper has a second bug:
