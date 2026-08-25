@@ -9,6 +9,111 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-08-25 — The baseline, and four guesses it overturned
+
+*Shipped as **v0.8.0**.*
+
+Retrieval quality stopped being a judgement call. 33 golden questions, an eval harness, and
+a frozen dense-only baseline:
+
+```
+hit@1 0.750   hit@5 0.857   hit@10 0.929   MRR 0.800
+ambiguous-term 0.900   identifier 1.000   factual 0.769
+```
+
+### The harness records; it does not score
+
+`run_eval.py` fetches the API maximum with no floor and writes the raw hits. `report.py`
+derives hit@1/3/5/10, MRR and the entire threshold sweep from that file. The split exists
+because the floor is chosen by *reading the distribution*, and a design where each candidate
+value costs another 33 embeddings quietly discourages looking.
+
+`config.yaml` pins the embedding model, the exclusion globs and `corpus_commit`. That last
+one matters more than it looks: this is a living notes repo, so without it a run next month
+would score corpus growth as retrieval improvement.
+
+### The floor is ~0.45-0.50, not ~0.6
+
+The four-query ladder from two days ago gave ~0.6. The measurement:
+
+| floor | refuses absent | keeps correct |
+|---|---|---|
+| 0.45 | 0.600 | 0.786 |
+| 0.50 | 0.800 | 0.714 |
+| 0.55 | 1.000 | 0.464 |
+| **0.60** | 1.000 | **0.107** |
+
+At the eyeballed value, refusal is perfect and 25 of 28 correct answers are gone. The old
+ladder had sampled four easy questions; real answers routinely score 0.42-0.51.
+
+Worse — and this is the useful part — **no floor separates cleanly.** `absent-webpack-01`
+scores 0.504, higher than a third of the correct answers. Dense cosine cannot do confident
+refusal on this corpus. That is now a measured fact justifying reranking, rather than an
+assumption about it.
+
+### Question phrasing is worth 13 points of hit@5
+
+The same 28 questions, same corpus, same retriever, two phrasings:
+
+| | heading-echo | problem-phrased |
+|---|---|---|
+| hit@5 | 0.957 | 0.826 |
+| factual | 1.000 | 0.769 |
+
+Questions written after reading the corpus borrow its vocabulary and hand the retriever its
+own tokens. The lower number is the honest one. A baseline that flatters itself is worse than
+none, because every later delta is measured against a ceiling that was never real.
+
+### BM25's case is already covered
+
+All five `identifier` questions — `prevent_destroy`, `NULLS FIRST`, `require.cache`, `HNSW` —
+return at **rank 1**. The query class BM25 exists for is not failing here. Probably because
+these terms are rare enough that the embedding model has a distinct representation, and the
+questions are short, so the identifier dominates the query vector instead of being averaged
+away.
+
+So BM25 moves down the list. What the remaining failures actually need:
+
+- Three of four are **right chapter, wrong file** — `chapter_exercise.md` outranking the
+  README that explains the thing. Exercises restate topics tersely, which reads as dense to a
+  similarity score. That is a cross-encoder's job.
+- One is a **total vocabulary miss**: "how do I get a structured object back from a model
+  instead of a string" shares no terms with its target, because the notes only ever say
+  "output parser". Query rewriting or HyDE. BM25 would make it strictly worse.
+
+Recall is near-saturated (hit@10 0.929) while hit@1 is 0.750 — the gap is ordering, not
+retrieval. **Rerank before hybrid.**
+
+### A bad answer key looks exactly like a retrieval failure
+
+I keyed an `identifier` question to three files containing `logprobs` — all three merely
+name-drop it in a list of parameters LangChain does not expose. Nothing explains what
+logprobs are. The question read as a total retrieval miss; it was an unanswerable question
+with a wrong key. Fixing it took `identifier` from 0.800 to 1.000 and hit@1 from 0.714 to
+0.750.
+
+Grep finds the term. Only reading finds the answer. And never let `/retrieve` pick
+`expected_sources` — a system that defines its own ground truth scores 100% forever.
+
+### The corpus is not the same corpus
+
+`**/prompt.md` was added to the exclusions and the collection rebuilt: **373 documents,
+5,154 chunks, 77s, $0.018**. Twenty-one mentor prompts and 191 chunks of instructions-not-
+knowledge left the index. "what is AWS" fell 0.567 → 0.499 while real-content queries did not
+move — a wider, more separable gap.
+
+### Open
+
+`content_tokens` is still unwired as a query filter, and it is now a knob the eval could
+sweep in one run.
+
+`evals/results/` accumulates ~200KB per run and is currently committed wholesale. Fine at
+one file, annoying at twenty.
+
+Still no tests, and the harness is now load-bearing for numbers that will go on a CV.
+
+---
+
 ## 2026-08-23 (later) — Search, and a corpus that was lying
 
 *Shipped as **v0.7.0**, with the diagram correction as **v0.7.1**.*

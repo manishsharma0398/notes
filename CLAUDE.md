@@ -82,7 +82,7 @@ including the mechanical port — it's a project he has to defend line by line, 
 didn't write is code he can't defend. Config, tooling and docs are fine to write when asked.
 
 Current state: `github.com/manishsharma0398/documind` — public, MIT, default branch
-`master`, released **v0.7.1**. The Qdrant and OpenAI clients are done (client lifecycle, collection
+`master`, released **v0.8.0**. The Qdrant and OpenAI clients are done (client lifecycle, collection
 management with the 409 race handled, upsert, query, payload-filtered delete). The
 filesystem document source, `pydantic-settings` config and API error handling are merged
 (`src/settings.py`, `src/utils/filesystem.py`, `src/utils/models.py`). Chunking is done
@@ -292,21 +292,53 @@ returned nonsense: there is nothing to find. 400 of 423 content files sit in fiv
 **Golden-set questions must come from those five.** Anything about AWS, Docker, K8s, Linux,
 CI/CD or scripting measures the corpus's holes, not the retriever.
 
-Measured score ladder on the cleaned corpus, which is where the eventual floor comes from:
+## The baseline is measured — `evals/`
 
-| query | top-3 |
-|---|---|
-| "how does Node handle backpressure in streams" | 0.731 0.723 0.718 |
-| "terraform state locking" | 0.666 0.632 0.627 |
-| "what is AWS ?" (no such content) | 0.499 0.496 0.455 |
-| "how do I bake a chocolate cake" | 0.214 0.178 0.173 |
+33 golden questions in `evals/golden_set.yaml`, four types: `factual`, `ambiguous-term`,
+`identifier`, `absent`. Dense-only baseline, frozen:
 
-~0.6 separates real answers from confidently-wrong ones, but that is four queries and an
-eyeball, **not a measurement**. The golden set decides.
+```
+hit@1 0.750   hit@5 0.857   hit@10 0.929   MRR 0.800
+ambiguous-term 0.900   identifier 1.000   factual 0.769
+```
+
+**The runner records, the reporter scores.** `run_eval.py` fetches the API maximum with no
+floor and saves the raw hits; `report.py` derives every k and the whole threshold sweep from
+that one file. Trying a different floor must never cost another run — the floor is chosen by
+reading the distribution, not by guessing and re-testing.
+
+**`config.yaml` pins the embedding model, the exclusion globs and `corpus_commit`.** Scores
+compare only within one embedding model, and this notes repo keeps growing — without the
+commit, a later run scores corpus growth as retrieval improvement.
+
+Four things the baseline settled that guessing had got wrong:
+
+- **The floor is ~0.45-0.50, not ~0.6.** At 0.60 refusal is perfect and 25 of 28 correct
+  answers are thrown away. The old four-query ladder happened to sample easy questions;
+  real answers routinely land at 0.42-0.51.
+- **No floor separates cleanly.** `absent-webpack-01` scores 0.504, above a third of the
+  correct answers. Dense cosine cannot do confident refusal on this corpus — which is the
+  measurement that justifies reranking rather than an assumption about it.
+- **Question phrasing is worth ~13 points of hit@5.** The same 28 questions phrased as
+  problems rather than echoing chapter headings scored 0.826 against 0.957. Questions
+  written after reading the corpus flatter the retriever; the honest number is the lower one.
+- **BM25's case is already covered.** All five `identifier` questions return at rank 1, so
+  the query class BM25 exists for is not currently failing. Its value here is unproven, not
+  assumed — a more interesting result than shipping it because the roadmap said so.
+
+**Recall is near-saturated; ranking is not.** hit@10 0.929 against hit@1 0.750 means correct
+documents are found and mis-ordered — usually `chapter_exercise.md` outranking the README
+that explains the thing. That points at **reranking before hybrid search**.
+
+**A bad answer key is indistinguishable from a retrieval failure.** One `identifier` question
+keyed to files that merely *name-dropped* the term read as a total miss; fixing the key moved
+hit@1 from 0.714 to 0.750. Verify every `expected_sources` by reading, never by grep, and
+never by asking `/retrieve` — letting the system under test define ground truth makes it
+score itself 100% forever.
 
 `content_tokens` is still unwired as a query filter. 6.9% of chunks are under 30 tokens and
-they do rank — the best query's top hit is 19 tokens. Wire it as a knob defaulting to 0 so
-the eval can sweep it; do not pick a value by hand.
+they do rank. Wire it as a knob defaulting to 0 so the eval can sweep it; do not pick a value
+by hand.
 
 `source` is relative to `INGEST_ROOT`, never to the folder a request names. It is the
 delete-by-filter key, the eval join key, and part of the embedded breadcrumb — a shifting
