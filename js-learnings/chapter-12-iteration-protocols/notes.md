@@ -1,5 +1,8 @@
 # Chapter 12 — Iteration Protocols: Revision Notes
 
+*Read this the morning of an interview. Mechanism only, no prose.*
+*Spoken answers with timings: `interview.md`. Full 20-minute round: `mock.md`.*
+
 ## The six facts
 
 1. **Two protocols**: iterable has `[Symbol.iterator]()`; iterator has `next()` → `{value, done}`.
@@ -67,15 +70,30 @@ take(naturals(), 5);   // [1,2,3,4,5] — `while(true)` doesn't hang
 function* outer() { yield 1; yield* inner(); yield 4; }
 ```
 
-**Two-way — `next(v)` sends a value in:**
+**Two-way — and it's THREE channels, not one:**
 
 ```javascript
 function* echo() { const got = yield "ask"; yield "got:" + got; }
 e.next();          // "ask"
-e.next("hello");   // "got:hello"   ← the arg becomes the result of `yield`
+e.next("hello");   // "got:hello"
 ```
 
-The first `next()` can't send anything — no paused `yield` yet. This channel is the mechanism `async`/`await` is built on.
+`yield` is an **expression**. `got` is *not* `"ask"` — `"ask"` goes out, `got` is what comes
+back in. The freeze happens mid-assignment: the right-hand side is in mid-air until you resume.
+
+| call | effect at the paused `yield` |
+|---|---|
+| `gen.next(v)` | the expression evaluates to `v` |
+| `gen.throw(e)` | `e` is thrown from that line — catchable *inside* the generator |
+| `gen.return(v)` | acts like a `return` there — `finally` runs, generator closes |
+
+- The first `next()` can't send anything — no paused `yield` yet, so the argument is discarded.
+  Hence the **priming call**.
+- `throw()` is why `try/catch` works around `await` (Ch 13's driver calls it on rejection).
+- `return()` is what `break` calls — Part 4's closing behaviour, named.
+
+This channel is the mechanism `async`/`await` is built on: yield a promise, add a driver that
+calls `next(value)` / `throw(err)`, and you've written it.
 
 ---
 
@@ -117,7 +135,7 @@ A function that loops its input **twice** breaks when handed a generator:
 function average(nums) {
   let sum = 0; for (const n of nums) sum += n;
   let count = 0; for (const n of nums) count++;   // second pass: empty
-  return sum / count;                              // NaN / divide-by-zero
+  return sum / count;                              // 6 / 0 → Infinity, not NaN
 }
 ```
 
@@ -150,7 +168,7 @@ for (const v of a) {}   // ["x","y"]          values, via the iterator
 3. Generators for lazy pipelines over large/infinite data.
 4. Don't reuse a generator object across two consumers.
 5. `Object.entries` in loops, since objects aren't iterable.
-6. `for await...of` + `async function*` for streams and paginated APIs (Ch 13 territory).
+6. `for await...of` + `async function*` for streams and paginated APIs (Ch 13, Part 10).
 
 ---
 

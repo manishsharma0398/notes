@@ -116,6 +116,12 @@ try {
 
 ## Program 3 — Build Three Iterables
 
+> **Spoiler warning.** `range` and `take` are also `interview.md` Q8/Q9 and the whiteboard
+> round in `mock.md`, which show working versions — a mock interview without a model answer is
+> useless. Write them from this brief **first**, then compare. `fibonacci`, the tree, and the
+> deliberately-broken `range2` are answered nowhere.
+
+
 ```javascript
 "use strict";
 
