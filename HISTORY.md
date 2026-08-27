@@ -9,6 +9,59 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-08-27 — Chapter 10: LangGraph
+
+Written as `ai/10-langgraph/` — README, notes, interview, four examples, two exercises
+(unsolved, as always). Chapter 8's exercises are still open; the chapter order moved ahead
+of them deliberately.
+
+The framing the chapter commits to: **LangGraph is a checkpointed state machine whose nodes
+call LLMs**, not "an agent framework". It is the Chapter 9 `while` loop plus a durable write
+between every step, and the five things that write buys — resume, human-in-the-loop,
+per-step observability, concurrency with a defined merge, and shapes other than a loop — are
+also the five reasons to *not* adopt it when none of them applies.
+
+Three points the examples exist to make, because each is a bug people ship:
+
+- `interrupt()` is not `await`. **The node re-runs from the top on resume**, so any side
+  effect above the interrupt call happens twice. `03_human_in_the_loop.py` prints the
+  double-sent email before showing the correct shape.
+- `invoke(None, config)` means *continue*. Any other input restarts the graph and re-pays
+  for every LLM call already made.
+- Parallel writes to an un-reduced key raise `InvalidUpdateError` rather than silently
+  dropping one. And a reducer still does not fix concurrent read-modify-write — both
+  branches read the same pre-step value, so emit deltas, don't compute totals.
+
+Cost framing, since durability is not free: one serialised state write **per super-step**.
+A 6-step agent at 10k runs/day is 60k writes/day, each carrying the whole state — which is
+why chunk text does not belong in graph state.
+
+### Where it lands in the projects
+
+The cumulative exercise is DocuMind's `/ask`, built as `retrieve → grade → (rewrite ⟲ |
+generate)` with an attempts budget. The justification is the frozen baseline, not the
+chapter: hit@10 0.929 against hit@1 0.750, and **no score floor separates correct answers
+from absent ones** — `absent-webpack-01` at 0.504 outranks a third of the correct answers.
+A fixed cutoff cannot refuse confidently on this corpus, so `/ask` has to judge the
+retrieved *text* and act on it.
+
+Stated in the exercise so it cannot be forgotten later: **the graph does not improve
+retrieval.** Reranking does. The graph buys confident refusal and one bounded second chance,
+and it is measured on different axes — faithfulness, refusal accuracy, p95, $/query — with
+retrieval metrics expected to come back **unchanged** at 0.857. If hit@5 moves, the harness
+is broken, not the graph improved.
+
+The chapter exercise is the Chapter 9 file-system agent ported to a checkpointed graph with
+an approval gate on `write_file`/`delete_file`, proving resume across two processes.
+
+### Note for the eval
+
+This chapter adds six files to the corpus. `evals/config.yaml` pins `corpus_commit`, so the
+frozen baseline is unaffected — but a re-ingest before the next eval run scores a different
+corpus, which is exactly what that pin exists to prevent.
+
+---
+
 ## 2026-08-25 — The baseline, and four guesses it overturned
 
 *Shipped as **v0.8.0**.*

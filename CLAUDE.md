@@ -41,11 +41,15 @@ exercises/   chapter_exercise.md + cumulative_exercise.md + solution(s)/  <- Man
 
 ## Current state
 
-- **Chapters 1–9 complete** (LLM internals → prompt engineering → APIs → Python for AI →
-  LangChain → vector DBs → RAG → advanced RAG → agents)
+- **Chapters 1–10 complete** (LLM internals → prompt engineering → APIs → Python for AI →
+  LangChain → vector DBs → RAG → advanced RAG → agents → LangGraph)
 - **Chapter 8 (`08-advanced-rag`) exercises are NOT yet solved** — no `solution/` dir.
   Hybrid search, query rewriting, reranking are the next work.
 - **Chapter 9 cumulative** (Code Review Agent) not started.
+- **Chapter 10 (`10-langgraph`) exercises are NOT yet solved.** Chapter exercise ports the
+  Ch9 file-system agent to a checkpointed graph with an approval gate; the cumulative is
+  DocuMind's `/ask` as `retrieve → grade → (rewrite ⟲ | generate)`. Written ahead of
+  Chapter 8's exercises deliberately — both sets are open.
   `09-.../file-system-assistant/main.py` has open `# TODO`s: `read_file_head`,
   its tool schema, and an empty `test.py`.
 
