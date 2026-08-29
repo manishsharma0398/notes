@@ -86,6 +86,35 @@ console.log(e.next("hi").value);   // << N
 ```javascript
 "use strict";
 
+function* channels() {
+  try {
+    const a = yield "first";
+    console.log("sent in:", a);
+    yield "second";
+  } catch (err) {
+    console.log("injected:", err.message);
+    yield "recovered";
+  } finally {
+    console.log("finally");
+  }
+}
+
+const g = channels();
+g.next();
+console.log(g.throw(new Error("boom")));   // << N2: both the log lines AND the returned object
+
+const h = channels();
+h.next();
+console.log(h.return("stopped"));          // << N3: both the log line AND the returned object
+console.log(h.next());                     // << N4
+```
+
+**N2–N4 are the ones that matter for Chapter 13.** For each, say *where* in the generator the
+error / return lands.
+
+```javascript
+"use strict";
+
 try {
   [...{ a: 1 }];
 } catch (err) {
@@ -206,7 +235,9 @@ T: Name one other common function that would break the same way.
 - D–F: one of these two forms calls `iterator.return()`. Which, and why?
 - G–I: code units vs code points.
 - J, K: keys vs values, and one of them walks the prototype chain.
-- M, N: what can the *first* `next()` send in?
+- M, N: what can the *first* `next()` send in? And is `got` equal to `"ask"`?
+- N2: `throw()` doesn't throw *at you* — it throws somewhere else. Where?
+- N3, N4: what does a `return` statement do to a `try/finally`, and to the function afterwards?
 
 **Program 2**
 - 7: when does a generator body actually start running?
@@ -229,6 +260,7 @@ T: Name one other common function that would break the same way.
 ## What to Verify
 
 - [ ] Program 1: All 15 outputs (A–O) with a named mechanism
+- [ ] Program 1: N2–N4 — the three channels, and *where* each one lands
 - [ ] Program 1: You can state what differs between E and F
 - [ ] Program 2: All 12 True/False with one-sentence reasons
 - [ ] Program 3: `range` is re-iterable; the broken version demonstrated and explained
