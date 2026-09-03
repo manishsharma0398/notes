@@ -6,7 +6,8 @@ Audience:
 - I already use modern JS (ES6+), async/await, Promises, modules, and APIs in production.
 - I want to master **core JavaScript language semantics** — not frameworks, not libraries.
 
-Goal (this replaced the original goal at Chapter 13 — see "History" at the bottom):
+Goal (this replaced the original goal when the promises chapter was rewritten — see
+"History" at the bottom):
 
 Two things, in this order:
 
@@ -94,28 +95,27 @@ Progression:
 
 Topics (interview-weighted, language only — do not dump all at once):
 
-Covered, chapters 1–13:
+Covered, chapters 1–19:
 
 - Parsing / compilation / execution · execution contexts · lexical scope · hoisting · `this` ·
   closures · primitives vs references · coercion and equality · objects and the prototype
   chain · `new`, constructors and classes · functions as objects · iteration protocols and
-  generators · promises and async foundations
+  generators · callbacks and inversion of control · promises and async foundations ·
+  microtasks and macrotasks · error handling semantics · memory management and leaks ·
+  copying, immutability and freezing · numeric edge cases
 
 Remaining, in priority order:
 
-1. **Microtasks vs macrotasks** — the event loop from the language's side. Asked constantly,
-   usually as an output-ordering puzzle.
-2. **Error handling semantics** — `try/catch`, async errors, custom error classes, what
-   `finally` does to control flow, error propagation across boundaries.
-3. **Memory management and leaks** — closures that retain, listeners that are never removed,
-   `WeakMap`/`WeakRef`, what "garbage collected" actually means. The leak question is common.
-4. **Copying, immutability and freezing** — shallow vs deep, `structuredClone`, `Object.freeze`
-   depth, why spread isn't a deep copy. Very common, often as a live-code task.
-5. **Modules (ESM)** — live bindings, hoisting of imports, cyclic imports, ESM vs CJS
-   interop and why `require` of an ESM module fails.
-6. **Numeric edge cases** — `0.1 + 0.2`, `NaN`, `Number.EPSILON`, safe integers, money.
-7. **`undefined` vs `null` vs missing** — `??` vs `||`, optional chaining, default parameters.
-8. **Strict mode and why it exists** — short chapter, mostly a follow-up magnet.
+1. **Modules (ESM)** — live bindings, hoisting of imports, cyclic imports, ESM vs CJS
+   interop and why `require` of an ESM module fails. **Scope this to language semantics only**
+   — `node-learnings/14-module-system-internals/` already covers the runtime half (resolution
+   algorithm, module cache, the four load phases, startup cost) in 1,735 lines. What is *not*
+   there: TDZ across a cycle (that chapter says cycles "safely point to empty memory slots";
+   reading an imported `const` mid-cycle actually throws `ReferenceError: Cannot access 'x'
+   before initialization`), module-scope semantics (`this === undefined`, `var` not on
+   `globalThis`, always strict), and the spoken/timed framing.
+2. **`undefined` vs `null` vs missing** — `??` vs `||`, optional chaining, default parameters.
+3. **Strict mode and why it exists** — short chapter, mostly a follow-up magnet.
 
 Important:
 
@@ -129,4 +129,8 @@ History of this file:
 - Chapters 1–12 were written under the original contract: "spec-aware, teach me like I'll debug
   a production bug no one else understands", with no `mock.md` and no timed answers. They are
   deliberately left as they are — the depth is real, it just isn't optimised for the round.
-- **The recalibration above starts at Chapter 13** (promises), which was rewritten to match.
+- **The recalibration above applies from Chapter 13 onward.** It was triggered by the promises
+  chapter, which was rewritten to match and is now Chapter 14.
+- **Chapters were renumbered on 2026-09-01** to put callbacks before promises, where they
+  belong: callbacks and inversion of control took the empty 13, and promises, microtasks and
+  error handling each moved up one to 14, 15 and 16.

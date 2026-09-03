@@ -109,7 +109,7 @@ console.log(h.return("stopped"));          // << N3: both the log line AND the r
 console.log(h.next());                     // << N4
 ```
 
-**N2–N4 are the ones that matter for Chapter 13.** For each, say *where* in the generator the
+**N2–N4 are the ones that matter for Chapter 14.** For each, say *where* in the generator the
 error / return lands.
 
 ```javascript

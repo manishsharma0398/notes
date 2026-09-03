@@ -89,7 +89,7 @@ back in. The freeze happens mid-assignment: the right-hand side is in mid-air un
 
 - The first `next()` can't send anything — no paused `yield` yet, so the argument is discarded.
   Hence the **priming call**.
-- `throw()` is why `try/catch` works around `await` (Ch 13's driver calls it on rejection).
+- `throw()` is why `try/catch` works around `await` (Ch 14's driver calls it on rejection).
 - `return()` is what `break` calls — Part 4's closing behaviour, named.
 
 This channel is the mechanism `async`/`await` is built on: yield a promise, add a driver that
@@ -168,7 +168,7 @@ for (const v of a) {}   // ["x","y"]          values, via the iterator
 3. Generators for lazy pipelines over large/infinite data.
 4. Don't reuse a generator object across two consumers.
 5. `Object.entries` in loops, since objects aren't iterable.
-6. `for await...of` + `async function*` for streams and paginated APIs (Ch 13, Part 10).
+6. `for await...of` + `async function*` for streams and paginated APIs (Ch 14, Part 10).
 
 ---
 

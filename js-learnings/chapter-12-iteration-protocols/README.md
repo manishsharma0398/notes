@@ -496,7 +496,7 @@ Useful for flattening trees and composing generators without manual loops.
 
 Everything so far has been one-directional: values come *out* of a generator. But the channel
 runs both ways, and **this is the mechanism `async`/`await` is built on**. If you take one thing
-from Chapter 12 into Chapter 13, take this.
+from Chapter 12 into Chapter 14, take this.
 
 ```javascript
 function* echo() {
@@ -577,7 +577,7 @@ h.return("stopped");          // logs "finally" → { value: "stopped", done: tr
 
 Neither of those is trivia:
 
-- **`throw()` is why `try/catch` works around `await`.** Chapter 13's driver calls
+- **`throw()` is why `try/catch` works around `await`.** Chapter 14's driver calls
   `it.throw(err)` when a promise rejects, raising the error *at the paused line* — inside your
   `try` block. Nothing else in the language could put an error there.
 - **`return()` is what `break` calls.** That's Part 4's closing behaviour, now with a name.
@@ -628,7 +628,7 @@ async function fetchUserFlow() {
 ```
 
 Those are the same program. The only thing `async`/`await` adds is the driver, written for you
-and hidden. **Chapter 13, Part 7 builds that driver in ten lines** — and by then you'll have
+and hidden. **Chapter 14, Part 7 builds that driver in ten lines** — and by then you'll have
 already seen every piece it uses.
 
 ---
@@ -790,7 +790,7 @@ that never makes the object itself iterable.
 
 **5. `Object.entries` in loops**, since objects aren't iterable.
 
-**6. Async iteration** (`for await...of`, `async function*`) for streams and paginated APIs — the same protocol with promises. Covered in **Chapter 13, Part 10**, including why `for await` over an array of promises is not a `Promise.all`.
+**6. Async iteration** (`for await...of`, `async function*`) for streams and paginated APIs — the same protocol with promises. Covered in **Chapter 14, Part 10**, including why `for await` over an array of promises is not a `Promise.all`.
 
 ---
 
@@ -825,5 +825,7 @@ that never makes the object itself iterable.
 - `mock.md` — a full 20-minute segment, with what's being scored at each turn
 - `exercises/chapter_exercise.md` — 15 predictions, then build `range` / `fibonacci` / `take` / a tree
 - `exercises/cumulative_exercise.md` — `seq`, a lazy pipeline (LINQ in ~150 lines)
-- **Chapter 13** picks up exactly where Part 3 ends: `next(value)` is the channel `await` runs
+- **Chapter 13** is the short one in between: callbacks, inversion of control, and the
+  argument promises are an answer to
+- **Chapter 14** picks up exactly where Part 3 ends: `next(value)` is the channel `await` runs
   on, and its **Part 10** is this protocol's async twin — `async function*` + `for await...of`

@@ -9,6 +9,700 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-03 — JS Chapter 19 written: Numeric Edge Cases (and the topic order changed)
+
+`js-learnings/chapter-19-numeric-edge-cases/` — README, notes, interview, mock, six runnable
+examples, chapter + cumulative exercises, blank worksheet.
+
+**Numeric was promoted over modules, and the reason is worth keeping.** `prompt.md` had modules
+(ESM) as priority 1. Checked the overlap before starting and found
+`node-learnings/14-module-system-internals/` already covers ~70% of it in 1,735 lines: CJS vs ESM,
+the four load phases, **live bindings explicitly** ("CJS copies, ESM live bindings" is its
+circular-dependency punchline), hoisting during linking, top-level await, resolution, the module
+cache, "cannot mix CJS and ESM freely". Meanwhile numeric had **zero** coverage anywhere —
+`grep` for `0.1 + 0.2`, `Number.EPSILON`, `MAX_SAFE_INTEGER` hit only `prompt.md` — and two
+chapters were already forward-referencing it (Ch8 mentions IEEE-754 without unpacking it; Ch18
+defers `Object.is` on `NaN`/`-0` to "Chapter 20"). Swapped, and `prompt.md`'s modules entry now
+carries the scoping note so the eventual chapter is written as language-semantics-only rather than
+duplicating a sibling track.
+
+**One real gap in the node track was found while checking this, and is recorded in `prompt.md`:**
+that chapter says linking wires up slots so cycles "safely point to empty memory slots". Verified
+with an actual ESM cycle — reading an imported `const` mid-cycle throws
+`ReferenceError: Cannot access 'aValue' before initialization`. Linking-not-looping is true;
+reading is a TDZ error, not a safe read.
+
+**The spine is one sentence:** a JS number is a fixed count of significant *bits*, not decimal
+places — so what's stored is the nearest representable value to what you wrote, and how near
+depends on how big it is. `examples/01_the_format.js` prints the actual 64-bit layout, and four
+facts are visible in the table before any prose: `0.1` and `0.2` share a repeating mantissa, `0.3`
+and `0.1+0.2` differ in the last bit, `+0`/`-0` differ in exactly one bit, and `Infinity`/`NaN` are
+the all-ones exponent with zero / any-non-zero mantissa. That table replaced what would otherwise
+have been three paragraphs of explanation.
+
+**Everything measured on node 22.17.1. Four results changed what got written:**
+
+- **`Number.EPSILON` as an absolute tolerance is off by 537 million x at 1e9.** The naive
+  `Math.abs(a-b) < Number.EPSILON` returns `true` for `0.1+0.2 vs 0.3` and `false` for the same
+  arithmetic shifted to 1e9, where the real difference is 1.19e-7. This is the chapter's Q2 and the
+  mock's live-debug, because "use Number.EPSILON" is the answer most candidates give and it is
+  wrong everywhere except near 1.0. The honest caveat that goes with the fix — relative tolerance
+  is undefined against exactly zero — is stated rather than glossed.
+- **`toFixed` is not broken and is not banker's rounding, and I had to survey it to say so
+  precisely.** The first draft claimed it was "inconsistent by value"; that was wrong. It rounds
+  half-up correctly *on the value it was given*, and that value is never the decimal you typed.
+  Surveyed 399 values of the form `x.xx5`: **120 round up, 279 round down**, decided by whether the
+  nearest double landed above or below the decimal half. `(1.005).toFixed(20)` is
+  `1.00499999999999989342` (below → down); `(0.025).toFixed(20)` is `0.02500000000000000139`
+  (above → up). "Correct rounding of a number that isn't the one you typed" is the reframe the
+  chapter sells.
+- **The `-0` story is two bugs, not one.** Expected `toFixed` to expose a true `-0`; it doesn't —
+  `(-0).toFixed(2)` is `"0.00"`. What produces `"-0.00"` is a small *negative* that rounds to zero
+  (`(-0.001).toFixed(2)`), which is the more common cause. Meanwhile `Intl.NumberFormat().format(-0)`
+  **does** render `"-0"` while `String(-0)` gives `"0"` — so a true `-0` is invisible to every log
+  line you'd naturally write and visible in the formatted UI. Corrected an example annotation that
+  had asserted the opposite before running it.
+- **`Math.max(...arr)` overflows the stack between 125,000 and 150,000 elements** on node 22 —
+  measured after catching myself asserting "around 100k+" from memory in `interview.md`. Two
+  independent reasons the spread form is the wrong default, alongside `Math.max()` returning
+  `-Infinity` for an empty array.
+
+**Money is the chapter's decided-on question**, answered as four steps (integer minor units →
+integer arithmetic → one explicit rounding where you divide → `Intl.NumberFormat` at the edge). The
+argument that carries it is a two-line measurement: `[19.99, 5.01, 0.1, 0.2]` sums *exactly*, and
+`[12.35, 4.45, 8.90]` gives `25.700000000000003` — nothing in either list looks different, so "it
+worked when I tested it" is not evidence about the next basket. That example was rewritten after
+the first two candidate price lists both happened to sum exactly, which would have undercut the
+point rather than made it. Accumulation at three scales (100 / 10k / 1M additions of 10c) shows
+float error growing to 1.33e-6 while integer cents stays at exactly 0, and `splitEvenly(1000, 3)`
+→ `[334, 333, 333]` versus the naive float split's `9.99` makes "the parts must sum to the whole"
+a business rule rather than a rounding mode.
+
+Also corrected in passing, since it would cost points in a round: **`Math.Infinity` does not
+exist** (it's `undefined` — `Math` holds functions and mathematical constants; numeric limits live
+on `Number`), and `Number.MIN_VALUE` is the smallest *positive* value, not the most negative.
+
+Exercises unsolved and the worksheet blank, per the track contract. The cumulative is a
+double-entry **ledger organised around one invariant** — every entry sums to exactly zero and the
+parts of a split equal the whole — which is trivially true with integers and quietly false with
+floats, so Phase 1 builds the float version and measures its drift over 10,000 generated invoices
+and Phase 7 requires the finished version's drift column to be **exactly zero, asserted with
+`===`**. Phase 7 also requires naming what the ledger still cannot represent, which is where FX and
+fractional minor units come in.
+
+Two stale `Part 8` cross-references in Chapter 18's examination table were fixed (the earlier
+renumber's `sed` matched `Part 8` but not `Parts 4, 8`).
+
+`prompt.md` now reads "Covered, chapters 1–19", with modules (ESM) as the next chapter at 20.
+
+---
+
+## 2026-09-03 — JS Chapter 18 written: Copying, Immutability and Freezing
+
+`js-learnings/chapter-18-copying-immutability-and-freezing/` — README, notes, interview, mock, six
+runnable examples, chapter + cumulative exercises, blank worksheet. First of the four topics left
+in `prompt.md` after Chapter 17 closed the memory-management one out.
+
+**The spine reuses Chapter 17's question from the other side.** Ch17 asked "who points at this,
+and how long does that live?" to explain leaks. This chapter asks "who else points at this, and
+did I mean to let them?" to explain accidental mutation — same reference-tracing habit, opposite
+symptom. The unifying sentence: **nothing in JS walks your object graph for you — copying,
+freezing and equality all stop at the first reference, and depth is always something you ask for.**
+
+**Every number in the chapter was measured, not recalled, on node 22.17.1**, and three of them
+overturned an assumption going in:
+
+- **`structuredClone` preserves aliasing within one clone call; `JSON.parse(JSON.stringify(x))`
+  does not.** `state = {a: shared, b: shared}` clones to `clone.a === clone.b` staying `true` under
+  `structuredClone` (a NEW object, shared by both properties) and `false` under the JSON hack
+  (duplicated into two independent objects). This wasn't in the plan for the chapter and turned
+  out to be the sharpest fact in Part 3 — it's the same memo-table mechanism that lets
+  `structuredClone` survive a cycle, stated as a fact about ordinary aliasing instead of about
+  cycles specifically.
+- **`Object.freeze` on a `Map` or `Set` does not stop `.set()`/`.add()`/`.delete()`.** Expected
+  this to at least throw on reassignment attempts; it does nothing at all, silently, because a
+  `Map`'s entries live in `[[MapData]]`, not in enumerable own properties — freeze has nothing to
+  lock. `deepFreeze` doesn't close the gap either, because it walks properties too. This became the
+  chapter's other flagship gotcha, on equal footing with the accessor-setter one already expected.
+- **Sloppy mode makes a frozen write silently no-op; strict mode throws the identical line.**
+  Verified by writing the failing case in a file with no `"use strict"` — not "modules are strict",
+  literally checked the CommonJS-script default. This is the trap `examples/04_freeze_gotchas.js`
+  exists to demonstrate, and it needed a strict-mode IIFE wrapped around one specific write to show
+  both behaviours in the same file without fighting the file's own default mode.
+
+**The scale-caveat numbers are the chapter's other pillar**, in `examples/06_scale_structural_sharing.js`:
+on a 100,000-object tree (20 slices × 5,000 items), changing one field of one item costs 139.69 ms
+via `structuredClone`-the-whole-tree, 69.25 ms via the JSON round trip, and 1.14 ms via path-copying
+— spreading only the objects on the route from root to the change. **~120x**, and it's not just a
+speed number: `sameRef`-style checks prove the untouched sibling slice and the untouched sibling
+item are the literal same object, not equal copies of it — which is the actual mechanism (stated
+with no framework attached) behind every "only re-render what changed" system. The freeze version
+of the same measurement — 0.04 ms shallow vs 82.14 ms for a full `deepFreeze` traversal, **~2000x**
+— is why freeze defaults to shallow, and the chapter argues there's a second reason beyond speed:
+a deep operation walks past objects the caller doesn't own (a shared logger reachable from a config
+object would get silently locked for everyone else holding it), which shallow-by-default respects
+and deep-by-default cannot.
+
+**One structural decision, made while outlining, was to fold "why doesn't X recurse" into the
+existing Part 6 ("what JS cannot do") rather than give it its own part** — the ownership argument
+(reachable ≠ owned) is the same shape as "you cannot force a collection" from Ch17: both are
+restrictions the language keeps on purpose, and the chapter's "what would break if this worked
+differently" question for this topic is literally that argument run forward.
+
+Verified, not assumed, before writing them into the chapter: `Object.freeze` returns the *same*
+reference (not a frozen copy) and is idempotent; primitives are always `Object.isFrozen` `true`;
+an accessor property's setter still runs after freeze because freeze only ever sets `writable` on
+data properties; `const` reassignment throws regardless of strict mode (binding-level, unlike
+property writes) while a `const` array's `.push()` is untouched by `const` at all.
+
+Exercises unsolved and the worksheet blank, per the track contract. The cumulative (an immutable,
+structurally-shared store) is phased the same way Ch17's was: Phase 1 is the obviously-wrong
+mutate-in-place version, measured honestly, and every later phase closes one gap — path-copied
+updates, reference-equality-gated subscriptions, a frozen `getState()` with its gap named out loud,
+memoised selectors, a `structuredClone` escape hatch with its own limits demonstrated — ending in a
+Phase 7 that benchmarks v1 against the finished store on the identical workload and requires naming
+what the finished version still cannot protect against.
+
+`prompt.md` now reads "Covered, chapters 1–18", with modules (ESM) promoted to next.
+
+---
+
+## 2026-09-02 — JS Chapter 17 written: Memory Management and Leaks
+
+`js-learnings/chapter-17-memory-management-and-leaks/` — README, notes, interview, mock, six
+runnable examples, chapter + cumulative exercises, blank worksheet. First of the five topics left
+in `prompt.md`, and the one it flagged as most often asked.
+
+**The spine is one sentence and everything else is a consequence:** a leak in JavaScript is never
+a failure to free, it is a reference you did not know you were keeping. There is no `free()`, so
+the only lever is *stopping pointing at things* — which turns every question in the chapter into
+"who points at this, and how long does *that* live?" rather than "am I still using this?".
+
+**The flagship result — closures share one context, and it is measurable.** Both of the usual
+answers to "do closures leak" are wrong. Not "a closure keeps its whole scope alive", and not the
+plausible correction "only what it references". V8 allocates **one context object per scope**
+holding every variable that *any* inner function references, and every closure born there points
+at that same context. So a two-line logger retains its big sibling's buffer:
+
+```
+A. small closure, big sibling exists    7.6 MB held   RETAINED
+B. small closure, no sibling at all     0.0 MB held   collected
+C. sibling exists, payload nulled       0.0 MB        collected
+D. payload isolated in its own scope    0.0 MB        collected
+```
+
+Identical outer function, identical returned closure. The only difference is whether a *second*
+function in that scope mentions the variable. C is also the one place where `x = null` "for the
+GC" stops being cargo cult — the context slot is literally the thing being retained.
+
+Measured on node 22.17.1 rather than recalled:
+
+- **2,000,000 identical allocations: 13 ms if none survive, 207 ms if all do.** Same work, 16×,
+  and the only variable is the survival rate. Kills "allocating in a hot loop is slow" and, with
+  it, the argument for object pooling — a pool is long-lived objects by construction.
+- **Sawtooth vs staircase, measured as post-collection floors:** `4 4 4 4 4 4 4 4` against
+  `4 5 6 6 7 7 8 8`. The peak says nothing; the floor is the whole diagnostic.
+- **`unref()` freed nothing.** It stops a timer holding the event loop open. `clearInterval` is
+  what releases the closure. Two questions that get conflated constantly, now with numbers.
+- **A `deref()` keeps its target alive to the end of the turn.** "Drop it, force gc, deref" in one
+  turn always returns the object — that is the spec preventing two `deref` calls in one function
+  from disagreeing, not a failed collection. It only reports `undefined` a turn later.
+
+**Four measurements failed before they worked, all the same root cause: a running frame keeps its
+own slots and registers alive.** This cost the most time and turned out to be the most useful
+thing in the chapter.
+
+1. Scenarios written at the **top level of a module** freed nothing, ever — that frame does not
+   return until the process exits. Every case read "still retained" and the file proved nothing.
+2. `let handle = build(); handle = null;` also freed nothing: the value was still live in a
+   register of the same frame. Only clearing a **property of a heap object** is reliably
+   observable, which is why the harness in every example is `holder.ref = null`.
+3. A template literal evaluated `above()` *before* the `buildCycle()` call interpolated after it,
+   so the "before" reading was taken before anything was allocated.
+4. `i % Infinity` forces float modulo, so the "keep none" row was timing arithmetic and came out
+   *slower* than the row keeping 20,000 objects. Integer divisor, and the ordering inverted back.
+
+This is the same lesson Chapter 13 recorded in different clothes — a measurement showing no
+difference usually means the probe is wrong — but it earns a place in the chapter itself, because
+it is also a production fact: it is why a heap snapshot taken mid-request shows objects you are
+certain you released, and why the **retainer path** is the thing to read in a snapshot, never the
+object count.
+
+**Two questions were mis-posed in the exercise and only caught by running them.** Case D asked why
+nesting a closure one level deeper gives a different answer from case A — it does not, because
+contexts chain to their parent, so the answer is identical and the question asserted something
+false. Case E asked why its "after" number was not zero; it is zero. Both rewritten to ask what is
+actually true. Exercise questions need the same verification pass as example output, and they
+don't get it for free — nothing runs them.
+
+`mock.md`'s whiteboard is a bounded LRU built on `Map` insertion order, and it was executed
+before being written down: filled to `max`, touched the oldest key, inserted one more, asserted
+the *second* oldest was the one evicted. It also had two real defects on the first pass — `#max`
+and `#ttl` used but never declared as private fields, and the debug snippet reading `session.url`
+off an object that has no `url`.
+
+The scale caveat the chapter leans on hardest is `Promise.all`: peak memory is the **sum** of every
+result, held until the slowest input settles. That reframes Chapter 14's concurrency limiter as a
+memory control rather than a politeness control, which is the version that survives a follow-up.
+
+Chapter 16's closing pointer already said "Chapter 17 is memory management" — the renumber's N+1
+sweep on 2026-09-01 retargeted it, and it landed correctly. `prompt.md` now reads "Covered,
+chapters 1–17", with copying/immutability promoted to next.
+
+Exercises unsolved and the worksheet blank, per the track contract. The cumulative (a store that
+caches, deduplicates and publishes) is built so the **delta is the deliverable**: Phase 1 writes
+the obvious leaky version and measures the staircase, and every later phase closes one shape and
+re-runs the identical workload. Phase 7 requires the before/after table and a paragraph naming
+which shape the finished design *still* structurally allows — because every design permits some
+misuse and the useful answer names it.
+
+---
+
+## 2026-09-01 — JS Chapter 13 written: Callbacks and Inversion of Control
+
+`js-learnings/chapter-13-callbacks-and-inversion-of-control/` — README, notes, interview, mock,
+six runnable examples, chapter + cumulative exercises, blank worksheet. Fills the gap the
+renumber was done for.
+
+**The spine is a mapping table, not a history lesson.** Each promise guarantee cancels exactly
+one way a callback API can betray you: settle-once kills called-twice, always-async kills Zalgo,
+propagating rejections kill the per-level `if (err) return`, and `.then` returning a promise kills
+"a callback has nowhere to return to". Written that way because the question this chapter exists
+to answer — *what problem do promises solve?* — had no answer anywhere in the track. The promises
+`interview.md` has eleven questions and none of them was that one.
+
+**The thesis worth keeping: callback hell is not indentation.** Flattening a pyramid into named
+functions removes the shape and fixes nothing — error handling stays per-level, the concurrency
+latch stays hand-written, and reading order stops matching execution order. The real defect is
+that `return` inside a callback returns to the engine, so **an async operation is not a value**,
+and nothing that combines values applies to it. Everything else follows from that.
+
+Measured on node 22.17.1 rather than recalled:
+
+- **50,000-deep sync CPS is a `RangeError`; the same depth async completes in 35ms.** Unbounded
+  depth and unreachable-by-`catch` are one fact read two ways: every async link starts a fresh
+  stack, so there is no frame beneath it to overflow *and* none to catch a throw.
+- **A library that catches your callback's throw calls you twice for one operation** — once with
+  the value, once with your own handler's bug re-reported as the operation's failure. The
+  error-first protocol cannot distinguish "operation failed" from "handler failed".
+- **`runIt(counter.increment)` does not throw in sloppy mode.** `this` is `globalThis`, so
+  `this.n++` writes `NaN` to the global object and returns. The strict-mode `TypeError` is the
+  *better* outcome; silent global corruption is the one that ships.
+- **A process exits 0 with a promise still pending.** The event loop does not consider a pending
+  promise to be work. That is why "callback never called" survives promises — it becomes "never
+  settles", which is not an error, produces no `unhandledRejection`, and in a request handler
+  shows up only as p99 latency.
+
+One example was rewritten after it measured nothing: the first version contrasted stack depth in
+direct vs sync-CPS calls and got **10 frames against 10** — a true comparison of two things that
+are the same. Replaced with the 50k overflow, which is the memorable version of the same claim.
+**A measurement that shows no difference is not evidence of subtlety; usually the probe is
+pointed at the wrong thing.**
+
+`mock.md` is deliberately not a standalone callback round, because that isn't a real interview.
+It's written as the opener that escalates into promises — which is how the topic is actually
+examined, and it makes the levels table honest.
+
+Exercises unsolved and the worksheet blank, per the track contract. The cumulative (`flow`) is
+built so the **port is the deliverable**: write `parallel` deliberately wrong first with four
+failing tests, fix it, then rewrite the whole thing on promises and write the paragraph about
+which guards disappeared. Phase 6 is marked genuinely optional.
+---
+
+## 2026-09-01 — JS chapters renumbered: callbacks inserted at 13
+
+Callbacks were never taught as a topic. "Callback" appears ~90 times across the track, but
+always as vocabulary in service of something else: `fn.length === 2` dispatch in Ch11, one
+`getUser(id, cb)` Zalgo snippet in promises, queue entries in microtasks, "a scheduled callback
+runs on a fresh stack" in error handling. **Continuation-passing style, callback hell,
+error-first as a convention, and inversion of control had no home** — and the promises
+`interview.md` had eleven questions, none of them "what problem do promises solve".
+
+**The renumber:**
+
+| Was | Now |
+|---|---|
+| — | `chapter-13-callbacks-and-inversion-of-control` |
+| `chapter-13-promises-and-async-foundations` | `chapter-14-...` |
+| `chapter-14-microtasks-and-macrotasks` | `chapter-15-...` |
+| `chapter-15-error-handling-semantics` | `chapter-16-...` |
+
+Every entry below this one predates the shift and **names chapters by their old numbers**.
+That is deliberate — a dated log that gets retroactively edited stops being evidence of what
+happened. Read the table above and subtract one.
+
+**Appending as Chapter 16 was the first instinct, and it was wrong.** The argument for it was
+that numbering here tracks writing order, citing Ch15 as precedent for writing out of order.
+But Ch15 was *written* out of order and *numbered in its reading slot* — `prompt.md`'s topic
+list enumerates 1–15 in exactly directory order. Numbering has always been reading order, so
+the precedent said the opposite of what it was cited for. What made the renumber cheap: **14
+and 15 were never committed**, so only the promises directory had history to preserve, and
+`git mv` preserved it.
+
+Three things the mechanical pass got wrong, all found by verification rather than by review:
+
+1. **`sed` silently did nothing.** The file list came from an unquoted `$files` in zsh, which
+   does not word-split — `sed` received one newline-laden blob as a single filename and failed
+   on all 30 files. It exited 2, but a pipeline that swallowed the status would have reported
+   success over an untouched tree. **Null-delimited `grep -rlZ | xargs -0` is the only safe
+   shape.** Checked the diff was empty before retrying, rather than assuming a partial write.
+2. **Substitution must run descending — 15→16, then 14→15, then 13→14.** Ascending
+   double-shifts: 13 becomes 14, then that new 14 becomes 15.
+3. **Forward references to unwritten chapters are invisible to the pass.** Error handling
+   closed with "Chapter 16 is memory management" — a pointer at the *next* chapter, written
+   when the file was Ch15. The pass only touched 13/14/15, so the file ended up as Chapter 16
+   announcing itself as memory management. Two of these (README and the cumulative exercise);
+   both retargeted to 17. **Any renumber has to sweep N+1 as well as the range being moved.**
+
+Ranges (`Chapters 12–15`, `Cumulative Exercise — Chapters 1–13`) were excluded automatically by
+anchoring on singular `Chapter N`, then fixed by hand. Chapter 12's seventeen forward references
+all turned out to mean promises specifically — "the channel `await` runs on" — not "the next
+chapter", so shifting them to 14 was correct; verified by reading each in context, not by
+pattern.
+
+`prompt.md` needed two rewordings a number shift could not do: the recalibration note now reads
+"applies from Chapter 13 onward" (the new callbacks chapter is written under the new contract
+too) rather than naming the chapter that triggered it.
+
+---
+
+## 2026-08-31 — JS Chapter 15 written: Error Handling Semantics
+
+`js-learnings/chapter-15-error-handling-semantics/` — README, notes, interview, mock, six
+runnable examples, chapter + cumulative exercises, blank worksheet. Chapters 13 and 14 both
+deferred the language mechanism here; this is it.
+
+**Written out of order, deliberately.** Chapter 14's exercises are unattempted and Chapter 13's
+worksheet is half-finished, which the track contract says should block the next chapter. Asked
+rather than assumed, and was told to proceed — both exercise sets stay open.
+
+The framing: **everything is a completion.** Every statement finishes normally or abruptly
+(`return` / `throw` / `break` / `continue`), abrupt completions travel outward, `catch` absorbs a
+throw, and `finally` runs past every completion — replacing it if `finally` completes abruptly
+itself. That one rule makes the whole `finally` family answerable instead of memorised, and it
+generalises to the async half: a completion travels through frames on the current stack, and
+cannot travel through *time*.
+
+**Everything measured on node 22.17.1 rather than recalled.** What the measurements settled:
+
+- **`JSON.stringify(new Error("x"))` is `{}`.** `message` and `stack` are own but
+  **non-enumerable**. The nastier case is a custom class: fields you assign *are* enumerable, so
+  you get `{"name":"AppError","code":"E_DB"}` — which looks like it worked while message and
+  stack are gone.
+- **`class X extends Error {}` does not set `name`.** It stays `"Error"`, and so does the stack
+  header. Every log line lies until you assign `this.name`.
+- **`instanceof Error` is wrong in both directions.** False for a genuine Error from a `vm`
+  context (or a second copy of a package in `node_modules`); true for
+  `Object.create(Error.prototype)`, which has no stack. `Object.prototype.toString.call(x)` is
+  the realm-proof check.
+- **The cost of an Error is the stack, not the throw.** Reading `.stack` costs ~5x constructing
+  the Error, because construction captures structured frames and `.stack` *formats* them lazily
+  on first access. `stackTraceLimit = 0` makes construction ~7x cheaper. So a logger that
+  serialises every handled error pays the large number.
+- **`unhandledRejection` and `uncaughtException` are different events, and Node ≥15 converts the
+  first into the second when unlistened.** The handler's **`origin`** argument is what tells them
+  apart — install only an `uncaughtException` listener and rejections arrive there with
+  `origin="unhandledRejection"`.
+
+Two traps in writing it, both worth keeping:
+
+1. **The benchmark's plain-object baseline was a lie.** V8's escape analysis deleted the
+   allocation, so it read 12.8M/s in one run and 71M/s in another. Adding a sink did not fix it —
+   the object still does not escape. Fixed by reporting the two ratios that *do* reproduce
+   (`.stack` vs construct, and `stackTraceLimit=0` vs default) and labelling the plain-object row
+   as a floor rather than a measurement. **A benchmark number that moves 5x between runs is not a
+   number.**
+2. **A probe conflated the two failure events.** An `uncaughtException` listener appeared to
+   catch three unrelated things; two of them were unhandled rejections being converted. Splitting
+   the probe into separate processes is what produced the `origin` finding — which is now the
+   sharpest detail in Part 6.
+
+The whiteboard build for `mock.md` and Phase 3 of the cumulative is `withRetry`, chosen because
+it forces four chapters at once: thunks (Ch13), `return await` inside a `try` (Ch15), the
+microtask/macrotask distinction in the backoff (Ch14), and `AggregateError` for the give-up path.
+The scored line is `return await thunk()` — plain `return` exits the `try` before the rejection,
+so the `catch` never runs and the retry loop silently becomes a single attempt.
+
+Also updated `js-learnings/prompt.md`'s progress list: covered is now 1–15, and error handling
+came off the remaining list (memory management is next, and Chapter 15's README points at it).
+
+---
+
+## 2026-08-31 — JS Chapter 14 Part 8: stated that `Promise.reject` does not throw
+
+Part 8 explained *when* an unhandled rejection is reported but never said what a rejection **is**,
+and that gap is what made the section confusing to read. The snippet opens with
+`Promise.reject(new Error(...))` followed by a `console.log` that prints first — which looks
+wrong if you are carrying the assumption that rejecting and throwing are the same act.
+
+They are unrelated mechanisms that happen to involve the same object:
+
+- `throw` unwinds the stack immediately; the next line is never reached.
+- `Promise.reject()` **constructs a promise in the rejected state and returns normally.** The
+  next line runs. `try`/`catch` around it catches nothing.
+- `new Error(x)` does not throw either — it allocates and captures a stack trace. Which is why
+  the trace in Part 8's output points at the `new Error`, not at a `throw`.
+
+So the error text in that output is not an exception propagating. It is the host **reporting** an
+unobserved rejection at a scheduled checkpoint. Added as a comparison table plus a four-line
+`try`/`catch` demonstration, and a misconceptions row: *"a rejected promise throws" → it holds an
+error as a value; only `throw` unwinds the stack.*
+
+This is Chapter 13's **errors are values** rule, and the cross-reference is now explicit in both
+directions.
+
+The section also described the deadline without ever showing it. Added **"Watching the check
+fire"**: an `unhandledRejection` listener keeps the process alive, and work is queued in both
+queues, so the checkpoint becomes visible in one run —
+
+```
+1  sync line
+2  microtask
+3  microtask
+   >>> CHECK RUNS: nobody handled it <<<
+5  macrotask (the timer)
+```
+
+The check sits **after every microtask and before the first macrotask**, which is the whole of
+Part 8 in one output block. Also replaced the bare `PromiseRejectionHandledWarning` quote with
+the real three-line sequence — report, then the late `.catch`, then the warning — so the warning
+reads as "you missed the deadline" rather than as a separate mystery. Output captured from a real
+run, with the PID elided the same way the existing block elides the stack trace.
+
+---
+
+## 2026-08-31 — JS Chapter 13: README edited, not rewritten (and a broken table found)
+
+Asked to give Chapter 13's README the same treatment as Chapter 14's. **It did not need it, and
+saying so was the right answer.** Chapter 13 is the document Chapter 14 was rewritten *toward* —
+it already opens with a facts box and an examined-topics table, leads with mechanism, and uses
+tables where the content is a lookup. A ground-up rewrite would have been churn against a good
+file, with a real risk of losing detail.
+
+What it actually needed was a light register pass and one genuine bug. 591 lines to 583.
+
+**The bug: a markdown table has rendered wrong since the chapter was written.** In the
+combinators table, `allSettled`'s cell is `{status, value|reason}[]` — and an unescaped `|`
+splits a table row even inside a code span. That row had six separators against five everywhere
+else, so it rendered with a phantom column and `never` in the wrong place. Escaped now.
+`interview.md` had the same cell written correctly as `value \| reason`, which is why the bug
+survived: the file it was most likely to be compared against was already right.
+
+Added a check worth reusing: count **unescaped** pipes (`(?<!\\)\|`) per row and assert every
+row in a contiguous table block agrees. Naive pipe-counting flags the escaped fix as broken and
+misses nothing else.
+
+The register pass removed the handful of places where the prose graded the reader rather than
+explaining the mechanism — "the fact that separates people who use promises from people who
+understand them" opening Part 3, "misconceptions dissolve once that lands", "interview bait",
+"this is the interview-grade detail", "breaks in a way that looks like magic". Each became a
+statement of what happens. Deliberately kept: the sayable-sentence blockquotes (contract), the
+3am-log-line line (concrete, and echoed in `mock.md`), and "knowing a mechanism you can't say
+out loud in 45 seconds scores zero", which is the point of the track.
+
+Also converted "What You'll Actually Hit in Production" from a numbered prose list to the
+**symptom → cause** table Chapter 14 now uses, so both chapters present production failures the
+way they are actually encountered — you have the symptom, you want the cause.
+
+**Worth remembering: "do the same to X" is a request to reach the same standard, not to run the
+same process.** Chapter 14 needed a rewrite because it was narrative; Chapter 13 was already
+there and needed proofreading. Applying Chapter 14's process to Chapter 13 would have destroyed
+value while looking like more work.
+
+---
+
+## 2026-08-31 — JS Chapters 13 + 14: interview.md audited against the track contract
+
+Checked `notes.md`, `interview.md` and `mock.md` against `js-learnings/prompt.md`, which
+specifies exactly what each file must contain.
+
+**Clean:** `mock.md` in both chapters (opener → prediction → live debug → whiteboard → closer,
+annotations, levels table, level-raising sentences, red flags) and `notes.md` in both.
+
+**One gap, and it was track-wide.** The contract requires every interview question to carry four
+things — spoken answer with a target time, what the interviewer is scoring, the follow-up, and
+**the red flags that drop a level**. Red flags were essentially missing: one mention in each
+file, both inside a single question. They existed only as a consolidated block at the end of
+`mock.md`, which is the wrong place to drill them — you rehearse a question, not a chapter.
+
+Chapter 14 was otherwise complete. **Chapter 13 was worse than Chapter 14 despite being the
+reference implementation**: six of eleven questions were missing `Scored on:` or `They'll push:`
+as well. Both files are now complete on all four elements across 11 questions each.
+
+Also added, per the contract's "one *why does JavaScript behave this way?* and one *what breaks
+if this worked differently?* per topic":
+
+- **Ch14 Q11 is new** — "what breaks if this worked differently?", answered in both directions.
+  If microtasks went one-per-pass, promise chains stop being atomic and "end of turn" loses its
+  definition, so unhandled-rejection detection has nothing to fire at. If macrotasks drained to
+  empty, one self-rescheduling timer or a fast socket starves every other connection. The point
+  being scored is that the asymmetry is a **trade with a price** — you accept starvation to get
+  atomic chains — not an arbitrary rule.
+- **Ch13 already answered it inside Q2** (handlers always async: if they fired synchronously,
+  callback timing would depend on cache warmth). Made the framing explicit rather than adding a
+  redundant twelfth question.
+
+Block ordering in ch13 was also inconsistent — some questions had `Scored on` before the
+follow-up, some after — and is now canonical across all eleven: **answer → Scored on → follow-up
+→ asides → Red flags**. Seven questions moved. Done with a fence-aware paragraph parser rather
+than regex, because Q10's code block contains blank lines and naive paragraph splitting cuts it
+in half; the reorder asserts the multiset of paragraphs is unchanged before and after.
+
+**Worth remembering: the newest chapter is the reference for *shape*, not for *completeness*.**
+Chapter 13 set the conventions and still failed its own contract on half its questions. Reading
+the sibling tells you what the structure should be; only the prompt tells you what has to be in
+it.
+
+---
+
+## 2026-08-31 — JS Chapter 14: README rewritten, register corrected
+
+The README was written as narrative and read like one: an extended receptionist / waiting-room
+/ sticky-note metaphor carried Part 3, sections opened with "here's the trick" and "look at what
+just happened", and explanation arrived as coaching rather than as reference. Rewritten end to
+end — mechanism first, consequence second, no metaphor scenes. 886 lines to 759, nothing
+technical dropped (verified by diffing the technical vocabulary of both versions: every measured
+figure, API name and code block survives).
+
+What changed structurally, since the substance is identical:
+
+- **Prose replaced by tables where the content was really a lookup.** Microtask/macrotask
+  membership, the job/microtask/task/tick vocabulary, and the production section — now a
+  symptom → cause table, which is how it actually gets used.
+- **The receptionist metaphor is gone.** The asymmetry it existed to convey is stated directly
+  and reinforced by the diagram that was already there.
+
+**The rewrite initially drifted from `js-learnings/prompt.md`, which I had not read.** Caught
+on being asked. Three deviations, all now fixed, and they are the reusable part of this entry:
+
+1. **The contract says the README must *open* with the map of how the topic is examined.** I had
+   demoted it to a `###` subsection underneath the mental model. It is the first `##` now.
+2. **"Part N" is the track's convention**, set by Chapter 13, which was the first chapter written
+   under this contract. I had renumbered to "§N" for a reference feel and broken consistency
+   with the sibling chapter. Reverted, including the one external cross-reference in
+   `examples/03_tick_costs.js`.
+3. **"Teach me the mechanism, then teach me the sentence" is an explicit rule**, and Chapter 13
+   implements it as a sayable line in a blockquote ("A promise is a value, not a task"). Purging
+   the coaching voice took some of those with it. Restored as blockquotes in the model section,
+   Part 2 and Part 5.
+
+Also added the **"Read this box first — six facts"** opener that Chapter 13 uses and Chapter 14
+never had.
+
+**The lesson, which generalises past this chapter: `CLAUDE.md` is the repo contract, but each
+track has its own `prompt.md`, and the sibling chapter written most recently under that contract
+is the reference implementation.** Read both before restructuring anything. "Reads like a story"
+was a register complaint, not a licence to redesign the chapter's shape — the shape was already
+specified.
+
+Open question, deliberately not acted on: Part 6's `setTimeout` vs `setImmediate` subsection is
+now the longest in the chapter (~65 lines with three experiments) and sits close to the
+language/runtime scope line the prompt draws. The conclusion is a language-round answer; the
+proof arguably belongs in `node-learnings/`. Left in for now because it is what turns the
+question from folklore into mechanism.
+
+---
+
+## 2026-08-31 — JS Chapter 14: the setTimeout-vs-setImmediate tail was overstated
+
+The Part 4 prediction question printed a single fixed output block ending
+`setImmediate` / `setTimeout`, while Part 6 correctly said that ordering is
+non-deterministic. Both could not be right. Measured, and Part 4 was wrong.
+
+**The last two lines of that snippet are a coin flip: 20 runs split 11/9.** The first
+seven are guaranteed. README, `notes.md` and `examples/04_node_queues.js` now all say so.
+
+What the measurement actually settled:
+
+- **The whole race is one question — did 1ms elapse between the `setTimeout` call and the
+  loop's first timers check?** `setImmediate` runs in `check` unconditionally; the timer
+  runs in `timers` only if it has expired, and Node clamps `0` to `1ms`.
+- **Burning ≥1ms *after* the `setTimeout` call makes `T` win, 20/20** (also at 2ms and 5ms).
+  Burning the same 1ms *before* it changes nothing — 20/20 `I`. The clock starts when
+  `setTimeout` is called, not at process start. That kills the intuition that "enough
+  synchronous work anywhere in the script" flips it.
+- **The old "20/20 gave I first" note was measuring a different file.** The bare two-liner
+  is 29/30 `I`; the fuller Part 4 snippet is 11/9. The difference is its five `console.log`
+  calls, which sit between the `setTimeout` and the loop and cost roughly the whole 1ms.
+  Buffer the output into an array instead of printing and it goes back to 19/20 `I`.
+  **The textbook answer to this interview question depends on how fast the terminal is.**
+
+Also fixed a real bug in `examples/04_node_queues.js`: section 4 was labelled "main module:
+documented as NON-DETERMINISTIC" but sat inside a `setTimeout(..., 10)` callback. From
+inside a timer callback `check` is two phases away while a fresh timer needs a full lap, so
+it is deterministic — 30/30 `I` first. It was demonstrating the opposite of its caption, and
+is almost certainly where the bogus 20/20 measurement came from. Relabelled, with the real
+main-module race written out as a comment, since seeing it requires its own file.
+
+Interview answer to give: *"those two aren't ordered, and here's why."* That scores better
+than a lucky guess. `interview.md` already said this and needed no change.
+
+---
+
+## 2026-08-30 — JS Chapter 14: Microtasks and Macrotasks
+
+Written as `js-learnings/chapter-14-microtasks-and-macrotasks/` — README, notes, interview,
+mock, six runnable examples, chapter + cumulative exercises, blank worksheet. Chapter 13's
+README had deferred every ordering question to this chapter; this is where they land.
+
+The framing: **the event loop is not in the JavaScript language.** ECMAScript defines jobs
+and run-to-completion; `setTimeout` appears nowhere in the spec. Drawing that line is what
+makes the Node-vs-browser questions predictable instead of trivia — the microtask half is
+ECMAScript's and identical everywhere, the macrotask half is the host's.
+
+**Every number in the chapter was measured, not remembered, and two pieces of folklore did
+not survive** (node 22.17.1, reproduced by `examples/03_tick_costs.js`):
+
+- `await` on a native promise is **1 tick**, not 3. It was 3 until V8 7.2 / Node 12 (2019).
+  The pre-2019 blog posts are still the top search results, which is why the wrong number is
+  so widely repeated.
+- `return p` costs **one** more tick than `return await p`, not two (3 vs 2). Returning a
+  *thenable* measures 2 — cheaper than a native promise, because the thenable's `then`
+  resolves synchronously inside the adoption job instead of scheduling a second reaction.
+
+The chapter states the tick table and then tells him not to trust it: these are engine
+numbers, not language guarantees. The spec orders microtasks, it does not number them.
+
+Three things the examples exist to prove, because each is a bug people ship:
+
+- **`await null` is not a yield.** 50,000 of them, and a timer due at 0ms still has not run;
+  one `await setTimeout(0)` and it has. This is the most common wrong fix for a blocked
+  event loop, and it is plausible enough to pass review. It is the live-debug question in
+  `mock.md`.
+- **"End of turn" has a definition** — after the microtask drain. The same `.catch` attached
+  in a microtask saves the process and attached in a macrotask lets it die with exit 1.
+  `PromiseRejectionHandledWarning` means exactly "you attached a handler after the turn
+  ended", and the production shape is a cached promise awaited by a later request.
+- **Starvation is silent.** A microtask spin loop leaves the process alive, at 100% CPU,
+  serving nothing, with no error. The identical `setTimeout` version is harmless — one task
+  per pass.
+
+Two things measured that contradict the usual teaching, worth remembering before rewriting
+anything here:
+
+- `setTimeout(0)` vs `setImmediate` from the main module is *documented* as
+  non-deterministic, but gave `I` first in 20/20 runs on this machine (node 22 / WSL2),
+  including runs padded with random startup work. The chapter reports both facts and says to
+  rely on neither.
+- `process.nextTick` and the microtask queue **alternate**, nextTick winning each time — a
+  nextTick queued from inside a microtask still runs after that whole drain, not before it.
+
+Scope call: libuv's phase list stays in `node-learnings/`. What is here is only what an
+interviewer asks inside a language question — `nextTick` vs microtasks, and `setImmediate`
+vs `setTimeout` inside an I/O callback.
+
+The cumulative exercise is `Scheduler`, ending in a microtask-batched DataLoader — the
+"batch these fifty calls into one" whiteboard question, which is the best available answer
+to "what is the microtask queue actually *for*".
+
+Chapter 13's exercises are still mostly open: only markers A, B, C, I, K, O of Program 1 are
+answered, and Programs 3–5 (the four primitives, the bug hunt, async iteration) are
+untouched. He moved on deliberately after being told what that skips — per the chapter's own
+examination table, Programs 3–5 are where the asked-every-time questions live. Debt, not
+deletion.
+
+---
+
 ## 2026-08-27 — Chapter 10: LangGraph
 
 Written as `ai/10-langgraph/` — README, notes, interview, four examples, two exercises

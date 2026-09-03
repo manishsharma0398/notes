@@ -141,7 +141,7 @@ console.log("   return() returned:", c3.return("stopped early"));
 console.log("   afterwards       :", c3.next(), "<- closed for good");
 
 // These are not trivia:
-//   throw()  is why try/catch works around `await` — Ch 13's driver calls it.next() on
+//   throw()  is why try/catch works around `await` — Ch 14's driver calls it.next() on
 //            fulfilment and it.throw(err) on rejection, so the error lands INSIDE your try.
 //   return() is what `break` calls (Part 4). Now it has a name.
 

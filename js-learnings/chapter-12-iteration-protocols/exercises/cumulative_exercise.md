@@ -238,7 +238,7 @@ with its stack intact, and 5a's `finally` must still run. Prove both in one test
 **5d — Two-way generators.** Add `Seq.prototype.feed(fn)` built on `next(value)` — the consumer
 sends a value back into the source to steer it (Part 3). One honest use is enough: adaptive page
 size, or a backoff signal. Then write the sentence connecting this to `await`, which is where
-Chapter 13 starts.
+Chapter 14 starts.
 
 **5e — Identity and interop.** `Seq` instances are objects (Chapters 9–11):
 
@@ -365,4 +365,4 @@ that looks for it (Chapter 9's lookup rules).
 - Every written answer (Phase 1's decision, Phase 3's infinite-source question, Phase 4c's
   limits, Phase 5a's missing case, Phase 5d's sentence about `await`) stays as a comment
 - When you're done you'll have LINQ in about 150 lines, and the reason `for await...of` in
-  Chapter 13 will look like one small change rather than a new feature
+  Chapter 14 will look like one small change rather than a new feature

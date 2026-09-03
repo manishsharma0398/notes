@@ -6,7 +6,7 @@ scrolling. Do NOT run the code first.
 For every answer, name the **mechanism** — "iterators are one-shot", "destructuring closed it",
 "code points vs code units", "keys vs values".
 
-> **⭐ = do these before Chapter 13.** The starred items are what Chapter 13's driver and the
+> **⭐ = do these before Chapter 14.** The starred items are what Chapter 14's driver and the
 > `relay` exercise are built on. The unstarred ones are real interview material but have no
 > bearing on the next chapter — come back to them.
 
@@ -179,7 +179,7 @@ what happens if you pass a value to the FIRST next(), e.g. e.next("early"): It w
 
 ---
 
-### ⭐ N2–N4 · the other two channels — **the most important block for Chapter 13**
+### ⭐ N2–N4 · the other two channels — **the most important block for Chapter 14**
 
 ```javascript
 "use strict";
@@ -220,7 +220,7 @@ N4: {value: undefined, done:true}
 
 which of these three does `break` in a for...of call: h.return("stopped)[N3] will break the for..of loop
 
-which one does Chapter 13's async/await driver call when a promise rejects: throw()
+which one does Chapter 14's async/await driver call when a promise rejects: throw()
 ```
 
 ---
@@ -393,7 +393,7 @@ Is the generator paused or closed after take returns? How did you check: CLOSED 
 
 ---
 
-### 4. `fibonacci` and a depth-first `tree` _(optional — skip before Ch 13)_
+### 4. `fibonacci` and a depth-first `tree` _(optional — skip before Ch 14)_
 
 ```javascript
 function* fibonacci() {
@@ -479,7 +479,7 @@ U: How would you catch this class of bug in code review?
 ```
 - [ ] A–C, D–F answered with mechanisms          (one-shot, closing)
 - [ ] L, M–N answered                             (yield*, two-way)
-- [ ] N2–N4 answered, including WHERE each lands  ← the Chapter 13 gate
+- [ ] N2–N4 answered, including WHERE each lands  ← the Chapter 14 gate
 - [ ] All 12 True/False with mechanisms
 - [ ] range is re-iterable; broken version demonstrated and explained
 - [ ] take(naturals(), 5) terminates
@@ -487,7 +487,7 @@ U: How would you catch this class of bug in code review?
 - [ ] (later) G–K, O, fibonacci, tree
 ```
 
-**The Chapter 13 gate — say these out loud, no notes:**
+**The Chapter 14 gate — say these out loud, no notes:**
 
 ```
 1. Why does [...gen] twice give [] the second time?
