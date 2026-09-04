@@ -93,6 +93,20 @@ fractional minor units come in.
 Two stale `Part 8` cross-references in Chapter 18's examination table were fixed (the earlier
 renumber's `sed` matched `Part 8` but not `Parts 4, 8`).
 
+**Part 0 was added after the fact, and the gap it fills is worth recording.** The chapter as first
+written opened on a 64-bit layout diagram using "mantissa" and "exponent" as if defined, and used
+`1e9`/`1e16` throughout without ever saying what the notation means. Asked about it directly, which
+was correct feedback: the track's "no beginner explanations" rule is about not padding, not about
+assuming vocabulary the chapter itself depends on. `examples/00_notation_primer.js` now builds it
+from scratch — `1e9` as a spelling rather than a type (and the fact that JS *prints* that way on
+its own, so `5e-7` in a log means nothing about how it was written), then mantissa/exponent in
+decimal (`6371000 = 6.371 x 10^6`) before binary, then a decoder that pulls the three fields out of
+a real double and **reconstructs the value exactly** — `0.1` is significand `1.6`, exponent `-4`,
+and `1.6 x 2^-4 === 0.1`. The payoff is the sentence the whole chapter rests on: the mantissa is a
+fixed 53 bits so you get ~15-17 significant digits at *every* scale and the exponent only moves the
+point, which is why `1e15 + 1` changes the value and `1e16 + 1` does not, and why the gap to the
+next double is 1 at 1e15 and **16,384** at 1e20.
+
 `prompt.md` now reads "Covered, chapters 1–19", with modules (ESM) as the next chapter at 20.
 
 ---

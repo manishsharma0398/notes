@@ -20,6 +20,54 @@
 
 ---
 
+## Vocabulary (Part 0)
+
+**`1e9` is a spelling, not a type.** `e` = "times ten to the power of". `1e9 === 1000000000`.
+Positive exponent moves the point right, negative moves it left. `1e-3` is `0.001`.
+JS also *prints* this way past certain sizes: `0.0000005` logs as `5e-7`.
+
+**Mantissa and exponent — decimal first:**
+
+```
+6371000  =  6.371  x  10^6
+            ^^^^^        ^
+            MANTISSA     EXPONENT
+            the digits   the scale
+            (WHAT it is) (HOW BIG)
+```
+
+**A double is the same thing in binary:** `value = sign x 1.mantissa x 2^exponent`
+
+| Field | Bits | Holds |
+|---|---|---|
+| sign | 1 | 0 positive, 1 negative |
+| exponent | 11 | the scale, stored **+1023** (bias) so it can go negative |
+| mantissa | 52 | fraction after an **implied leading `1.`** → 53 bits of significance |
+
+Decoded for real: `0.1` is exponent bits `01111111011` = 1019 − 1023 = **−4**, significand
+**1.6** → `1.6 × 2^-4 = 0.1` exactly.
+
+**The payoff — the mantissa is a FIXED 53 bits ≈ 15–17 significant decimal digits, always, at
+every scale. The exponent only moves the point; it never buys more digits.**
+
+```
+1e15 + 1 → 1000000000000001    changed: true
+1e16 + 1 → 10000000000000000   changed: FALSE   ← the +1 vanished
+
+gap to the next double:  near 1e0: 1   near 1e15: 1   near 1e16: 2   near 1e20: 16384
+```
+
+→ that is "precision is relative to magnitude": the gap is ~1 part in 2^53, a bigger *absolute*
+amount when the number is bigger. Hence `Number.EPSILON` (the gap at 1.0) being wrong elsewhere,
+and integers dying past 2^53.
+
+**Why `0.1` specifically:** its significand is `1.6`, stored in binary as `1.1001100110011…`
+forever — same as `1/3` = `0.333…` in decimal. 52 bits is the chop.
+
+**ULP** = "unit in the last place" = the gap between one representable double and the next.
+
+---
+
 ## The one sentence
 
 > **A JS number is a fixed number of significant BITS, not decimal places — so what's stored is

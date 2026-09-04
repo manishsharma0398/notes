@@ -46,6 +46,124 @@ question, because it's the one with a design answer rather than a trivia answer.
 **The spoken answers, timed, are in `interview.md`. The 20-minute round is in `mock.md`.**
 
 Every number and output block in this file came from the files in `examples/`, on Node 22.17.1.
+**If `1e9`, "mantissa" or "exponent" are unfamiliar, read Part 0 first** — it defines the
+vocabulary everything else here uses.
+
+---
+
+## Part 0 — The vocabulary (skip if `1e9` and "mantissa" are already familiar)
+
+Two pieces of notation the rest of this chapter leans on constantly. `examples/00_notation_primer.js`
+runs all of this.
+
+### `1e9` is a spelling, not a type
+
+`e` means *"times ten to the power of"*. That's all. It's a way of writing a number literal, and
+`1e9 === 1000000000` is `true` — same value, two spellings.
+
+```
+  1e0     = 1
+  1e3     = 1000                 = 1,000
+  1e6     = 1000000              = 1,000,000
+  1e9     = 1000000000           = 1,000,000,000        (a billion)
+  1e16    = 10000000000000000    = 10,000,000,000,000,000
+  2.5e3   = 2500
+  1e-1    = 0.1                  <- negative: move the point LEFT
+  1e-3    = 0.001
+```
+
+Positive exponent moves the decimal point right (bigger), negative moves it left (smaller).
+
+**JavaScript also prints numbers this way on its own**, past certain sizes — so `5e-7` appearing in
+a log doesn't mean anyone wrote it that way:
+
+```
+  1000000000000000000000 prints as: 1e+21
+  0.0000005              prints as: 5e-7
+```
+
+### Mantissa and exponent — in decimal first
+
+You already do this whenever you write scientific notation:
+
+```
+   Earth's radius = 6371000 metres
+
+   6.371  x  10^6
+   ^^^^^        ^
+   MANTISSA     EXPONENT
+   the digits   the scale
+```
+
+- **Mantissa** (also called the *significand*): the significant digits. It says **what** the number
+  is.
+- **Exponent**: the power. It says **how big** it is — where the decimal point sits.
+
+Same digits, different exponent, wildly different number: `6.371e-3` is `0.006`, `6.371e9` is
+`6,371,000,000`.
+
+### A double does exactly this, in binary
+
+```
+   value  =  sign  ×  1.mantissa  ×  2^exponent
+```
+
+And those three pieces *are* the three fields of the 64 bits:
+
+| Field | Bits | What it holds |
+|---|---|---|
+| sign | 1 | `0` positive, `1` negative |
+| exponent | 11 | the scale, stored **+1023** (the "bias") so it can represent negatives |
+| mantissa | 52 | the fraction after an **implied leading `1.`** — so 53 bits of significance |
+
+Decoding real values proves it — the primer reconstructs each one exactly:
+
+```
+  1         exponent bits 01111111111 = 1023, minus bias 1023 = 0
+            significand = 1
+            1 x 2^0 = 1                        (reconstructed exactly: true)
+
+  0.1       exponent bits 01111111011 = 1019, minus bias 1023 = -4
+            significand = 1.6
+            1.6 x 2^-4 = 0.1                   (reconstructed exactly: true)
+
+  6371000   exponent bits 10000010101 = 1045, minus bias 1023 = 22
+            significand = 1.5189647674560547
+            1.5189647674560547 x 2^22 = 6371000   (reconstructed exactly: true)
+```
+
+### Why that's the whole chapter
+
+**The mantissa is a fixed size — 53 bits of significance, about 15–17 significant decimal digits,
+always, at every scale. The exponent only moves the point; it never buys you more digits.**
+
+Watch the 17th digit stop existing:
+
+```
+  1e0  + 1  =>  2                     changed: true
+  1e9  + 1  =>  1000000001            changed: true
+  1e15 + 1  =>  1000000000000001      changed: true
+  1e16 + 1  =>  10000000000000000     changed: false   <- the +1 vanished
+  1e17 + 1  =>  100000000000000000    changed: false
+
+  distance to the next representable double:
+    near 1e0    1 away
+    near 1e15   1 away
+    near 1e16   2 away
+    near 1e20   16384 away
+```
+
+That is what *"precision is relative to magnitude"* means: the gap is always about 1 part in 2^53,
+which is a **bigger absolute amount when the number is bigger**. It's why `Number.EPSILON` — the
+gap at 1.0 — is the wrong tolerance anywhere else (Part 2), and why integers stop being exact past
+2^53 (Part 5).
+
+And it's why `0.1` is inexact specifically: its significand is `1.6`, but stored in *binary*, and
+`1.6` in binary is `1.1001100110011…` repeating forever — the same way `1/3` is `0.333…` forever in
+decimal. 52 bits is where it gets chopped.
+
+One more term used throughout: **ULP**, "unit in the last place" — the gap between one
+representable double and the next one. Part 2's tolerance is measured in ULPs.
 
 ---
 
@@ -621,8 +739,9 @@ boundary — rather than making every program pay for the expensive general case
 - `notes.md` — condensed, for revision
 - `interview.md` — the questions with timed spoken answers and the rapid-fire bank
 - `mock.md` — a full 20-minute round as a transcript
-- `examples/` — six runnable files; `01_the_format.js` is the one to run first, since every other
-  file is a consequence of its bit table
+- `examples/` — seven runnable files. **Run `00_notation_primer.js` first if `1e9`, "mantissa" or
+  "exponent" are unfamiliar** — the rest of the chapter assumes them. Then `01_the_format.js`,
+  since every other file is a consequence of its bit table
 - `exercises/chapter_exercise.md` — prediction programs, then numeric primitives to build
 - `exercises/cumulative_exercise.md` — a money/ledger module with an exactness invariant
 
