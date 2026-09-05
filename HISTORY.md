@@ -9,6 +9,82 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-05 — JS Chapter 22: Strict Mode. **The language track is complete.**
+
+`js-learnings/chapter-22-strict-mode/` — README, notes, interview, mock, six runnable examples,
+chapter + cumulative exercises, blank worksheet. Chapters 1–22 now cover `prompt.md`'s topic list
+end to end, and `prompt.md`'s "Remaining" section reads *nothing* for the first time.
+
+**Written last on purpose, and the chapter says so.** Almost everything strict mode changes had
+already appeared somewhere else — `Object.freeze` throwing (Ch18), `this` in an extracted method
+(Ch5), `undefined = 42` (Ch21), unmapped `arguments` (Ch21), modules always strict (Ch20). What
+was missing was the story connecting them, so the chapter is framed as *the reason those are all
+the same fact* rather than as new material.
+
+**The spine: you cannot remove a behaviour from JavaScript.** Every page ever written has to keep
+working and the web has no recall mechanism, so the only way to fix a design mistake is to define
+a second dialect and let code opt in. That single constraint then explains the parts that look
+odd — most usefully **why the directive is a string literal**: a keyword would have been a
+`SyntaxError` on every pre-2009 engine, so no page could have adopted it until old browsers were
+gone, which for the web is never. The ugly syntax is what made incremental adoption possible. That
+framing is the chapter's best interview answer and it is one almost nobody gives.
+
+**Structured as three categories, not twenty items**, on the grounds that the list is the two-year
+answer: silent failures become errors; `this` and `arguments` change behaviour; some syntax is
+removed at parse time. Plus the closing reframe — *strict mode doesn't add rules, it makes the
+rules that already existed produce errors instead of silence.*
+
+Measured on Node 22.13.0. Four things worth keeping:
+
+- **Reads of an undeclared name throw in BOTH modes; only writes differ.** Added as its own
+  section after it nearly broke two teaching fixtures (below). It is also the diagnostic that
+  matters when someone says "this vendor file worked before the build change" — a file doing
+  `if (!queue) { queue = []; }` cannot have been relying on sloppy mode for the *read*, so
+  something else must have created the global. That is usually the actual bug.
+- **The concatenation hazard fails in both directions**, run as real subprocesses in
+  `examples/05_*`: a strict file bundled *after* a sloppy one silently loses strictness (the
+  directive is no longer first), and bundled *before* one silently imposes it on vendor code that
+  never asked. The reviewable sentence: **a file-level directive is a claim about a file, and a
+  file is not a unit the runtime respects — only functions and modules are.** That is most of why
+  bundlers wrap each module in a function.
+- **A directive preceded by another string literal is still a directive** (the prologue is a *run*
+  of string literals), but one preceded by a `const` is inert — and the file still passes a
+  `grep "use strict"` audit. That combination is the chapter's live-debug question.
+- **`this` sloppiness is two independent behaviours**, routinely conflated: *substitution*
+  (null/undefined → `globalThis`) and *boxing* (primitive → wrapper object). The `.call(null)` row
+  reads `typeof "object"` in strict mode because `typeof null` is `"object"` (Ch21) — null arriving
+  intact, not boxing. Annotated explicitly so the table isn't misread.
+
+**Two exercise fixtures were mis-posed and only caught by running them** — the same lesson Ch17
+recorded, arriving again in the same shape, which suggests it is structural rather than bad luck:
+
+1. The cumulative exercise's `registry.js` used `if (!count) { count = 0; }` to demonstrate an
+   implicit global, and the premise of the whole exercise is "it works". It does not: reading an
+   undeclared `count` throws in sloppy mode too. Changed to `typeof count === "undefined"`, which
+   is both correct and the more realistic legacy idiom — and the corrected question now *asks* why
+   the author needed the `typeof` guard.
+2. Chapter-exercise question K asked for four predictions in a sloppy file, but both probes return
+   `false` for every call shape there — the disagreement that identifies the broken detector only
+   appears in a **strict** file. Rewritten to require both runs and to name the single row that is
+   the evidence.
+
+The corrected cumulative fixture turned out better than the original: `cfg.timeout` comes back as
+`0` — the correct answer — **by accident**, because a Ch21 bug (`|| defaults.timeout` clobbering a
+legitimate `0`) is cancelled by a Ch22 one (the frozen write failing silently). Migrate to modules
+and the cancellation stops: the write throws. Two bugs whose combination is invisible until one of
+them is fixed is a better teaching case than either alone, and Phase 0 now points straight at it.
+
+The cumulative exercise is a **capstone** rather than another single-topic build — audit, then
+migrate, then fix a mixed-mode CommonJS service, touching Ch5, Ch17, Ch18, Ch20, Ch21 and Ch22.
+Its deliverable is the *audit document*, not the migration, because the failure mode of this
+particular task is silence.
+
+`prompt.md`'s "Remaining" now says what the actual remaining work is, and it is not more chapters:
+**several chapters still have unattempted exercises** (Ch13 partly, Ch14, Ch17, and everything from
+Ch18 on). A chapter that was read is not a chapter that can be answered under pressure.
+
+---
+
 ## 2026-09-05 — JS Chapter 21 written: `undefined`, `null`, and Missing
 
 `js-learnings/chapter-21-undefined-null-and-missing/` — README (697 lines), notes, interview, mock,

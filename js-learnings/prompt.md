@@ -95,7 +95,7 @@ Progression:
 
 Topics (interview-weighted, language only — do not dump all at once):
 
-Covered, chapters 1–21:
+Covered, chapters 1–22 — the topic list is complete:
 
 - Parsing / compilation / execution · execution contexts · lexical scope · hoisting · `this` ·
   closures · primitives vs references · coercion and equality · objects and the prototype
@@ -103,16 +103,20 @@ Covered, chapters 1–21:
   generators · callbacks and inversion of control · promises and async foundations ·
   microtasks and macrotasks · error handling semantics · memory management and leaks ·
   copying, immutability and freezing · numeric edge cases · modules (ESM) ·
-  `undefined` vs `null` vs missing
+  `undefined` vs `null` vs missing · strict mode
 
-Remaining:
+Remaining: **nothing.** The track is complete as of 2026-09-05.
 
-1. **Strict mode and why it exists** — short chapter, mostly a follow-up magnet. Note that the
-   module half is already covered (Ch20: always strict, no opt-out, the consequences you
-   actually hit) and so are three of its effects seen from elsewhere (Ch21: `undefined = 42`
-   throwing, a non-simple parameter list forbidding the body directive, unmapped `arguments`).
-   This chapter is the standalone `"use strict"` story: what it changes, the sloppy-mode
-   behaviour it removes and why, and why it is the follow-up to half a dozen other questions.
+What is left is not another chapter, it is repetition:
+
+- The `mock.md` files are the thing to re-run — out loud, timed, against the drill lists at the
+  bottom of each.
+- The `notes.md` files are the morning-of read.
+- **Several chapters still have unattempted exercises** (Ch13's worksheet is partly done; Ch14's,
+  Ch17's and everything from Ch18 on are open). A chapter that was read is not a chapter that can
+  be answered under pressure — that gap is the remaining work.
+
+If a new topic is ever added, it goes at 23 and follows the same contract.
 
 Important:
 
@@ -138,6 +142,14 @@ History of this file:
   memory slots"), module scope, and the interop story. All outputs are measured on Node
   22.13.0, which matters here — `require(esm)` shipped unflagged in 22.12, so the folklore
   answer to "why can't you require an ES module" is now wrong.
+- **Chapter 22 (Strict mode) was written on 2026-09-05 and closes the track.** Written as the
+  standalone `"use strict"` story, since Ch20 and Ch21 had already taken the module half and three
+  of its effects. Structured as **three categories** rather than a list of twenty items (silent
+  failures become errors; `this`/`arguments` change; syntax removed at parse time), on the grounds
+  that the list is the two-year answer. The spine is that you cannot remove a behaviour from the
+  web, so the only fix is a second dialect — which also explains why the directive is a *string*
+  literal rather than a keyword. Its cumulative exercise is a **capstone**: audit and migrate a
+  mixed-mode CommonJS codebase, touching Ch5, Ch17, Ch18, Ch20, Ch21 and Ch22 at once.
 - **Chapter 21 (`undefined` vs `null` vs missing) was written on 2026-09-05**, same day as Ch20.
   Framed as a modelling topic rather than a syntax one — the round is decided by "when would you
   deliberately want `||`?" and by whether `a?.b?.c?.d` reads as caution or as not knowing your
