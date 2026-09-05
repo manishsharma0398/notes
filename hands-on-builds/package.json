@@ -1,0 +1,7 @@
+{
+  "name": "hands-on-builds",
+  "private": true,
+  "type": "commonjs",
+  "description": "Applied builds. Rebuild what you read, with nothing but node core.",
+  "scripts": { "test": "node --test" }
+}
