@@ -115,3 +115,47 @@ Important:
 
 Start with:
 "Node.js Runtime Architecture: from JavaScript code to execution"
+
+---
+
+## Chapter structure — updated 2026-09-05
+
+**This supersedes any chapter shape described above.** It is the structure the `js-learnings`
+track converged on over 22 chapters, and it is now the standard for every track in this repo.
+
+One folder per concept, containing **all seven pieces**. A chapter is not finished until all of
+them exist:
+
+- `README.md` — mental model, mechanism, ASCII diagrams. **Open with a short map of how the topic
+  is examined**: what gets asked every time vs. what is background.
+- `notes.md` — concise revision notes. The file to read the morning of an interview.
+- `interview.md` — the questions, each with **the spoken answer and a target time**, what the
+  interviewer is scoring, the follow-up they ask next, and the red flags that drop a level. End
+  with a rapid-fire bank of one-sentence answers.
+- `mock.md` — **a realistic 20-minute round on this topic**: opener → prediction → live debug →
+  whiteboard build → closer, written as a transcript with annotations for what is being scored at
+  each turn. Include a levels table (2yr / 4yr / senior answer to the same question), the
+  sentences that raise the level most, and the red flags.
+- `examples/` — runnable JS files, executed with real output and the Node version stated.
+- `exercises/chapter_exercise.md` — 30–60 minutes, this chapter only. Prediction problems,
+  true/false **with the mechanism**, and small things to build from scratch. Hints section at the
+  bottom, graded and numbered, plus a "what to verify" checklist.
+- `exercises/solution/chapter_exercise_worksheet.md` — every problem and question duplicated
+  inline with **blank answer blocks**. Do NOT pre-fill it.
+- `exercises/cumulative_exercise.md` — 1–3 hours, integrating everything so far. Prefer something
+  that **doubles as a whiteboard question** at this level: a worker pool, a graceful-shutdown harness, a leak reproduction, a backpressure pipeline. Phased, with success
+  criteria per phase, and a final phase that breaks the thing and asks what was lost.
+
+**Exercises must never be solved or pre-answered.** Write the problem, the skeleton and the hints.
+I write the solution and can share it for review. Do not start the next chapter until I confirm I
+have attempted the current one's.
+
+**Verify before shipping a chapter:** run every example and paste its *real* output — never output
+written from memory. Where an exercise makes a claim about behaviour, run that too; mis-posed
+exercise questions have been caught this way more than once.
+
+**Applies from the next chapter onward.** Chapters 1–25 were written under the older contract
+(no `mock.md`, no timed answers, no separate exercise files) and are **deliberately left as they are** — the
+depth in them is real, it just is not optimised for the round. Retrofitting them is separate,
+optional work; do not silently rewrite them while adding a new chapter.
+
