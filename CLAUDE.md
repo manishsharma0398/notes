@@ -2,9 +2,13 @@
 
 ## What this is
 
-Manish's personal technical learning notes: 410 markdown files, ~484k words, across
-14 domains (`ai`, `aws`, `node-learnings`, `js-learnings`, `terraform`, `sql`, `nginx`,
-`docker`, `k8s`, `python`, `react`, `linux`, `ci-cd-pipelines`, `scripting`).
+Manish's personal technical learning notes, across `ai`, `js-learnings`, `node-learnings`,
+`ts-learnings`, `terraform`, `sql`, `react`, `nginx`, `python`, `aws`, plus two practice banks
+(`js-machine-round`, `hands-on-builds`) and five empty tracks that have prompts but no content
+(`docker`, `k8s`, `linux`, `ci-cd-pipelines`, `scripting`).
+
+**`js-learnings` and `node-learnings` are complete.** See the track table below before starting
+anything new.
 
 Context: full-stack JS/Node engineer, ~3.5 years, currently going deep on
 Generative AI engineering. Strong on backend, APIs, distributed systems, deployment.
@@ -39,7 +43,74 @@ examples/    runnable teaching examples (written by the mentor)
 exercises/   chapter_exercise.md + cumulative_exercise.md + solution(s)/  <- Manish's work
 ```
 
-## Current state
+## Learning tracks — state, and what "continue" means
+
+**`BACKLOG.md` at the repo root is the index of every idea raised, where it landed, and how to
+resume it** — including the things deliberately rejected and why. Read it when asked "what
+happened to X?" or when a topic comes up that may already have been decided. `HISTORY.md` records
+what was done and why; `BACKLOG.md` records what was asked for and where it went.
+
+
+**Every track has a `prompt.md` that is its contract and its resume point.** If asked to
+"continue" a track, read that file first — each one opens with a `## To continue this track`
+section (or a "Covered / Remaining" list) stating exactly what is done and what is next. Do not
+infer the next step from the directory listing.
+
+If asked to "continue" with no track named, ask which one — there are four active.
+
+| Track | State | `continue` = |
+|---|---|---|
+| `js-learnings/` | **complete, 22 chapters** | nothing. Exercises are the open work (see below) |
+| `node-learnings/` | **complete, 25 chapters** | nothing. Its exercises are underspecified — upgrading them is known debt |
+| `ai/` | 10 chapters; roadmap Phase 0 | see "Current state — `ai/` track" below |
+| `ts-learnings/` | **0 chapters**, contract written | Chapter 1 — structural typing and erasure |
+| `redis/` | **0 chapters**, contract written | Chapter 1 — the single-threaded in-memory model |
+| `js-machine-round/` | category 01 of 8 ready | category 02 — function polyfills |
+| `hands-on-builds/` | build 01 of 11 specified | build 02 — a Promise implementation |
+| `react/` | 2 chapters, **stalled** under the old contract | needs `mock.md` + exercises before new chapters |
+| `docker/` `k8s/` `linux/` `ci-cd-pipelines/` `scripting/` | prompt only, **no content** | not started |
+
+**Every chapter track uses one structure**, standardised 2026-09-05 and written into all 16
+`prompt.md` files. A chapter is seven pieces and is not finished until all exist: `README.md`,
+`notes.md`, `interview.md`, `mock.md`, `examples/`, `exercises/chapter_exercise.md`,
+`exercises/cumulative_exercise.md`, plus a blank `exercises/solution/chapter_exercise_worksheet.md`.
+It came from what `js-learnings` converged on over 22 chapters.
+
+**It applies from each track's *next* chapter onward.** Tracks with chapters written under the
+older contract — `node-learnings` (25), `terraform` (20), `sql` (14), `ai` (10), `aws` (7),
+`nginx`/`react` (2), `python` (1) — keep those as they are. The depth in them is real; it is just
+not optimised for a timed round. Retrofitting is separate optional work; **do not silently rewrite
+old chapters while adding a new one.**
+
+**The two practice banks are deliberately exempt** — `js-machine-round/` and `hands-on-builds/`
+are not chapter tracks and must not be given `notes.md`/`mock.md`. Their shape is
+`problems.md`/`spec.md` + executable tests + an empty `solution/`.
+
+**The three practice artifacts have distinct jobs** — pick the right one rather than adding to
+whichever is open:
+
+- `js-machine-round/` — one function, 4–10 minutes, timed. Interview drill.
+- `hands-on-builds/` — one program, 1–4 hours. Applying a chapter.
+- each chapter's own `cumulative_exercise.md` — that chapter's theory, right after reading it.
+
+**Before writing a new exercise or build anywhere, check whether one already exists.** All 25
+`node-learnings` chapters carry "Practice Exercises" sections (~60 total) and `js-learnings`
+chapters each have two. `hands-on-builds/README.md` is an index over them for exactly this
+reason; adding a pointer there beats writing a duplicate.
+
+**The unattempted-exercise backlog is the real open work**, not more chapters: `js-learnings`
+Ch13's worksheet is partly done, Ch14/Ch17 and everything from Ch18 on are open, and `ai/`
+Ch8–Ch10 are open. A chapter that was read is not a chapter that can be answered under pressure.
+
+**Planned next, agreed but not started:** a `system-design/` track, which is where
+payments-as-idempotency, caching *strategy* and WebSocket *scaling* belong — those are
+distributed-systems questions rather than technologies. **Redis is not among them: it has its own
+track** (`redis/`), on the same argument that gives `sql/` one.
+
+Express is deliberately **not** a track: its deep material is already in `node-learnings`, and
+`hands-on-builds` build 11 covers it by having you write a minimal Express.
+
+## Current state — `ai/` track
 
 - **Chapters 1–10 complete** (LLM internals → prompt engineering → APIs → Python for AI →
   LangChain → vector DBs → RAG → advanced RAG → agents → LangGraph)

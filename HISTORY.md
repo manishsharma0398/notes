@@ -9,6 +9,423 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-05 — The `js-learnings` chapter structure standardised across all 16 track prompts
+
+Asked to push the structure the JS track converged on — README · notes · interview · mock ·
+examples · chapter exercise · cumulative exercise · blank worksheet — into every track's
+`prompt.md`, so any new chapter anywhere is written to it.
+
+Surveyed first. **Only three of sixteen tracks had it**: `js-learnings` (the source),
+`ts-learnings` and `redis` (both written this week). The other thirteen had README/notes/interview
+and **no `mock.md` and no exercise files at all** — `ai` and `python` had the two exercise types
+but no mock or worksheet; the remaining eleven had neither. So the majority of the repo's tracks
+would have produced a chapter missing four of its seven pieces.
+
+All thirteen patched. Two things were done per-track rather than by pasting one block:
+
+- **The `examples/` line is track-specific**, because a generic one would be wrong — SQL gets
+  "runnable SQL with `EXPLAIN` output pasted verbatim", Terraform "real `plan`/`apply` output",
+  k8s "real `kubectl` output", AWS "real CLI/SDK output, secrets redacted". Same for the
+  cumulative-exercise suggestions, which name something plausible for that subject rather than
+  the JS track's concurrency limiter.
+- **Tracks with existing chapters got a legacy note; empty ones did not.** `node-learnings` (25),
+  `terraform` (20), `sql` (14), `ai` (10), `aws` (7), `nginx`/`react` (2), `python` (1) now say
+  the structure "applies from the next chapter onward" and that existing chapters are
+  **deliberately left as they are** — the same wording and the same reasoning `js-learnings` used
+  for its own chapters 1–12. The five empty tracks (`docker`, `k8s`, `linux`, `ci-cd-pipelines`,
+  `scripting`) have no such note because there is nothing to exempt. This matters: without it, a
+  future session could read "all chapters must have a mock" and start silently rewriting 25
+  finished Node chapters.
+
+**`js-machine-round/` and `hands-on-builds/` were deliberately excluded**, and `CLAUDE.md` now
+says so explicitly. They are not chapter tracks — a drill bank has `problems.md` plus executable
+tests, a build bank has `spec.md` plus tests, and giving either a `notes.md` and a `mock.md` would
+duplicate theory that already exists in the chapter tracks. That exclusion is the kind of thing
+that gets "helpfully" undone later, so it is written down rather than left as an omission.
+
+Two rules were folded into the standard block while it was being written, both earned earlier this
+week: **run every example and paste its real output, never output written from memory**, and
+**where an exercise claims a behaviour, run that too** — mis-posed exercise questions were caught
+this way in Ch17, Ch22 and again in the Redis auth build's `alg: none` test.
+
+---
+
+## 2026-09-05 — Build 13: Redis-backed auth, and the one rule the build bank now bends
+
+Asked for a Redis-flavoured item in one of the practice banks — "session manager for JWT auth, or
+anything helpful for interviews and Redis knowledge". It goes in `hands-on-builds/`, not
+`js-machine-round/`: a drill is one function in four minutes with zero dependencies, and Redis
+cannot be that. An auth system is exactly a four-hour integrative build.
+
+**The build is organised around the question the topic is actually asked as.** "JWT or sessions?"
+is the most common backend auth question, and the answer that scores is not a preference — it is
+*"stateless tokens cannot be revoked, so the moment you need logout you need state, and the
+interesting design is where you put it."* So **Phase 1 makes you prove the problem before solving
+it**: implement HS256 from `node:crypto`, then write the test that tries to revoke a valid token
+and cannot. Everything after that exists because of what Phase 1 could not do.
+
+Seven phases: prove-the-problem → server sessions → the hybrid → revocation → **rotation and reuse
+detection** → login rate limiting → break it. Two phases carry the weight:
+
+- **Phase 5 needs Lua**, which is why the spec lists `redis/` Ch7 as a hard prerequisite. Two
+  concurrent refreshes with the same token must not both succeed; the spec requires
+  *demonstrating the naive version failing* (`Promise.all`, two valid access tokens come back)
+  before fixing it with a script. A fix without the failing test is not evidence.
+- **Phase 7 is the fail-open/fail-closed decision.** Redis is down and the denylist cannot be
+  checked: accept the token or reject it? There is no correct answer, only a decision and a cost —
+  and being able to defend one is the senior half of the round.
+
+**The dependency rule was bent deliberately and narrowly.** The bank's rule was "node core only";
+a datastore cannot be reimplemented in an afternoon, so Tier 6 allows **a Redis client and nothing
+else**. JWT stays `node:crypto` — signing one is twenty lines and is itself an interview question,
+so importing a library would remove the content. Build 12 (a RESP client over `net`) is indexed so
+the exception can be closed entirely if wanted, and it also completes a protocol trilogy with
+build 05 (TCP framing) and build 07 (WebSocket frames).
+
+**The boundary with the `redis/` track is written into both files**: that track teaches the
+mechanisms, this build applies them, and a chapter whose cumulative exercise would duplicate build
+13 should point at it instead.
+
+Phase 1's tests were validated in both directions, and the first pass produced a **weak test worth
+recording**. The `alg: "none"` test asserted only that verification throws — which a naive
+implementation passes for the wrong reason, because the empty signature fails the signature
+comparison regardless of whether the algorithm was ever checked. Replaced with the real shape of
+the attack: a token claiming `HS512` but signed with HMAC-SHA256, which is exactly what a verifier
+that hardcodes SHA-256 and never reads `header.alg` computes — such a verifier accepts it. With
+that change the naive implementation fails 2 of 8 instead of 1, and the correct one passes 8 of 8.
+**A test that passes for the wrong reason is worse than no test**, because it reads as coverage.
+
+Tests skip with an instruction when Redis is unreachable rather than failing, so a red run always
+means the code and never the environment. Tier ordering was also corrected — the datastore tier
+had been inserted ahead of the capstone.
+
+---
+
+## 2026-09-05 — `redis/` promoted to its own track, overruling me
+
+I had argued Redis belonged as chapters inside a future `system-design/` track, on the grounds
+that caching, rate limiting and distributed locks are distributed-systems questions. Asked for it
+as a root-level folder instead. **The counter-argument is decisive and the original position was
+weaker than I made it sound:**
+
+- **`sql/` is equally a "system-design component" and has its own 47-file track.** By my own
+  reasoning SQL should have been chapters inside system design too, which is obviously wrong.
+- **The repo's established shape is technology-specific tracks** — `terraform` (78 files), `sql`
+  (47), `nginx` — each with a `prompt.md` and `NN-topic/` chapters. Redis fits that pattern
+  exactly; nothing about it is unusual.
+- **Redis is asked about by name in interviews**, not only as a design ingredient. "Have you used
+  Redis, what for, and how would you rate-limit with it" is a question about the technology.
+
+`redis/prompt.md` written: 14 chapters, under the current contract (`mock.md`, timed spoken
+answers, resume block) rather than the older `sql`/`terraform` shape. Ordered so that the three
+chapters where rounds are actually decided — caching patterns, rate limiting, distributed locks —
+sit at 6, 7 and 8, after the memory and persistence models they depend on.
+
+**The boundary with `system-design/` is stated in the prompt rather than fudged:** this track
+teaches the Redis half of each pattern properly and marks the architectural half — caching
+*strategy*, rate limiting *across services*, the general Redlock debate — as belonging to the
+other track when it exists. Both files now say so, so the overlap is a documented seam rather
+than a duplication waiting to happen.
+
+Track-specific rules worth keeping: **every command output must be run against a real Redis 7 in
+Docker and pasted**, never written from memory, because reply formats and `INFO` fields drift
+between versions; and every chapter names its **production failure mode** — what pages you, what
+it looks like in `INFO`, what you do at 3am. The chapter that carries the track is the one whose
+honest answer is "Redis does not guarantee that".
+
+`BACKLOG.md` and `CLAUDE.md` both updated: Redis moved out of the "agreed but has no home" row
+into a queued track with a resume point, and the system-design row narrowed to
+payments-as-idempotency, caching strategy and WebSocket scaling.
+
+**Then corrected on review:** the first draft of `redis/prompt.md` specified the chapter shape
+only loosely in its resume block and **omitted the `Chapter structure` and `Exercises` sections
+entirely** — so `chapter_exercise.md` and `cumulative_exercise.md` appeared nowhere and a chapter
+written from it would have been missing two of its seven pieces. Both sections added verbatim from
+`js-learnings/prompt.md` and adapted: prediction problems are "what does the server reply, and
+what does `INFO`/`MEMORY USAGE` say afterwards", and **every cumulative ends with a phase that
+breaks the thing** — kill the server mid-write, fill memory until eviction, fail over the primary
+— and asks what was lost. `ts-learnings`' resume block was aligned the same way; its structure
+section was already complete. Both now state "a chapter is not finished until all seven exist".
+
+**Asked whether Lua scripting was included — it was, and checking exposed a dependency bug in the
+chapter order.** Lua was one clause inside Chapter 10 ("Atomicity — MULTI/EXEC, WATCH, Lua
+scripting"), but **Chapters 7 (rate limiting) and 8 (distributed locks) both require it**: a
+correct sliding-window limiter needs an atomic multi-step operation, and releasing a lock safely
+is a compare-and-delete, which is a script. The plan had the prerequisite two chapters *after* its
+dependents.
+
+Fixed by promoting atomicity+Lua to **Chapter 7**, pushing rate limiting to 8, locks to 9 and
+pub/sub to 10 — and giving Lua real weight rather than a mention: `KEYS` vs `ARGV` and why the
+split exists (cluster key routing), the `SCRIPT LOAD` → `EVALSHA` cache and the `NOSCRIPT` case a
+client must handle after a restart, **a script blocking the whole server for its duration** as the
+cost that buys atomicity, effects-based replication, and **Redis Functions** (7.0+) as the modern
+successor to `EVAL`.
+
+All of it verified against the container rather than recalled: `EVAL` works, `SCRIPT LOAD`
+returned sha `a27e7e8a…` and `EVALSHA` ran it, and `FUNCTION STATS` reports engine `LUA` — so
+Redis Functions are genuinely available in `redis:7-alpine` and the chapter can be written against
+them. The three-question-escalation note now reads "Chapters 6, 8 and 9 … all three depend on
+Chapter 7, which is why atomicity and Lua come before them rather than after".
+
+**The toolchain claim was also asserted rather than verified, and was partly wrong.** The prompt
+said to use `redis-cli` against Docker; Docker is running here, but **`redis-cli` is not installed
+on the host**. Ran the real workflow instead of assuming it: `redis:7-alpine` resolves to
+**redis_version 7.4.11** (`multiplexing_api:epoll`), commands go through
+`docker exec redis-lab redis-cli`, and the mapped port is reachable from Node — a raw socket
+writing `*1\r\n$4\r\nPING\r\n` gets `+PONG\r\n` back, so client examples need nothing
+installed. `MEMORY USAGE` on a 5-byte string returned **72**, and `OBJECT ENCODING` returned
+`embstr` — both the kind of number Chapter 2 and 4 will be built on, and both now confirmed to be
+obtainable. The prompt records the verified commands rather than the imagined ones.
+
+---
+
+## 2026-09-05 — `BACKLOG.md`: the ideas index, added after a fair challenge
+
+Asked whether the topics raised over the session had actually been kept, and how to resume them.
+Verified rather than asserted — grepped all thirteen topics mentioned across the conversation
+(socket.io, currying, polyfills, event bubbling, promisification, payments, Redis, system design,
+React/Next, Express, EventEmitter, fs sync/async, CRUD REST API) against every file written.
+
+**All thirteen were recorded — but across five files, with no single view.** Each topic had gone
+to whichever artifact owned it, which is correct for the artifacts and useless for the question
+"I mentioned X once, what happened to it?". Two were genuinely weak: **payments and Redis existed
+only as a sentence inside a paragraph about system design**, not as resumable items.
+
+`BACKLOG.md` is that missing view. Sections: ready now · queued in order · **agreed but has no
+home yet** · deliberately not doing, with reasons · stalled or owed · where practice already
+exists.
+
+**The section that mattered most is "agreed but has no home yet".** System design — and with it
+Redis, payments, caching, rate limiting and WebSocket scaling — was agreed as the next track but
+has **no `prompt.md`**, so "continue system design" resolves to nothing. Every other track has a
+resume point; that one does not, and saying so plainly is more useful than letting it look
+scheduled. The reasoning for folding those three topics into system design rather than making
+them separate tracks is recorded there so it does not get re-litigated.
+
+The "deliberately not doing" section exists for the same reason — Express-as-a-track and
+Next-as-a-track were both considered and rejected with specific arguments, and without writing
+that down they come back around every few months.
+
+`CLAUDE.md` now points at `BACKLOG.md` from the top of the track index, with the distinction
+stated: HISTORY is what was done and why, BACKLOG is what was asked for and where it went.
+
+---
+
+## 2026-09-05 — Made "continue" work: resume points in every prompt, and a track index in CLAUDE.md
+
+Asked for the thing that makes a track resumable — "so that I can go back to it later and say
+continue and it should start the next chapter, same as we did for js and node." Checking what a
+cold session would actually find turned up three problems, and the third was the real one:
+
+1. **`hands-on-builds/prompt.md` did not exist.** It had a `README.md` but no contract, so
+   nothing said how to write the next build or what the rules were.
+2. **State was split across two files** in `js-machine-round/` — the contract in `prompt.md`, the
+   status in `README.md`. Resuming meant reading both and inferring.
+3. **`CLAUDE.md` — the file loaded into every session — knew nothing about `ts-learnings`,
+   `js-machine-round` or `hands-on-builds`.** Greps returned 0 for all three. It also still said
+   "Chapters 1–10" as though `ai/` were the only track and listed a stale "14 domains" line. A
+   fresh session would not have known the new tracks existed at all, which is the actual failure
+   mode behind "say continue and it works".
+
+**What makes "continue" deterministic, extracted from how `js-learnings/prompt.md` behaved:** it
+worked because that file carried a *state marker* ("Covered, chapters 1–17") next to a *queue*
+("Remaining, in priority order"), so resuming was reading one file, not reconstructing intent
+from a directory listing. Every track prompt now opens with an explicit
+`## To continue this track` block containing a status table, a one-line "continue means X", the
+shape of the deliverable, and the bookkeeping to do afterwards (update the status table, update
+the README, add a HISTORY entry).
+
+Added to `CLAUDE.md`: a **track index** giving every track's state and what `continue` resolves
+to for each, plus the instruction to read that track's `prompt.md` first rather than inferring —
+and to **ask which track** when "continue" arrives with no track named, since four are now
+active. Also folded in three things that were only in HISTORY and would otherwise be re-litigated:
+the distinct jobs of the three practice artifacts (drill = one function timed, build = one program,
+cumulative = one chapter's theory), the **check-before-you-write rule** for exercises given ~60
+already exist, and the standing decisions that `system-design/` is the agreed next track and that
+Express is deliberately not one.
+
+The `ai/`-specific state section was retitled rather than replaced — it is still accurate, it was
+just sitting under a heading that implied it described the whole repo.
+
+---
+
+## 2026-09-05 — New artifact: `hands-on-builds/` — a practice **map**, mostly pointers
+
+Asked for applied practice on top of the two finished tracks (custom EventEmitter, fs sync/async,
+a pure-node CRUD REST API), plus "so many other such topics exist that I have not mentioned".
+Followed with the instruction that decided the design: **"if those already exist somewhere let's
+add the references to them."** That was the right instinct and it halved the artifact.
+
+**Surveyed before building, and the survey changed the plan:**
+
+- **All 25 `node-learnings` chapters already have a "Practice Exercises" section**, and 6 have
+  populated `exercises/` dirs. Extracting every exercise title showed roughly **60% of what was
+  about to be written already existed** — worker pools, AsyncLocalStorage request tracking, the
+  three leak shapes, graceful shutdown and signal queuing, event-loop lag, thread-pool starvation,
+  backpressure, heap snapshots, CPU profiling.
+- So `README.md` is primarily an **index**, not a workbook. For every applied skill it points at
+  either an existing exercise (chapter + exercise name) or a build defined here. Eleven builds
+  against ~60 existing exercises. Adding a build is the exception; the default is a pointer.
+
+**Verified gaps, before claiming them:**
+
+- **There is no HTTP chapter in `node-learnings` at all** — 25 chapters, TCP socket internals
+  present, HTTP absent. Everything HTTP-shaped is therefore a build here, which is also why the
+  capstone is "write a minimal Express": you understand a framework faster by building the
+  200-line version than by reading its docs, and it answers the earlier "should I study Express?"
+  question without a track.
+- **"Build an EventEmitter" is not an exercise anywhere** in either track.
+- **`js-learnings` Ch14 never asks you to build a Promise.**
+
+The existing node exercises are also **underspecified** relative to the `js-learnings` standard —
+prose prompts ("Create a script that: writes large amounts of data, handles backpressure") rather
+than phases with success criteria. Upgrading them is noted as separate later work, deliberately
+not bundled in.
+
+**Build 01 (EventEmitter) is complete, and the verification method is the part worth keeping:
+the tests were validated against Node's own `EventEmitter` as the reference implementation.**
+23 of 25 passed, which confirms the spec's claims about Node semantics are true rather than
+remembered — snapshot-during-emit (a listener removed by an earlier listener still runs for that
+emit), `once` being removable by the *original* function despite the internal wrapper, the
+`error`-event asymmetry, `listeners()` returning a copy, `prependListener` ordering.
+
+The 2 failures were the useful part. **Node's `EventEmitter.on()` silently ignores an options
+object — `{ signal }` is an `EventTarget`/DOM feature, and Node ships both APIs separately.**
+Verified directly: `e.on("x", fn, { signal })` then `ac.abort()` leaves `listenerCount` at 1,
+while the same pattern on `EventTarget` works. Phase 6 asks for that capability deliberately, so
+the tests are correct — but Node's own implementation failing two tests in a build that says
+"rebuild `node:events`" reads as a broken test unless it is labelled. Both the spec and the test
+file now say so explicitly: *you are adding a capability, not matching the reference.*
+
+Structure mirrors `js-machine-round/` — `spec.md` with phased success criteria, executable tests,
+empty `solution/`, no answers anywhere. The distinction between the three practice artifacts is
+stated in the README so the right one gets picked: machine round = one function in 4–10 minutes
+timed; a build = one program in 1–4 hours; a chapter's `cumulative_exercise.md` = that chapter's
+theory right after reading it.
+
+---
+
+## 2026-09-05 — New artifact: `js-machine-round/`, a drill bank (not a track)
+
+Created after floating a longer list of candidate topics — WebSocket/Socket.io, currying,
+polyfills, event bubbling, promisification, payments, Redis, system design. Sorting that list was
+most of the value, and the sort is worth keeping because the same list will come up again:
+
+- **Currying / polyfills / promisification / output prediction are not new content.** Currying is
+  `js-learnings` Ch6, polyfills are Ch11 and Ch14, output prediction is Ch5 and Ch15. What was
+  missing was the **format** — reps under a clock — so the right artifact is a problem bank, not
+  another chapter track. Cheapest high-value thing available, because it converts finished reading
+  into interview performance.
+- **Redis, WebSocket and payments are not three tracks, they are system-design components.** Redis
+  is caching/rate-limiting/locks, WebSocket is real-time delivery and scaling across instances,
+  and the interesting half of payments is idempotency keys, webhook delivery guarantees and
+  reconciliation. As separate folders they would be shallow and overlapping; as chapters in one
+  system-design track they reinforce each other. **System design is the agreed next piece of work
+  after this bank.**
+- **Express was rejected again**, same reasoning as the `ts-learnings` entry.
+
+Verified before asserting any of it: `redis` appears in 21 files and `websocket` in 7, but only
+ever as incidental examples inside other chapters (1–3 mentions each, never a chapter topic).
+`socket.io`, `curry`, `event bubbling`, `event delegation`: zero files. A `DOM` grep returning 111
+files was a **false positive** — it matches "domain".
+
+**The genuine content gap the bank carries is the browser.** `js-learnings` scoped the DOM out
+deliberately ("language only") and `node-learnings` is server-side, so the DOM event model —
+bubbling, capturing, delegation — is taught nowhere in this repo. Category 07 is the only place in
+the bank where teaching is in scope, and it gets a short `concepts.md` rather than a chapter.
+
+**Design decision: every problem ships with an executable spec.** `node --test` and `node:assert`
+are built into Node 22, so the bank has zero dependencies except category 07 (jsdom, verified
+working — it correctly produces `a-capture -> b-target -> a-bubble`). The tests *are* the "what to
+verify" checklist in executable form, which is what makes this a drill rather than a reading list,
+and they specify behaviour without leaking implementation so the no-solving contract holds.
+`lib/load.js` fails with an instruction naming the file and export to create, rather than a
+module-not-found stack — a useless error under a timer is its own bug.
+
+**Category 01 is complete and was verified in both directions**, which is the part worth
+recording as a method:
+
+1. **Satisfiable** — reference solutions written in `/tmp`, all **33 tests pass**, then deleted so
+   `solution/` stays empty per the contract. They never entered the repo.
+2. **Discriminating** — deliberately naive implementations run against the same tests, each
+   failing exactly the tests that claim to catch it and passing the happy-path ones:
+
+   | Naive implementation | Result |
+   |---|---|
+   | `curry` with a shared accumulator | 3 pass / 3 fail |
+   | `memoize` with `join()` + truthiness check | 2 pass / 3 fail |
+   | `once` that forgets the result | 2 pass / 2 fail |
+   | `partial` as an arrow (loses the receiver) | 3 pass / 1 fail |
+
+   A bank whose tests pass naive code is worthless, and half of these problems have a naive
+   version that passes the happy path — so this second pass is not optional. It is the same
+   lesson Ch17 and Ch22 both recorded about exercise questions needing verification, applied
+   before shipping rather than after.
+
+One test turned out to demand more than the textbook implementation and was kept deliberately:
+`curry` preserving the receiver for a method requires capturing `this` at the partial-application
+site, which most reference implementations of `curry` do not do. It is listed explicitly in the
+problem's edge cases, so it is fair, and it is a real discriminator.
+
+`problems.md` for category 01 carries 7 problems with target times (4–10 min), the edge case each
+one is really testing phrased as a question to ask out loud, graded hints (1 = nudge, 3 = nearly
+the shape), and a cross-reference to the `js-learnings` chapter that explains the mechanism, so a
+failed drill has somewhere to go back to.
+
+---
+
+## 2026-09-05 — New track: `ts-learnings/`. Chosen over React/Next and Express, with reasons.
+
+`js-learnings/` finished at 22 chapters, so the question was what comes next. Surveyed the repo
+before answering rather than guessing, and three facts decided it:
+
+- **No TypeScript anywhere.** 145 JS content files, zero TS, and no mention in any track prompt.
+- **`react/` is not empty** — it has `prompt.md` plus two chapters (`01-mental-model`,
+  `02-render-vs-commit-phase`) with README/notes/interview but **no `mock.md` and no exercises**.
+  Written under the older contract; the same state `js-learnings` chapters 1–12 are in. So React
+  is a *resumption*, not a new folder.
+- **Five tracks have mentor prompts written and zero content**: `docker`, `k8s`, `linux`,
+  `ci-cd-pipelines`, `scripting`.
+
+**The decisive argument for TypeScript over React/Next was ordering, not preference.** TS is a
+*dependency* of the React work: a React round at a product company is conducted in TS, a large
+share of real React questions are typing questions (props generics, `ReactNode` vs `ReactElement`,
+discriminated unions for component state), and React notes written in plain JS would have to be
+rewritten. Next.js was additionally judged a poor standalone track because App Router and caching
+semantics churn fast enough that notes go stale inside a year — it belongs as an extension of
+`react/`.
+
+**Express was rejected as a track**, and the reasoning is worth keeping so it does not get
+re-proposed: the material that goes deep — async error propagation, middleware as composition,
+streaming responses, `next(err)` — is already in `node-learnings`, which references Express in
+four chapters as applied examples. What is left is roughly one chapter of genuinely new content,
+and it belongs inside `node-learnings` rather than in a folder of its own.
+
+**Toolchain finding that shapes the track: `tsc` was not installed, and npm reports TypeScript
+7.0.2 as current** — the native compiler port, newer than the assistant's training data. Installed
+and verified rather than assumed: diagnostics still use the familiar
+`file(line,col): error TS2322: ...` format with error codes intact. The track pins 7.0.2 the way
+the JS track pins its Node version, because flag-dependent behaviour is most of the subject.
+
+**The one substantive change to the contract**, versus `js-learnings/prompt.md` which it is
+otherwise adapted from: **every example must show both the compiler diagnostic and the runtime
+behaviour.** The gap between what `tsc` says and what Node does *is* TypeScript, so an example
+showing one half teaches half the subject. Corollary rules: paste `tsc` output verbatim
+**including the error code** (that is what gets searched at 2am), and state when
+`--experimental-strip-types` is used to produce the runtime half, because stripping is not
+compiling.
+
+Thirteen chapters planned, opening with structural typing and erasure — the two facts that
+generate the rest — and closing with runtime validation, because "the type system stops at the
+network boundary" is the honest limit of everything above it. `JSON.parse(x) as User` is named in
+the plan as the most common production bug in TypeScript codebases.
+
+Also recorded in the track's own history: the scale caveat for this track is usually **compile**
+cost, not runtime — a conditional type that explodes on a large union, a `.d.ts` that slows the
+whole project.
+
+---
+
 ## 2026-09-05 — JS Chapter 22: Strict Mode. **The language track is complete.**
 
 `js-learnings/chapter-22-strict-mode/` — README, notes, interview, mock, six runnable examples,
