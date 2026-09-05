@@ -1,0 +1,10 @@
+{
+  "name": "js-machine-round",
+  "private": true,
+  "type": "commonjs",
+  "description": "Timed implementation drills. Solutions go in each category's solution/ dir.",
+  "scripts": {
+    "test": "node --test",
+    "drill": "node --test"
+  }
+}
