@@ -9,6 +9,116 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-05 — JS Chapter 21 written: `undefined`, `null`, and Missing
+
+`js-learnings/chapter-21-undefined-null-and-missing/` — README (697 lines), notes, interview, mock,
+eight runnable examples, chapter + cumulative exercises, blank worksheet. `prompt.md` updated:
+only strict mode remains.
+
+**Framed as a modelling topic, not a syntax one — that decision is the chapter.** Everyone knows
+what `??` does, so nothing is scored on the operator. The round turns on two things: *"when would
+you deliberately want `||`?"* (the answer is a form field or query param, where `""` and "not filled
+in" genuinely are the same thing — "always use `??`" is a rule-repeater's answer), and whether
+`a?.b?.c?.d?.e` reads as caution or as not knowing your data's shape.
+
+**Absence is taught as FIVE states, not two:** holds a value · holds `undefined` · holds `null` ·
+absent · array hole. That framing is what makes the operator table legible — the final table in the
+README shows that **only `in` separates "holds undefined" from "absent"**, and every operator in the
+language treats them identically.
+
+**The design rule that answers "when do you use each":** `undefined` is what the *language*
+produces (six sources, all measured); `null` is what *you or an API* assign — JS never produces one
+on its own. Hence `PATCH { "nickname": null }` means delete, an absent key means don't touch, and
+flattening both makes deletion inexpressible. That is the sentence that turns the opener from a
+definition into an answer.
+
+Six things the examples pinned down:
+
+- **`null == 0` is `false` and `null >= 0` is `true`** because they are *different algorithms*:
+  `==` hard-codes nullish and coerces nothing; relational coerces with `ToNumber`, and
+  `Number(null)` is `0`. `undefined` differs on the second because `Number(undefined)` is `NaN`.
+- **`a ?? b || c` is a parse error, not a lint rule**, and the committee was right: `(0 ?? 1) || 2`
+  is `2` while `0 ?? (1 || 2)` is `0`, so either precedence would silently do the other thing.
+- **`??=` short-circuits the assignment, not just the value.** A getter/setter log proves
+  `target.v ??= 9` on `v === 0` reads and never writes, where `v = v ?? 9` always calls the setter.
+  Matters for setters, `Proxy` traps, reactive tracking and frozen objects.
+- **A default parameter is `!== undefined`, not `??`** — narrower by exactly one value. Two features
+  added for the same reason with different rules, and nobody volunteers it.
+- **Adding a default changes two other things**: `arguments` stops being a live view of the
+  parameters (rest params and destructuring do it too), and a `"use strict"` body directive becomes
+  `SyntaxError: Illegal 'use strict' directive in function with non-simple parameter list`.
+- **`?.` short-circuits the whole remaining chain**, stops at a parenthesis, skips argument
+  evaluation, and does *not* make the result safe — `a.b?.c + 1` is `NaN`. It converts a loud
+  failure at the read into a quiet one downstream.
+
+**Scale caveat, measured on a 50,000-key object:** `'k' in obj` is 37 ns/op;
+`Object.keys(obj).includes('k')` is 19.3 ms/op — 528,000x, because it materialises the whole key
+array every call. Both spellings look equally innocent in review. *Fine for a ten-key options
+object, wrong for a cache.*
+
+**The cumulative exercise is a layered config resolver with `explain()`** — defaults → file → env →
+CLI → runtime patch, where every layer disagrees about what absence means (`APP_VERBOSE="false"` is
+a truthy string, `--tag=` is an empty value, a JSON layer cannot carry `undefined`). It reaches back
+into Ch16 error causes, Ch17 retention, Ch18 freezing and structural sharing, and Ch19 numeric
+parsing. The deliverable is the provenance output, not the merge.
+
+---
+
+## 2026-09-05 — JS Chapter 20 written: Modules (ESM)
+
+`js-learnings/chapter-20-modules-esm/` — README (876 lines), notes, interview, mock, nine runnable
+example sets, chapter + cumulative exercises, blank worksheet. `prompt.md` updated: modules moves
+into "covered", leaving `undefined`/`null`/missing and strict mode as the remaining two.
+
+**The spine is one sentence:** an ES module's imports are wired to the *exporter's own binding
+slots* by a linking phase that completes before any code runs. Live bindings, read-only imports,
+link-time export checking and the cycle TDZ are all the same fact seen from four angles, and the
+chapter is organised so each part names which of the three phases — parse, link, evaluate — it
+belongs to. The habit being trained: **answer "what happens" with "in which phase"**.
+
+**Scoped against `node-learnings/14-module-system-internals/` deliberately, per the note left in
+`prompt.md` on 2026-09-03.** Zero overlap: that chapter owns resolution, the module cache and
+startup cost; this one owns the phase split, binding indirection, cycle TDZ, module scope and
+interop. The Node chapter's claim that cycles "safely point to empty memory slots" is corrected
+here with a measured run.
+
+**Everything was measured on Node 22.13.0, and the version turned out to matter more than in any
+other chapter.** `require(esm)` shipped unflagged in **22.12**, so the standard interview answer —
+"you can't `require()` an ES module because ESM is async" — is now wrong. It works whenever the
+whole graph is synchronous; with top-level await anywhere in it you get `ERR_REQUIRE_ASYNC_MODULE`,
+because the one thing `require` cannot do is return a promise. `require("./sync.mjs")` returns the
+**namespace** (with `__esModule: true` added), not `module.exports`. This is now the closer of
+`mock.md`, framed as a dating question.
+
+Five things the examples proved that reading would not have:
+
+- **A link error runs nothing.** `import { MISSING }` from a module that `console.log`s on
+  evaluation produces `SyntaxError: ... does not provide an export named` and the log never appears.
+  Missing exports are a *static* defect, same class as a bad brace.
+- **The namespace object's descriptor lies.** `Object.getOwnPropertyDescriptor(ns, "count")` reports
+  `writable: true` and the assignment still throws `Cannot assign to read only property` — the
+  exotic `[[Set]]` returns false unconditionally. `Object.isFrozen(ns)` is `false` while nothing can
+  be written. The only place in the language where the descriptor is not the authority.
+- **The two systems disagree about who runs first in a cycle.** ESM: `main → a → b → a` evaluates
+  `b` to completion before `a` starts (depth-first post-order). CJS: `a` starts first and is
+  interrupted mid-body. Same graph, opposite order — a detail almost nobody has.
+- **An unsettled top-level await exits 13 with no exception.** `Warning: Detected unsettled
+  top-level await`, then the loop empties and Node quits. Nothing is thrown, so nothing catches it.
+  In production: a container that starts, logs nothing useful, and dies.
+- **A module that throws is cached as errored; CJS deletes it and re-runs.** Two `import()`s of a
+  throwing module evaluate it once and replay the same error; two `require()`s evaluate it *twice*.
+  A CJS module that opens a connection before it throws opens two.
+
+**`cjs-module-lexer` is a text scanner, and the exercise leans on the distinction.**
+`exports.devOnly = …` inside an `if` **is** found (it matches a shape); `exports[computed] = …` is
+not (the name isn't in the text). That is why named imports from a CJS dependency can work in dev
+and fail after a build changes the dist file.
+
+**Chapter 19's worksheet is still blank** — Ch20 was written ahead of it deliberately, same as
+Ch10's exercises in the AI track. Both sets are open.
+
+---
+
 ## 2026-09-03 — JS Chapter 19 written: Numeric Edge Cases (and the topic order changed)
 
 `js-learnings/chapter-19-numeric-edge-cases/` — README, notes, interview, mock, six runnable

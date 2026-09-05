@@ -95,27 +95,24 @@ Progression:
 
 Topics (interview-weighted, language only — do not dump all at once):
 
-Covered, chapters 1–19:
+Covered, chapters 1–21:
 
 - Parsing / compilation / execution · execution contexts · lexical scope · hoisting · `this` ·
   closures · primitives vs references · coercion and equality · objects and the prototype
   chain · `new`, constructors and classes · functions as objects · iteration protocols and
   generators · callbacks and inversion of control · promises and async foundations ·
   microtasks and macrotasks · error handling semantics · memory management and leaks ·
-  copying, immutability and freezing · numeric edge cases
+  copying, immutability and freezing · numeric edge cases · modules (ESM) ·
+  `undefined` vs `null` vs missing
 
-Remaining, in priority order:
+Remaining:
 
-1. **Modules (ESM)** — live bindings, hoisting of imports, cyclic imports, ESM vs CJS
-   interop and why `require` of an ESM module fails. **Scope this to language semantics only**
-   — `node-learnings/14-module-system-internals/` already covers the runtime half (resolution
-   algorithm, module cache, the four load phases, startup cost) in 1,735 lines. What is *not*
-   there: TDZ across a cycle (that chapter says cycles "safely point to empty memory slots";
-   reading an imported `const` mid-cycle actually throws `ReferenceError: Cannot access 'x'
-   before initialization`), module-scope semantics (`this === undefined`, `var` not on
-   `globalThis`, always strict), and the spoken/timed framing.
-2. **`undefined` vs `null` vs missing** — `??` vs `||`, optional chaining, default parameters.
-3. **Strict mode and why it exists** — short chapter, mostly a follow-up magnet.
+1. **Strict mode and why it exists** — short chapter, mostly a follow-up magnet. Note that the
+   module half is already covered (Ch20: always strict, no opt-out, the consequences you
+   actually hit) and so are three of its effects seen from elsewhere (Ch21: `undefined = 42`
+   throwing, a non-simple parameter list forbidding the body directive, unmapped `arguments`).
+   This chapter is the standalone `"use strict"` story: what it changes, the sloppy-mode
+   behaviour it removes and why, and why it is the follow-up to half a dozen other questions.
 
 Important:
 
@@ -134,3 +131,15 @@ History of this file:
 - **Chapters were renumbered on 2026-09-01** to put callbacks before promises, where they
   belong: callbacks and inversion of control took the empty 13, and promises, microtasks and
   error handling each moved up one to 14, 15 and 16.
+- **Chapter 20 (Modules / ESM) was written on 2026-09-05.** It deliberately overlaps
+  `node-learnings/14-module-system-internals/` on nothing: that chapter has resolution, the
+  cache and startup cost; this one has the parse/link/evaluate split, live bindings as
+  indirect bindings, TDZ across a cycle (correcting the Node chapter's "safely point to empty
+  memory slots"), module scope, and the interop story. All outputs are measured on Node
+  22.13.0, which matters here — `require(esm)` shipped unflagged in 22.12, so the folklore
+  answer to "why can't you require an ES module" is now wrong.
+- **Chapter 21 (`undefined` vs `null` vs missing) was written on 2026-09-05**, same day as Ch20.
+  Framed as a modelling topic rather than a syntax one — the round is decided by "when would you
+  deliberately want `||`?" and by whether `a?.b?.c?.d` reads as caution or as not knowing your
+  data's shape. Absence is taught as **five** states (value / `undefined` / `null` / absent /
+  array hole), because that is what makes the operator table legible.
