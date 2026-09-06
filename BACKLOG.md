@@ -15,6 +15,7 @@ where it landed**, including the things deliberately not done.
 |---|---|---|
 | **Currying, closures, partial application** | `js-machine-round/01-closures-and-currying/` | 7 problems, specs + tests written. `node --test "js-machine-round/01-closures-and-currying/tests/*.test.js"` |
 | **Custom EventEmitter** | `hands-on-builds/01-event-emitter/` | 6 phases, specs + tests written. `node --test "hands-on-builds/01-event-emitter/tests/*.test.js"` |
+| **Polyfills — `call`, `apply`, `new`, `bind`, `debounce`, `throttle`** | `js-machine-round/02-function-polyfills/` | 6 problems, specs + tests written. `node --test "js-machine-round/02-function-polyfills/tests/*.test.js"` |
 | **Redis-backed auth — sessions, JWT, revocation** | `hands-on-builds/13-redis-auth/` | 7 phases, spec written, phase 1 tested. Needs Redis in Docker for phases 2+. `node --test "hands-on-builds/13-redis-auth/tests/*.test.js"` |
 
 Both are **unattempted**. Nothing else needs writing before you can start.
@@ -30,7 +31,6 @@ written.
 
 | # | Category | Covers ideas you raised |
 |---|---|---|
-| 02 | Function polyfills | **polyfills** — `call`/`apply`/`bind` (with `new`), `debounce`, `throttle` |
 | 03 | Array polyfills | `map`/`filter`/`reduce`, `flat`, holes |
 | 04 | Promise polyfills | **promisification**, `all`/`allSettled`/`race`/`any`, retry |
 | 05 | Async patterns | concurrency, cancellation, backoff |

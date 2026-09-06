@@ -9,6 +9,54 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-06 — Machine round category 02: function polyfills
+
+Asked where the `call`/`apply`/`bind` polyfills were. They were queued, not written — category 01
+was the only one built. Written now: six problems, all six with executable specs.
+
+**Ordered as a dependency chain rather than by difficulty**, because that is how the sequence is
+actually asked: `myCall` → `myApply` → **`myNew`** → `myBind`. Implementing `new` before `bind` is
+the part usually skipped, and it is what makes `bind` tractable — a bound function called with
+`new` has to construct, so you cannot write the fourth without understanding the third. The
+problems file says explicitly not to skip ahead.
+
+**`myBind` is the level-separator and the tests are built to prove it.** Every claim was verified
+against the real `bind` first rather than recalled:
+
+- `new` on a bound function **ignores the bound `this`** and constructs a real instance
+- the **prototype chain survives**: `new bound(...) instanceof original` is `true`
+- preset args survive construction
+- `bound.length === original.length - preset.length`, floored at 0 (`f(a,b,c)` → 3, `f.bind(null,1)` → 2)
+- `bound.name === "bound f"`
+- a bound function has **no own `prototype`**
+
+Also verified for `myNew`: a constructor returning an **object** overrides `this`, returning a
+**primitive** is ignored, and `null` must not win despite `typeof null === "object"`.
+
+Both directions checked before shipping, and the naive column is the point — each of these is the
+version people actually write:
+
+| Naive implementation | Result |
+|---|---|
+| `myCall` with a fixed string key and no cleanup | 2 pass / **4 fail** |
+| `myApply` with no missing-args handling | 2 pass / **3 fail** |
+| `myNew` ignoring the return-value rule | 5 pass / **1 fail** |
+| **`myBind` as the one-line arrow** | 3 pass / **4 fail** — every `new` case |
+| `debounce` without cancel/flush/leading | 3 pass / **3 fail** |
+| `throttle` as a boolean gate with no options | 3 pass / **2 fail** |
+
+Reference implementations pass 35/35; written in `/tmp` and deleted, `solution/` stays empty.
+
+**Two of my own tests were wrong and only running them caught it** — the same lesson as Ch17,
+Ch22 and the `alg:none` test, now four for four. `myNew`'s "returns a primitive is ignored" and
+"null does not override" both used `assert.deepStrictEqual(myNew(Weird), { a: 1 })`, which
+**compares prototypes** — and `Object.create(Ctor.prototype)` never deep-equals a plain object
+literal. The correct implementation failed them. Rewritten to assert the property *and*
+`instanceof`, which is a better test anyway: the rule being checked is "you get the instance
+back", and `instanceof` states that directly where `deepStrictEqual` only implied it.
+
+---
+
 ## 2026-09-05 — The `js-learnings` chapter structure standardised across all 16 track prompts
 
 Asked to push the structure the JS track converged on — README · notes · interview · mock ·

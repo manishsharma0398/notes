@@ -15,11 +15,12 @@ everything below.
 | Category | Status |
 |---|---|
 | 01 — Closures, currying, partial application (7 problems) | **specified + tested, unattempted** |
-| 02–08 | not written yet |
+| 02 — Function polyfills (6 problems) | **specified + tested, unattempted** |
+| 03–08 | not written yet |
 
 **"Continue" means:** write the next category from the bank table below, in order, unless I name
-a different one. That is **02 — Function polyfills** (`myCall`, `myApply`, `myBind` *with `new`*,
-`debounce`, `throttle`).
+a different one. That is **03 — Array polyfills** (`map`/`filter`/`reduce` with the
+no-initial-value trap, `flat`, holes).
 
 Each category needs: `problems.md` (specs + target times + graded hints), `tests/*.test.js` (one
 per problem), and an empty `solution/` with a `.gitkeep`.

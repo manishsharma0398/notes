@@ -67,7 +67,7 @@ fails exactly the tests that claim to catch it.
 | # | Category | N | Status | Carries |
 |---|---|---|---|---|
 | 01 | [Closures, currying, partial application](01-closures-and-currying/problems.md) | 7 | **ready** | The most-asked family |
-| 02 | Function polyfills | 6 | planned | `bind` with `new` — the classic level-separator |
+| 02 | [Function polyfills](02-function-polyfills/problems.md) | 6 | **ready** | `bind` with `new` — the classic level-separator |
 | 03 | Array polyfills | 7 | planned | `reduce` with no initial value; array holes |
 | 04 | Promise polyfills | 7 | planned | `MyPromise` is the 45-minute question |
 | 05 | Async patterns | 7 | planned | Concurrency, cancellation, retry |
@@ -85,8 +85,6 @@ everything else has zero dependencies.
 
 Listed so the plan is reviewable before it is built.
 
-- **02 · Function polyfills** — `myCall`, `myApply`, `myBind` (**with `new` support**), `debounce`
-  (+ leading/trailing), `throttle`, `Function.prototype.myBind` preserving the prototype chain.
 - **03 · Array polyfills** — `myMap`, `myFilter`, `myReduce` (no-initial-value is the trap),
   `myFlat(depth)`, `myForEach` over holes, `groupBy`, `chunk`/`zip`.
 - **04 · Promise polyfills** — `MyPromise` (full state machine), `all`, `allSettled`, `race`,
@@ -107,12 +105,18 @@ Listed so the plan is reviewable before it is built.
 
 Keep this current — it is the only record of what is actually drilled versus merely read.
 
-| Problem | Target | Time | First try | Hint | What I got wrong |
-|---|---|---|---|---|---|
-| 01 · curry | 8m | | | | |
-| 02 · curry placeholder | 10m | | | | |
-| 03 · once | 4m | | | | |
-| 04 · memoize | 8m | | | | |
-| 05 · counter | 4m | | | | |
-| 06 · sum (coercion) | 8m | | | | |
-| 07 · partial | 5m | | | | |
+| Cat | Problem | Target | Time | First try | Hint | What I got wrong |
+|---|---|---|---|---|---|---|
+| 01 | curry | 8m | | | | |
+| 01 | curry placeholder | 10m | | | | |
+| 01 | once | 4m | | | | |
+| 01 | memoize | 8m | | | | |
+| 01 | counter | 4m | | | | |
+| 01 | sum (coercion) | 8m | | | | |
+| 01 | partial | 5m | | | | |
+| 02 | myCall | 5m | | | | |
+| 02 | myApply | 4m | | | | |
+| 02 | myNew | 7m | | | | |
+| 02 | **myBind (with `new`)** | 12m | | | | |
+| 02 | debounce | 10m | | | | |
+| 02 | throttle | 8m | | | | |
