@@ -18,11 +18,11 @@ A chapter is the full `js-learnings` shape — see **Chapter structure** below. 
 `exercises/chapter_exercise.md`, `exercises/cumulative_exercise.md`, plus the blank worksheet.
 A chapter is not finished until all of them exist.
 
-**Every header, certificate and response pasted must be real.** This machine has **no outbound
-DNS** — verified, `curl https://example.com` fails to resolve — so examples run against a **local
-Node server** and a **self-signed certificate**, both verified working. That is a feature, not a
-workaround: a chapter whose output depends on a third party's live server rots the moment they
-change a header.
+**Every header, certificate and response pasted must be real.** Both real-site and local-server
+examples are available — see **Toolchain** below for the exact method, including the DNS
+workaround needed inside the assistant's sandbox. Prefer a **local server** for anything a reader
+must be able to reproduce years from now, and a **real site** where the point is what production
+actually does (a real CSP, a real HSTS header, a real certificate chain).
 
 After finishing a chapter: move it from "Planned" to "Covered" below, and add a `HISTORY.md`
 entry.
@@ -139,19 +139,47 @@ Interview readiness:
   URL and press enter". Treat it as the flagship: it should be answerable in 90 seconds and
   expandable to 15 minutes.
 
-Toolchain — verified on this machine:
+Toolchain — verified 2026-09-06, and read the DNS note before assuming anything:
 
-- **No outbound DNS.** `curl https://example.com` fails to resolve. All examples use a local
-  server; this is deliberate and makes them reproducible years from now.
-- `curl` and `openssl` are present. `dig` and `nslookup` are **not** — use Node's `dns` module for
-  resolution examples, and say so.
-- A local Node HTTP server reproduces real `Set-Cookie`, `Content-Security-Policy`, redirects and
-  status codes — verified.
-- Self-signed certificates via `openssl req -x509 -newkey rsa:2048 -keyout k.pem -out c.pem
-  -nodes -subj "/CN=localhost"` — verified, and enough to demonstrate chain-of-trust failures,
-  SAN mismatches and expiry.
-- Browser DevTools (Network, Application, Lighthouse) for anything that needs a real browser —
-  say when a reader has to look there rather than run a script.
+- **Outbound network works. Standard DNS resolution does not, inside the assistant's sandbox.**
+  UDP port 53 is blocked, so `curl https://example.com` fails with "Could not resolve host" and
+  `node:dns` times out — but **TCP/443 is open**, so DNS-over-HTTPS works and any real site is
+  reachable. `dig` and `nslookup` are absent and `sudo` needs a password, so they cannot be
+  installed.
+- **On Manish's own WSL terminal DNS resolves normally** (the WSL resolver at `10.255.255.254`).
+  So this is a limitation of where the assistant runs, **not of the environment** — do not write
+  it into a chapter as though it were a property of the machine.
+- **The workaround, verified end to end**, for use when writing chapters:
+
+  ```bash
+  # resolve over DoH, then hand curl the address
+  IP=$(curl -sS -H "accept: application/dns-json" \
+        "https://1.1.1.1/dns-query?name=github.com&type=A" |
+        grep -o '"data":"[0-9.]*"' | head -1 | cut -d'"' -f4)
+  curl -sSI --resolve github.com:443:$IP https://github.com
+  openssl s_client -connect $IP:443 -servername github.com </dev/null
+  ```
+
+  Confirmed working: `HTTP/2 200` from example.com, its real certificate chain
+  (`subject=CN = example.com`, `issuer=... Cloudflare TLS Issuing ECC CA 3`), and GitHub's real
+  `strict-transport-security: max-age=31536000; includeSubdomains; preload`,
+  `x-frame-options: deny`, a full production CSP, and a real
+  `set-cookie: ...; path=/; HttpOnly; secure; SameSite=Lax`.
+
+- **Which to use, per example:**
+  - **Real site** where the lesson *is* what production does — a real CSP's shape, a real HSTS
+    preload directive, a real certificate chain and issuer, HTTP/2 in the response line. Always
+    **date the capture**, because these change.
+  - **Local Node server** for anything the reader must reproduce exactly and forever — cookie
+    attribute behaviour, redirect chains, status-code handling, CORS preflight, a deliberately
+    vulnerable app. Verified producing real `Set-Cookie` (`HttpOnly`, `SameSite`), a 302 with
+    `Location`, and a CSP header.
+  - **Self-signed certs** via `openssl req -x509 -newkey rsa:2048 -keyout k.pem -out c.pem -nodes
+    -subj "/CN=localhost"` for chain-of-trust failures, SAN mismatch and expiry — verified.
+- `curl` and `openssl` are present. Use Node's `dns` module for resolution examples and say that
+  it needs a working resolver.
+- Browser DevTools (Network, Application, Lighthouse) for anything needing a real browser — say
+  when the reader has to look there rather than run a script.
 
 ---
 
@@ -300,13 +328,16 @@ History of this file:
   `node-learnings` Ch08–09 and a future networking track would otherwise all claim TCP, TLS and
   DNS. Node keeps the *server socket* view (buffers, slow clients, FIN/RST, `dns.lookup` vs
   `resolve`); this track keeps the *browser↔server contract* view.
-- **Toolchain verified rather than assumed, and it changed the plan:** this machine has **no
-  outbound DNS** — `curl https://example.com` cannot resolve. `dig` and `nslookup` are absent;
-  `curl` and `openssl` are present. Examples therefore run against a **local Node server** and a
-  **self-signed certificate**, both confirmed working (real `Set-Cookie` with `HttpOnly`/`SameSite`,
-  a 302 with `Location`, a CSP header, and an `openssl`-generated cert with readable
-  subject/validity). This is better than hitting a live third party anyway: those examples rot
-  silently when someone else changes a header.
+- **The toolchain claim was wrong on first pass and was corrected the same day.** The initial
+  finding — "no outbound DNS, therefore local examples only" — was an over-reading of a single
+  failed `curl`. Re-tested when challenged: **the network works fine; only UDP:53 is blocked in
+  the assistant's sandbox.** TCP/443 is open, so DNS-over-HTTPS resolves and every real site is
+  reachable via `--resolve`. Confirmed by pulling `HTTP/2 200` from example.com, its real
+  certificate chain, and GitHub's production HSTS, CSP, `x-frame-options` and
+  `HttpOnly; secure; SameSite=Lax` cookie. **On the actual WSL machine DNS resolves normally** —
+  the limitation was where the assistant runs, not the environment, and writing it into the track
+  as a permanent constraint would have cost the chapters their best material: real headers from
+  real production sites.
 - **The case-study rule is the distinctive one.** Every security chapter must carry a real, named,
   dated incident with what the attacker actually sent and which control would have stopped it.
   A vulnerability explained abstractly is forgettable; Samy, Firesheep and Magecart are not.

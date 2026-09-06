@@ -171,8 +171,10 @@ Five chapters, to be written under the standard structure above:
 
 **Verified on this machine before writing any of it:** `ssh`, `sshd` and `ssh-keygen` are all
 present, and `ssh-keygen -t ed25519` works (produces a `256 SHA256:... (ED25519)` fingerprint).
-But there is **no outbound network**, so examples must use a **local `sshd` on loopback** rather
-than a remote host. Keys, fingerprints, `authorized_keys`, config parsing and `known_hosts`
+Outbound network **does** work (only UDP:53 is blocked inside the assistant's sandbox, and DNS
+resolves normally on the real WSL machine) — but SSH examples should still use a **local `sshd` on
+loopback**, because an exercise that depends on a reachable third-party host is not reproducible
+and should not be graded. Keys, fingerprints, `authorized_keys`, config parsing and `known_hosts`
 manipulation are all demonstrable locally; anything needing a second machine is not, and the
 chapter should say so rather than pretend.
 

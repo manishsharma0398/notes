@@ -78,6 +78,27 @@ second machine is not, and the chapters must say so rather than pretend.
 `networking/` is now recorded in `BACKLOG.md` as deliberately reserved, so the split is written
 down rather than remembered.
 
+**Correction, same day: the "no outbound network" finding was wrong.** It came from a single
+failed `curl https://example.com` and got generalised into a track-level constraint. Challenged on
+it, re-tested properly, and the real picture is narrower: **only UDP:53 is blocked inside the
+assistant's sandbox.** TCP/443 is open, so DNS-over-HTTPS resolves and any real site is reachable
+by handing the address to `curl --resolve`. Verified end to end — `HTTP/2 200` from example.com,
+its real chain (`issuer=... Cloudflare TLS Issuing ECC CA 3`), and GitHub's production
+`strict-transport-security: max-age=31536000; includeSubdomains; preload`, `x-frame-options: deny`,
+a full CSP, and `set-cookie: ...; HttpOnly; secure; SameSite=Lax`.
+
+On the actual WSL machine DNS resolves normally — the limitation was **where the assistant runs,
+not the environment.** Baking it into the track would have cost the chapters their best material:
+a real production CSP and a real `Set-Cookie` are worth more than any local reconstruction of
+them. Both `web-platform/prompt.md` and `linux/prompt.md` corrected, and the toolchain section now
+carries the working DoH + `--resolve` recipe plus a rule for choosing between the two sources:
+**real site where the lesson is what production does (and date the capture, because it changes);
+local server where the reader must reproduce it exactly and forever.**
+
+The generalisable lesson, which is the reason this is written down: **one failed command is
+evidence about that command, not about the environment.** The repo's own standard — measure, don't
+assert — was applied to the chapters and not to the tooling assumption underneath them.
+
 ---
 
 ## 2026-09-06 — Machine round category 02: function polyfills
