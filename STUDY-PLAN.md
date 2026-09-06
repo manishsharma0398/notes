@@ -219,9 +219,15 @@ Not a finished repo. This:
 - **After every interview**, note in `applications/APPLICATIONS.md` what was actually asked. If a
   topic came up that this plan cut, that is a signal to re-cut — not a reason to feel behind.
   Interviews are better evidence about the market than my assumptions are.
-- **One LinkedIn post a week**, Sunday, from the week's most surprising measurement.
-  `career-inventory/LINKEDIN.md` has the cadence and a bank of already-verified findings from this
-  repo. Never post anything sourced from the career-inventory repo itself.
+- **One LinkedIn post a week**, Sunday, 20 minutes, from the week's most surprising measurement.
+  `career-inventory/LINKEDIN.md` now has a full plan: the profile overhaul to do in week 1 instead
+  of a post, a **12-week post schedule mapped to this one** (week 5 is DynamoDB, week 8 security,
+  week 10 Redis, week 12 DocuMind — the four worth the most, because they are what you are
+  learning *now*), a bank of already-verified findings for weeks that slip, and format rules.
+
+  **It is also the first thing to cut.** The drop order when a week is tight is
+  **post → track reading → DSA**, and DSA never goes. Content creation feels productive and is a
+  classic avoidance behaviour when the real work is hard — 20 minutes, then stop.
 
 *Written 2026-09-06. Revisit at week 4 — if interviews are showing a different gap than this plan
 assumes, the interviews are right and the plan is wrong.*
