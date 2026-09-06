@@ -310,10 +310,40 @@ Planned, in order — six parts, dependency-ordered. **30 chapters.**
 24. **The rest of the top ten** — clickjacking and frame-ancestors, open redirect, SSRF, IDOR and
     broken access control, mass assignment, and a security-header roundup that explains each
     header rather than listing it.
-25. **Secrets, and what leaks to the client** — what actually ends up in a browser bundle,
-    `NEXT_PUBLIC_`-style prefixes and the false sense of safety around them, `.env` files in git
-    history, secrets in source maps and error payloads, key rotation, and the rule underneath all
-    of it: **you cannot keep a secret in something you hand to the user.**
+25. **Secrets, and what leaks to the client** — the chapter that has to break a belief, not just
+    add a fact. The belief is *"it's in `.env`, so it's safe"*.
+
+    **Open with the demonstration, because the argument does not land without it.** Verified with
+    `esbuild` on 2026-09-06 — a `.env` that is correctly gitignored, and a build that inlines it:
+
+    ```javascript
+    // app.js — before
+    const key = process.env.API_KEY;
+
+    // the shipped bundle — after
+    var key = "sk-super-secret-do-not-ship";
+    ```
+
+    Three follow-ups, all verified in the same run:
+
+    - **Minification does not help.** The variable is renamed to `e`; the *string* survives
+      byte-for-byte: `var e="sk-super-secret-do-not-ship"`.
+    - **A source map ships your original source too**, in `sourcesContent` — so even the
+      pre-build code is downloadable.
+    - The mechanism is **static replacement at build time**. `process.env.X` is not read at
+      runtime in the browser; the bundler substitutes the literal. There is no runtime lookup to
+      protect.
+
+    Then the rest: `NEXT_PUBLIC_` / `VITE_` / `REACT_APP_` prefixes are **an opt-in to exposure,
+    not a safety feature**, and people read them exactly backwards — the unprefixed variable is
+    the one that stays server-side, and only in frameworks that have a server side at all.
+    Hardcoded secrets in frontend files as the same bug without the ceremony. `.env` committed to
+    git and still in history after deletion. Secrets in Docker image layers, CI logs, error
+    payloads and stack traces. Key rotation as the only real remedy once one has shipped.
+
+    **The rule underneath all of it: you cannot keep a secret in something you hand to the user.**
+    If the browser can use it, the user can read it. The fix is never obfuscation — it is moving
+    the call to a server you control, so the secret never leaves it.
 26. **Supply chain** — dependency confusion, typosquatting, postinstall scripts, lockfile
     integrity, SRI for CDN scripts. **Case studies: `event-stream`, `ua-parser-js`, Magecart.**
 

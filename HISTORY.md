@@ -116,6 +116,17 @@ returning **zero or only incidental** hits across the repo before being added:
   and the false safety around them, `.env` in git history, source maps. The rule underneath:
   you cannot keep a secret in something you hand to the user.
 
+  **Expanded when asked specifically how "even using `.env` can leak secrets"** — the right
+  question, and the chapter now opens with the demonstration rather than the claim, because the
+  belief being broken is *"it's in `.env`, so it's safe"*. Verified with `esbuild`: a correctly
+  gitignored `.env`, and the shipped bundle contains
+  `var key = "sk-super-secret-do-not-ship"` as a bare literal. Two follow-ups verified in the same
+  run — **minification does not help** (the variable becomes `e`, the string survives
+  byte-for-byte), and **a source map ships the original source** in `sourcesContent`. The
+  mechanism is static replacement at build time: `process.env.X` is never read at runtime in a
+  browser, so there is no lookup to protect. Prefixes like `NEXT_PUBLIC_` are an **opt-in to
+  exposure**, read backwards by almost everyone.
+
 **SSH is now in both tracks on purpose, and the split is stated in both.** Ch30 here is the
 working subset — keys, `~/.ssh/config` and `ProxyJump`, git over SSH, deploy keys vs personal
 keys, CI, a tunnel to reach a database, why agent forwarding is worse than it looks, and what a
