@@ -59,6 +59,27 @@ written.
 
 Chapter 1 (structural typing and erasure) is next. Contract written, no chapters yet.
 
+### `web-platform/` — 24 chapters, five parts
+
+Chapter 1 (URL to pixels — the whole request lifecycle) is next. Contract written, no chapters yet.
+Covers everything raised: TCP/TLS handshake, HTTP/HTTPS, cookies and their attributes, `SameSite`,
+localStorage's problems, XSS, session hijacking, **CSRF and CSRF tokens** (Ch17), SQL injection,
+JWT vs sessions, OAuth and the other auth types, Core Web Vitals, crawlers and SEO, redirects,
+public vs private IPs — plus the ones not raised: CORS, caching, HTTP semantics, clickjacking,
+SSRF, IDOR, prototype pollution, supply chain, the critical rendering path.
+
+**Every security chapter carries a real, named, dated case study** — Samy worm, Firesheep,
+Magecart, TalkTalk, `event-stream`. Cumulative exercises are attack-then-defend: build it
+vulnerable, exploit it locally, fix it, prove the exploit fails.
+
+### `linux/` — SSH added
+
+**SSH now has a home**: five chapters appended to `linux/prompt.md` (keys and the agent, host
+verification, tunnels, hardening `sshd`, SSH in practice — git, CI, agent-forwarding risk,
+certificates). It went there rather than into `web-platform/` because that track's boundary rule
+is "if it changes what you write in your app or config it belongs there" — SSH does not; it is how
+you reach and administer a machine. The rest of the `linux/` track is still unwritten.
+
 ### `redis/` — 14 chapters
 
 Chapter 1 (the single-threaded in-memory model) is next. Contract written, no chapters yet.
@@ -73,6 +94,7 @@ moved ahead of them.
 | Idea | Status |
 |---|---|
 | **System design** — and with it **payments/idempotency**, **caching strategy**, **rate limiting across services**, **WebSocket scaling** | **Agreed as a track. No `prompt.md` exists, so it cannot be resumed yet.** |
+| **Networking proper** — TCP congestion control, routing, subnetting, the wire | **Reserved as its own track, deliberately.** `web-platform/` takes the browser↔server contract; this takes the protocol internals. No `prompt.md` yet. |
 
 **Redis is no longer in this row — it now has its own track**, `redis/`, 14 chapters planned.
 Resume with *"continue redis"* → Chapter 1, the single-threaded in-memory model.

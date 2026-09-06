@@ -9,6 +9,77 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-06 — New track: `web-platform/`, and SSH given a home in `linux/`
+
+Requested as "advanced web development things a 3.5–4 year dev should know anyhow" — the request
+lifecycle, TLS, cookies and their security, storage, XSS and session hijacking, SQL injection,
+JWT vs sessions, OAuth, Core Web Vitals, crawlers and SEO — with one explicit constraint:
+**not a networking track, that deserves its own folder.**
+
+**The gap was verified before scoping and it is the largest found so far.** Across 400+ markdown
+files: **XSS, CSRF, `SameSite`, `HttpOnly`, HSTS, Core Web Vitals and prototype pollution each
+returned zero files.** SQL injection appeared only as an analogy inside an AI exercise about
+prompt injection; OAuth and CORS only as passing mentions in `terraform` and `nginx`. For a repo
+belonging to a full-stack web engineer, web security was untaught.
+
+24 chapters in five parts: how the web works (lifecycle, DNS, connection, TLS, IP addressing) →
+HTTP itself (semantics, redirects, caching, CORS, transfer) → state and identity (cookies,
+storage, sessions vs tokens, OAuth/OIDC, other auth) → security with case studies → performance
+and discoverability.
+
+**The boundary rule is the load-bearing part**, because this track, `node-learnings` Ch08–09 and a
+future `networking/` would otherwise all claim TCP, TLS and DNS: *if the answer changes what you
+write in your application or its config, it belongs here; if it only changes what a network
+engineer does, it belongs in `networking/`.* Node keeps the server-socket view (buffers, slow
+clients, FIN/RST, `dns.lookup` vs `resolve`); this keeps the browser↔server contract.
+
+**Two rules distinctive to this track:**
+
+- **Every security chapter carries a real, named, dated incident** — what the attacker actually
+  sent, why the defence of the day failed, and which control in that chapter stops it. Samy worm,
+  Firesheep, Magecart, TalkTalk, `event-stream`. A vulnerability explained abstractly is
+  forgettable; one with a name and a year is not.
+- **Cumulative exercises are attack-then-defend**: build it vulnerable, exploit it locally, fix
+  it, prove the exploit fails. A fix without a demonstrated exploit is not evidence — the same
+  standard the rest of the repo applies to measurements. An ethics line is stated once in the
+  prompt: every target is a local server in this repo.
+
+**Toolchain verified, and it changed the plan.** This machine has **no outbound DNS** —
+`curl https://example.com` cannot resolve — and `dig`/`nslookup` are absent. `curl` and `openssl`
+are present. So examples run against a **local Node server** and a **self-signed certificate**,
+both confirmed producing real output: `Set-Cookie` with `HttpOnly`/`SameSite`, a 302 with
+`Location`, a CSP header, and an `openssl`-generated cert with readable subject and validity
+dates. That is better than hitting a live third party regardless — those examples rot silently
+when someone else changes a header.
+
+Also flagged in the prompt: **date anything currently in flux** rather than stating it as settled.
+Third-party cookie deprecation, Privacy Sandbox and the Core Web Vitals metric set have all
+changed recently (INP replaced FID), and a confident undated claim about any of them will be
+wrong within a year.
+
+**CSRF tokens were already covered** — Ch17 has synchroniser tokens and double-submit — so the
+follow-up question needed no change.
+
+**SSH was the harder call, and it went to `linux/`, not here.** Asked for as "what a backend dev
+uses day to day", and it genuinely had no home: `linux/prompt.md` is kernel-focused (syscalls,
+scheduling, `/proc`) and never mentioned it. The temptation was to add it to `web-platform/` since
+that is where the conversation was — but this track's boundary rule, written minutes earlier, says
+"if it changes what you write in your app or config it belongs here", and SSH fails that test. It
+is how you reach and administer a machine. **Breaking the rule on its first application would have
+made the rule worthless**, so five SSH chapters were appended to `linux/` instead: keys and the
+agent, host verification and `known_hosts`, tunnels, hardening `sshd`, and SSH in practice
+(git, CI, agent-forwarding risk, short-lived certificates).
+
+Verified for that too: `ssh`, `sshd` and `ssh-keygen` are all present and `ssh-keygen -t ed25519`
+works, but with no outbound network the examples must use a **local `sshd` on loopback** — keys,
+fingerprints, `authorized_keys` and `known_hosts` are all demonstrable locally; anything needing a
+second machine is not, and the chapters must say so rather than pretend.
+
+`networking/` is now recorded in `BACKLOG.md` as deliberately reserved, so the split is written
+down rather than remembered.
+
+---
+
 ## 2026-09-06 — Machine round category 02: function polyfills
 
 Asked where the `call`/`apply`/`bind` polyfills were. They were queued, not written — category 01

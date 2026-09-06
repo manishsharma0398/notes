@@ -140,3 +140,39 @@ have attempted the current one's.
 written from memory. Where an exercise makes a claim about behaviour, run that too; mis-posed
 exercise questions have been caught this way more than once.
 
+---
+
+## SSH — added 2026-09-06
+
+Requested explicitly as "what a backend dev uses day to day". It landed here rather than in
+`web-platform/` because that track's boundary rule is *"if it changes what you write in your
+application or its config, it belongs there"* — SSH does not; it is how you reach and administer a
+machine, which is this track's subject. `sshd` config, key material, file permissions, the agent
+and tunnels are all systems engineering.
+
+Five chapters, to be written under the standard structure above:
+
+1. **Keys, the agent, and `~/.ssh/config`** — ed25519 vs RSA and why the default changed, what a
+   keypair actually proves, passphrases, `ssh-agent` and why it exists, and `config` as the thing
+   that removes every long command you keep retyping: `Host`, `User`, `IdentityFile`,
+   `ProxyJump` for bastions.
+2. **Host verification** — `known_hosts`, trust-on-first-use and what that does and does not
+   protect against, what a changed host key actually means (and why blindly deleting the line is
+   the wrong reflex), and host certificates as the scalable fix.
+3. **Port forwarding and tunnels** — local (`-L`), remote (`-R`) and dynamic (`-D`, SOCKS); which
+   direction solves which problem; reaching a database through a bastion; and why `-R` is the one
+   that surprises people. Includes the security consequence of each.
+4. **Hardening `sshd`** — `authorized_keys` and its options, disabling password auth, why
+   permissions on `~/.ssh` are enforced and what breaks when they are wrong, `MaxAuthTries`,
+   root login, and what actually shows up in the auth log.
+5. **SSH in practice** — git over SSH, deploy keys vs personal keys, SSH in CI and how to hold a
+   key safely there, **agent forwarding and why it is more dangerous than it looks**, and
+   short-lived SSH certificates as what larger teams move to.
+
+**Verified on this machine before writing any of it:** `ssh`, `sshd` and `ssh-keygen` are all
+present, and `ssh-keygen -t ed25519` works (produces a `256 SHA256:... (ED25519)` fingerprint).
+But there is **no outbound network**, so examples must use a **local `sshd` on loopback** rather
+than a remote host. Keys, fingerprints, `authorized_keys`, config parsing and `known_hosts`
+manipulation are all demonstrable locally; anything needing a second machine is not, and the
+chapter should say so rather than pretend.
+
