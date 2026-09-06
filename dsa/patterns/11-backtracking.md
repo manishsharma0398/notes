@@ -13,11 +13,18 @@ the next. Recursion where you **explicitly undo** — that undo is the pattern.
 - Constraints that let you prune early
 - The output is a list of lists
 
-## JS-specific traps
+## Language traps
+
+*Policy: Python first, JS on the re-solve — see [`../language-notes.md`](../language-notes.md).*
+
+**JavaScript:**
 
 - **Push a copy, not the reference** — `res.push([...path])`. Pushing `path` gives you N pointers
   to one array that ends up empty (js Ch18, shallow copy).
 - Forgetting `path.pop()` after the recursive call is the other classic bug.
+
+**Python:** `res.append(path[:])` — same shallow-copy trap as JS's `[...path]`. Appending `path`
+itself gives you N references to one list that ends up empty.
 
 ## Problems
 

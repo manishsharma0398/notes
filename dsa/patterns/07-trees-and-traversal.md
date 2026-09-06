@@ -15,11 +15,19 @@ DFS (pre/in/post-order) via recursion; BFS via a queue, level by level.
 - "Depth", "path", "level", "ancestor", "balanced"
 - BST in the name → in-order traversal is sorted
 
-## JS-specific traps
+## Language traps
+
+*Policy: Python first, JS on the re-solve — see [`../language-notes.md`](../language-notes.md).*
+
+**JavaScript:**
 
 - Deep recursion overflows the stack (js Ch13 measured ~10k frames). Mention the iterative
   version exists if asked about a skewed tree.
 - For BFS, `queue.shift()` is O(n) — with a big level that is quadratic. Use an index pointer.
+
+**Python:** use `collections.deque` for BFS — **`popleft()` is O(1)**, which is exactly the trap
+`shift()` is in JS. Default recursion limit is ~1000 frames (`sys.setrecursionlimit` raises it);
+mention it for a skewed tree.
 
 ## Problems
 

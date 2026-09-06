@@ -13,11 +13,18 @@ first, memo second, table third if you want O(1) rows.
 - A grid with movement constraints
 - The 1D recurrence needs a second index to be expressible
 
-## JS-specific traps
+## Language traps
+
+*Policy: Python first, JS on the re-solve — see [`../language-notes.md`](../language-notes.md).*
+
+**JavaScript:**
 
 - Off-by-one between string index and table index. Decide whether `dp[i]` means "first i
   characters" or "index i" and write it in a comment.
 - A full 2D table can be large — mention that many of these need only the previous row.
+
+**Python:** `[[0]*n for _ in range(m)]`, **never** `[[0]*n]*m` — the second gives `m` references to
+one row, and every write hits all rows. Exactly `js-learnings` Ch18 in a DSA problem.
 
 ## Problems
 

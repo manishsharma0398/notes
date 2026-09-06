@@ -9,6 +9,24 @@ instead of solving problems, and a 20-chapter track would have caused exactly th
 file is one page: what the pattern is, how to recognise it, the JS-specific traps, a curated
 problem list, graded hints, and a "done when".
 
+## Where the problems come from
+
+| Source | Use it for | Why |
+|---|---|---|
+| **NeetCode 150** | **The curated list.** Free, and organised *by pattern* — the same structure as `plan.md`. | Pattern-organised is the whole point; a random-order list teaches you to solve problems, not to recognise them. The lists in `patterns/` are drawn from the same canon and map onto it. |
+| **LeetCode** | **The platform.** Solve and submit here; the problem numbers in `patterns/` are LeetCode's. | Judge, test cases, and the interface you will actually see in a round. |
+| **NamasteJS** | **Not DSA — keep going, but log it elsewhere.** | Akshay Saini's material is JS *internals and machine-round* content: polyfills, closures, `this`, event loop. That is `js-machine-round/`, and it maps to a different interview round. Filing it as DSA hides the fact that neither box is full. |
+
+**Do not mix the two piles.** DSA and machine-round are separate rounds, tested separately, and
+progress in one tells you nothing about the other.
+
+## Language: Python first, JS on the re-solve
+
+See [`language-notes.md`](language-notes.md). Short version: Python's stdlib does things JS cannot
+(`deque` O(1) popleft, `heapq`, `bisect`, `Counter`, non-lexicographic `sort`), and it compounds
+with the `ai/` track. But the machine-coding round is in JS — so the **re-solve you already owe
+three days later becomes the JavaScript pass.** Both languages, no extra time.
+
 ## The method, in four lines
 
 1. **40 minutes a day.** Never zero. If a day collapses, do this and nothing else.

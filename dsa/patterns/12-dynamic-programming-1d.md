@@ -16,11 +16,18 @@ table, and it is a complete answer in an interview.
 - Choices at each step where earlier choices constrain later ones
 - Your greedy attempt produces a wrong answer on some case
 
-## JS-specific traps
+## Language traps
+
+*Policy: Python first, JS on the re-solve — see [`../language-notes.md`](../language-notes.md).*
+
+**JavaScript:**
 
 - Memo keys: a plain object stringifies keys (js Ch9). Use a `Map`, or template-literal keys
   deliberately.
 - Deep recursion overflows around ~10k frames — mention the bottom-up version for large n.
+
+**Python:** `functools.lru_cache` / `@cache` turns a recursive solution into a memoised one in one
+line. Use it *after* you have written the recurrence yourself, never instead of understanding it.
 
 ## Problems
 

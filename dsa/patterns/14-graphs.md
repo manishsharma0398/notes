@@ -15,11 +15,18 @@ Grids are graphs: each cell has up to four neighbours.
 - Dependencies or ordering → topological sort
 - Shortest path in an **unweighted** graph → BFS, never DFS
 
-## JS-specific traps
+## Language traps
+
+*Policy: Python first, JS on the re-solve — see [`../language-notes.md`](../language-notes.md).*
+
+**JavaScript:**
 
 - Mark visited **when you enqueue**, not when you dequeue — otherwise nodes get queued many times.
 - Adjacency list as a `Map` of arrays; an object coerces numeric keys to strings (js Ch9).
 - `queue.shift()` is O(n). Use an index pointer for large graphs.
+
+**Python:** `deque` for BFS, `defaultdict(list)` for the adjacency list — both remove the
+boilerplate that makes the JS version noisy. Watch the ~1000-frame recursion limit on deep DFS.
 
 ## Problems
 

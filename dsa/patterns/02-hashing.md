@@ -19,7 +19,11 @@ Three uses:
 - A nested loop where the inner one only asks *does X exist*
 - "Group by" something
 
-## JS-specific traps
+## Language traps
+
+*Policy: Python first, JS on the re-solve — see [`../language-notes.md`](../language-notes.md).*
+
+**JavaScript:**
 
 - **`Map` vs object.** Object keys are coerced to strings — `obj[1]` and `obj["1"]` are the same
   key (js Ch9). `Map` keeps the type and preserves insertion order. Use `Map` unless you need JSON.
@@ -27,6 +31,9 @@ Three uses:
   with `indexOf` (js Ch19, Ch8).
 - `map.get(k)` returning `undefined` is ambiguous with a stored `undefined`. Use `.has()` (js Ch21).
 - An unbounded map is a leak in long-lived code (js Ch17) — say so if asked about scale.
+
+**Python:** `Counter` and `defaultdict` collapse most of this to one line. `Counter(a) == Counter(b)`
+is the whole of Valid Anagram.
 
 ## Problems
 

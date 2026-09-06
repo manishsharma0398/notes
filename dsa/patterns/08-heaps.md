@@ -13,12 +13,19 @@ Reach for it when you need *the top k* or *a running median*, not a full orderin
 - "Median of a stream"
 - Merging many sorted sources
 
-## JS-specific traps
+## Language traps
+
+*Policy: Python first, JS on the re-solve — see [`../language-notes.md`](../language-notes.md).*
+
+**JavaScript:**
 
 - **JavaScript has no built-in heap.** You will have to write one, or sort and slice. Say this
   out loud in an interview — knowing it is missing is itself a signal.
 - `arr.sort()` is lexicographic by default: `[10,9,1].sort()` gives `[1,10,9]` (js Ch19). Always
   pass a comparator.
+
+**Python:** `heapq` is built in and is a **min-heap**. For a max-heap, push negated values. This is
+the single biggest reason to solve heap problems in Python — JS has nothing.
 
 ## Problems
 

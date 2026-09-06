@@ -13,7 +13,11 @@ argue the local choice cannot block a better global answer. That argument is wha
 - An obvious best-next-step exists
 - Sorting first makes it trivial
 
-## JS-specific traps
+## Language traps
+
+*Policy: Python first, JS on the re-solve — see [`../language-notes.md`](../language-notes.md).*
+
+**JavaScript:**
 
 - Greedy failing silently is the danger — it produces *an* answer, just not the optimal one.
   If you cannot argue why it is safe, it is probably DP.

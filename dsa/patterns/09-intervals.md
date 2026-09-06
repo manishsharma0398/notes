@@ -12,10 +12,17 @@ pass comparing each interval to the last kept one. The sort is the algorithm.
 - Input is pairs of start/end
 - "Merge", "overlap", "meeting rooms", "minimum removals"
 
-## JS-specific traps
+## Language traps
+
+*Policy: Python first, JS on the re-solve — see [`../language-notes.md`](../language-notes.md).*
+
+**JavaScript:**
 
 - Sorting pairs needs a comparator: `.sort((a, b) => a[0] - b[0])`.
 - Decide explicitly whether touching intervals (`[1,2]`, `[2,3]`) count as overlapping. Ask.
+
+**Python:** `intervals.sort(key=lambda x: x[0])`, or `key=lambda x: x[1]` to sort by end. Tuples
+compare element-wise, so `sorted(intervals)` already sorts by start then end.
 
 ## Problems
 

@@ -17,12 +17,19 @@ that...").
 - "Minimum X such that a condition holds" — search the answer, not the array
 - A monotonic predicate: false, false, false, **true**, true
 
-## JS-specific traps
+## Language traps
+
+*Policy: Python first, JS on the re-solve — see [`../language-notes.md`](../language-notes.md).*
+
+**JavaScript:**
 
 - `(lo + hi) / 2` gives a float in JS. Use `Math.floor((lo + hi) / 2)` or `(lo + hi) >> 1` —
   and note `>>` coerces to int32, so it breaks past 2^31 (js Ch19).
 - Off-by-one in the loop condition is *the* bug. Pick `while (lo <= hi)` or `while (lo < hi)`
   deliberately and keep it consistent.
+
+**Python:** `bisect.bisect_left` / `bisect_right` exist — know them, but **write the loop by hand**
+for these problems. The point is the invariant, and `bisect` hides it.
 
 ## Problems
 

@@ -18,7 +18,11 @@ run satisfying a condition).
 - A fixed size `k`
 - You catch yourself writing two nested loops over start and end
 
-## JS-specific traps
+## Language traps
+
+*Policy: Python first, JS on the re-solve — see [`../language-notes.md`](../language-notes.md).*
+
+**JavaScript:**
 
 - Building a substring with `s.slice(l, r)` **inside** the loop makes it quadratic again — track
   counts, not strings.

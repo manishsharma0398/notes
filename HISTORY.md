@@ -9,6 +9,51 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-06 — DSA language policy: Python first, JS on the re-solve
+
+Asked where the problems come from, and whether solving in Python (to pick up Python syntax
+alongside) was sensible — then, better, whether to do **both** languages.
+
+**Both is the right instinct, but not per-problem on the same day.** Solving twice in one sitting
+halves the problem count to buy *transcription* practice: the second implementation is a
+translation of code still fresh in memory, which teaches almost nothing. The policy instead:
+
+```
+Day 1   solve in Python        ← learning the pattern, the expensive part
+Day 4   re-solve in JavaScript ← the rep already owed by the 25-minute rule
+```
+
+**This costs nothing.** The re-solve was already mandatory for any problem not solved unaided;
+making it the JS pass gets both languages for free — and it is a *better* re-solve, because after
+three days the code is gone and it has to be rebuilt from the idea rather than recalled.
+
+**Python first is justified by the stdlib, and the gaps are exactly the ones already documented as
+JS traps** (verified, Python 3.12.3 / Node 22.17.1): `collections.deque` gives **O(1) `popleft`**
+where `shift()` is O(n); `heapq` exists where **JS has no heap at all**; `bisect`, `Counter` and
+`defaultdict` remove boilerplate; `sorted([10,9,1])` is `[1,9,10]` where JS's default `sort` gives
+`[1,10,9]`; Python ints are arbitrary precision where `2**70` is not a safe JS integer. Python also
+compounds with the `ai/` track and DocuMind, so it is a second goal served rather than a detour.
+
+**JavaScript is kept where it actually matters:** `js-machine-round/` and `hands-on-builds/` stay
+JS, because those *are* language-fluency drills mapping to a JS machine-coding round. And the
+order flips for patterns 05–09 and 14, where the lesson **is** a JS trap worth feeling once —
+queues, heaps, and a missing sort comparator.
+
+`language-notes.md` added with the policy, a verified stdlib comparison table, and an idiom map for
+the constructs that recur. It flags one shared bug across both languages: `[[0]*n]*m` in Python and
+`Array(m).fill([])` in JS both produce **m references to one row** — `js-learnings` Ch18's shallow
+copy, surfacing in a DSA problem. All 14 pattern files now carry a "Language traps" section with
+both languages; eleven got a Python-specific note.
+
+**One category correction, which was the more useful half of the answer.** NamasteJS was being
+counted as a DSA source. It is not — it is JS internals and machine-round material (polyfills,
+closures, `this`, the event loop), which is `js-machine-round/` and a **different interview round**.
+Filing it under DSA hides that neither box is full. The README now says so and keeps the piles
+separate: NeetCode 150 as the curated pattern-ordered list, LeetCode as the platform, NamasteJS
+logged against the machine-round bank.
+
+---
+
 ## 2026-09-06 — `dsa/` scaffolded: 14 patterns, ~92 problems, 12 weeks
 
 Built after `STUDY-PLAN.md` identified DSA as the largest gap and the first interview filter, with

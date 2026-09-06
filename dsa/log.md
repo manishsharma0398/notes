@@ -7,22 +7,25 @@ Log **every** attempt, including the ones you failed — especially those.
 
 - **Min** — minutes spent. Stop at 25 and read the solution.
 - **Unaided** — `y` only if you solved it with no hint and no solution. `y*` if you had seen it before.
-- **Re-solve** — date you redid it from scratch. Blank on a failed problem is a debt.
+- **Re-solve** — date you redid it from scratch, **in the other language**. Blank on a failed
+  problem is a debt.
+- **Lang** — `py` or `js` for the first solve. A problem is **done** when it is solved unaided in
+  one language and re-solved in the other (`py→js`).
 
 ---
 
 ## Week 1 — Arrays & two pointers
 
-| Date | # | Problem | Min | Unaided | What I missed | Re-solve |
-|---|---|---|---|---|---|---|
-| | 1 | Two Sum II (167) | | | | |
-| | 2 | Valid Palindrome (125) | | | | |
-| | 3 | Remove Duplicates from Sorted Array (26) | | | | |
-| | 4 | Move Zeroes (283) | | | | |
-| | 5 | Container With Most Water (11) | | | | |
-| | 6 | 3Sum (15) | | | | |
-| | 7 | Merge Sorted Array (88) | | | | |
-| | 8 | Sort Colors (75) | | | | |
+| Date | # | Problem | Lang | Min | Unaided | What I missed | Re-solve (other lang) |
+|---|---|---|---|---|---|---|---|
+| | 1 | Two Sum II (167) | | | | | |
+| | 2 | Valid Palindrome (125) | | | | | |
+| | 3 | Remove Duplicates from Sorted Array (26) | | | | | |
+| | 4 | Move Zeroes (283) | | | | | |
+| | 5 | Container With Most Water (11) | | | | | |
+| | 6 | 3Sum (15) | | | | | |
+| | 7 | Merge Sorted Array (88) | | | | | |
+| | 8 | Sort Colors (75) | | | | | |
 
 **Sunday question — which pattern would I fail if asked tomorrow?**
 
@@ -34,15 +37,15 @@ Log **every** attempt, including the ones you failed — especially those.
 
 ## Week 2 — Hashing
 
-| Date | # | Problem | Min | Unaided | What I missed | Re-solve |
-|---|---|---|---|---|---|---|
-| | 1 | Two Sum (1) | | | | |
-| | 2 | Contains Duplicate (217) | | | | |
-| | 3 | Valid Anagram (242) | | | | |
-| | 4 | Group Anagrams (49) | | | | |
-| | 5 | Top K Frequent Elements (347) | | | | |
-| | 6 | Longest Consecutive Sequence (128) | | | | |
-| | 7 | Subarray Sum Equals K (560) | | | | |
+| Date | # | Problem | Lang | Min | Unaided | What I missed | Re-solve (other lang) |
+|---|---|---|---|---|---|---|---|
+| | 1 | Two Sum (1) | | | | | |
+| | 2 | Contains Duplicate (217) | | | | | |
+| | 3 | Valid Anagram (242) | | | | | |
+| | 4 | Group Anagrams (49) | | | | | |
+| | 5 | Top K Frequent Elements (347) | | | | | |
+| | 6 | Longest Consecutive Sequence (128) | | | | | |
+| | 7 | Subarray Sum Equals K (560) | | | | | |
 
 **Sunday question:**
 

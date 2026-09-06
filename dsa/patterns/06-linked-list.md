@@ -13,13 +13,20 @@ remember. Almost every problem is one of: **reverse**, **fast/slow pointers**, o
 - "Reverse", "middle", "cycle", "nth from the end", "merge"
 - O(1) space required, so you cannot dump it into an array
 
-## JS-specific traps
+## Language traps
+
+*Policy: Python first, JS on the re-solve — see [`../language-notes.md`](../language-notes.md).*
+
+**JavaScript:**
 
 - Reassigning a parameter does not change the caller's reference (js Ch7) — you must return the
   new head.
 - **Draw it.** Three-pointer reverse is where everyone loses their place; on a whiteboard, draw
   the boxes.
 - A dummy head removes almost every "what if it is the first node" special case. Use it.
+
+**Python:** no built-in list node; define a small class. `a, b = b, a` makes the three-pointer
+reverse noticeably cleaner than the JS version.
 
 ## Problems
 

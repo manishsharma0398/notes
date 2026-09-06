@@ -17,10 +17,17 @@ order. That pop is where the answer gets recorded.
 - Undo, or evaluating an expression
 - Histograms and rectangles
 
-## JS-specific traps
+## Language traps
+
+*Policy: Python first, JS on the re-solve — see [`../language-notes.md`](../language-notes.md).*
+
+**JavaScript:**
 
 - A JS array **is** the stack: `push`/`pop` are O(1) amortised. Never use `shift` for a stack.
 - Popping an empty array gives `undefined`, not an error (js Ch21) — check length first.
+
+**Python:** a plain `list` is the stack — `append`/`pop` are O(1). `pop()` on an empty list raises
+`IndexError` rather than returning `None`, which is the better failure.
 
 ## Problems
 

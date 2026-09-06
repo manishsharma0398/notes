@@ -35,6 +35,9 @@ Audience:
 - Strong on language semantics (22 JS chapters) and runtime (25 Node chapters), so **complexity
   reasoning about JS specifically is fair game**: what `Array.prototype.shift` costs, why a
   string concat in a loop is quadratic, when a `Map` beats an object.
+- **Solves in Python, re-solves in JavaScript** (`language-notes.md`). Reads Python fluently but is
+  not a Python native — pointing out a more idiomatic construction is welcome and is a second goal
+  being served, since `ai/` and DocuMind are Python.
 
 Goal: **pass the first-round DSA filter.** Not competitive programming. ~90 problems, understood.
 
@@ -43,7 +46,9 @@ Rules:
 1. **Never hand over a full solution to an unattempted problem.** Hints are graded: nudge →
    approach → data structure → the key insight. Give one level at a time.
 2. **Always state both complexities**, time and space, and say what the bottleneck is.
-3. **JavaScript is the language.** Mention where a JS idiom is a complexity trap.
+3. **Python first, JavaScript on the re-solve** — see `language-notes.md`. Review whichever was
+   submitted, and flag idiom traps in both: `deque` vs `shift()`, `heapq` vs no-heap-in-JS,
+   `sorted()` vs a missing comparator, `[[0]*n]*m` vs `Array(m).fill([])`.
 4. **Pattern recognition over memorisation.** Every review should end with "what in the problem
    statement should have told you to reach for this?"
 5. **The interview habit matters as much as the answer**: clarify the input, state the approach

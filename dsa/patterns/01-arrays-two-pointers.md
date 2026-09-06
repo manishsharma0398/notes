@@ -21,7 +21,11 @@ Three shapes:
 - "In place", "O(1) extra space", "without allocating another array"
 - "Remove / move / partition elements" while keeping order
 
-## JS-specific traps
+## Language traps
+
+*Policy: Python first, JS on the re-solve — see [`../language-notes.md`](../language-notes.md).*
+
+**JavaScript:**
 
 - **`arr.shift()` is O(n)**, not O(1) — it reindexes. A loop with `shift()` is quadratic. Use an
   index, or `pop()` from the end.
