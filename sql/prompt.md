@@ -1,5 +1,49 @@
 Act as a senior **database engineer and SQL interviewer** for product-based companies.
 
+---
+
+## To continue this track
+
+**Read this section first. It is the resume point.**
+
+**State: 14 chapters written (README, notes, interview, examples). Exercises are being retrofitted.**
+
+| Chapter | Exercises |
+|---|---|
+| `01-logical-vs-physical-query-processing` | **written** |
+| `05-indexes-in-depth` | **written** |
+| all others | not yet — next is **02-select-execution-order** |
+
+**"Continue sql" means: write the exercises for the next chapter in CHAPTER order**, not a 15th
+chapter. **01 → 02 → 03 → 04 → 05 ✓ → 06 → … → 14.**
+
+**Two orderings, do not confuse them:**
+
+- **Writing** exercises goes in **chapter order**, because the chapters build and each
+  `cumulative_exercise.md` is scoped "Ch1–N". Ch5's cumulative says Ch1–5; if Ch1–4 have no
+  exercises it is standing on nothing.
+- **Doing** the revision goes in `PRACTICE.md`'s order, by what actually gets asked
+  (indexes → joins → transactions → optimizer → window functions → pagination).
+
+Ch5 was written first because it was the immediate need. Fill in 01–04 next, then continue from
+06.
+
+Each chapter gets `exercises/chapter_exercise.md`, `exercises/cumulative_exercise.md`, and a blank
+`exercises/solution/chapter_exercise_worksheet.md`. **The chapters themselves stay as they are** —
+do not rewrite them to the new contract while adding exercises.
+
+**Every exercise must run against the verified lab and every claimed plan must have been
+executed** — see `PRACTICE.md` for the Postgres 16 Docker setup. Two facts found only by running
+them, which is why this rule exists:
+
+- `LIKE 'prefix%'` does **not** use a plain B-tree index under `en_US.utf8` collation. It needs
+  `text_pattern_ops`. The textbook claim is wrong for the default database.
+- Postgres's "leftmost prefix" rule is a **cost decision, not a prohibition** — a query on the
+  non-leading column still used the index via a Bitmap Heap Scan, at ~7,600× the cost of the
+  leading-column Index Scan.
+
+---
+
 Audience:
 
 - I am a software engineer with real-world SQL experience.
