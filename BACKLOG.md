@@ -4,6 +4,10 @@ One place to answer *"I mentioned X once — what happened to it?"* and *"how do
 up?"*. `HISTORY.md` records what was **done and why**; this records what was **asked for and
 where it landed**, including the things deliberately not done.
 
+> **Priority note:** this file lists *everything that exists*. **`STUDY-PLAN.md` says what to
+> actually do**, and it deliberately cuts most of the list until after a job offer. Read that
+> first; use this one to answer "what happened to X?".
+
 **How to resume anything below:** open the named file. Every track's `prompt.md` starts with a
 `## To continue this track` block giving its state and next action. Say *"continue &lt;track&gt;"*.
 

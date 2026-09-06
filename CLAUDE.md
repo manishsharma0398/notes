@@ -45,6 +45,14 @@ exercises/   chapter_exercise.md + cumulative_exercise.md + solution(s)/  <- Man
 
 ## Learning tracks — state, and what "continue" means
 
+**`STUDY-PLAN.md` is the current priority order, and it overrides "what is next in this track".**
+Manish is job-searching with ~1 hour on a weekday (full-time job, gym) and is **3–4x
+oversubscribed** against what is pending here. The plan cuts most tracks deliberately. **Do not
+propose writing new tracks or chapters during this period** unless asked — the highest-value work
+is DSA daily, drilling the unattempted exercises, and revision via the existing `mock.md` rounds.
+If asked "what should I do today", read that file rather than the backlog.
+
+
 **`BACKLOG.md` at the repo root is the index of every idea raised, where it landed, and how to
 resume it** — including the things deliberately rejected and why. Read it when asked "what
 happened to X?" or when a topic comes up that may already have been decided. `HISTORY.md` records
