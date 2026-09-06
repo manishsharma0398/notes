@@ -17,6 +17,7 @@ where it landed**, including the things deliberately not done.
 
 | Idea | Where | Resume with |
 |---|---|---|
+| **DSA — 14 patterns, ~92 problems** | `dsa/` | Scaffolded and scheduled. Week 1 is arrays & two pointers. Start: `dsa/README.md`, log in `dsa/log.md` |
 | **Currying, closures, partial application** | `js-machine-round/01-closures-and-currying/` | 7 problems, specs + tests written. `node --test "js-machine-round/01-closures-and-currying/tests/*.test.js"` |
 | **Custom EventEmitter** | `hands-on-builds/01-event-emitter/` | 6 phases, specs + tests written. `node --test "hands-on-builds/01-event-emitter/tests/*.test.js"` |
 | **Polyfills — `call`, `apply`, `new`, `bind`, `debounce`, `throttle`** | `js-machine-round/02-function-polyfills/` | 6 problems, specs + tests written. `node --test "js-machine-round/02-function-polyfills/tests/*.test.js"` |

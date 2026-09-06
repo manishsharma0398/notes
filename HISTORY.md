@@ -9,6 +9,46 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-06 — `dsa/` scaffolded: 14 patterns, ~92 problems, 12 weeks
+
+Built after `STUDY-PLAN.md` identified DSA as the largest gap and the first interview filter, with
+a confirmed near-zero starting point.
+
+**Deliberately not a chapter track, and the prompt says why:** the failure mode for DSA is reading
+about patterns instead of solving problems, and a 20-chapter track would have actively caused it.
+Each pattern is **one page** — what it is, how to recognise it, the JS-specific traps, a curated
+problem list, graded hints, and a "done when" that names the *insight* rather than the answer.
+
+**Sized to the schedule, not to a canonical list.** 85 new problems plus ~7 consolidation
+re-solves ≈ 92 attempts: ~29 by week 4, ~60 by week 8, ~92 by week 12. Lower than a typical
+"150 problems" list because the start is near-zero and forty minutes a weekday is the real budget.
+
+**Two ordering decisions worth keeping:**
+
+- **Week 8 is consolidation, not new material** — filter the log to `unaided = n` and re-solve
+  those from scratch. If it takes the whole week, that is the correct use of the week.
+- **DP is last, at weeks 11–12.** It is the pattern most people start with and bounce off. By then
+  trees and backtracking have built the recursion and memoisation instincts that make DP difficult
+  rather than impossible.
+
+**The JS-traps section is what makes these pages worth more than a generic list**, and it reuses
+the repo: `shift()` being O(n) so a queue-by-shift is quadratic (arrays, graphs, trees), `Map` vs
+object key coercion (Ch9), `NaN` findable via SameValueZero (Ch19), `sort()` being lexicographic
+by default (Ch19), pushing a live array instead of a copy in backtracking (Ch18), and recursion
+depth limits (Ch13). A candidate who says "I'd use an index pointer instead of `shift` because
+`shift` is O(n)" is doing something a generic list never taught them.
+
+**The contract's most important rule is a refusal:** when a solution is shared, review it — but
+**do not hand over the optimal solution to an unattempted problem.** Hints are graded, one level
+at a time. The 25-minute rule (fail → read → **re-solve from scratch in 3 days**) is the method,
+and pre-empting it destroys the only mechanism that turns a looked-up answer into a known one.
+
+`log.md` is framed as "the only file here that tells you the truth" — every attempt including
+failures, with a Sunday question ("which pattern would I fail if asked tomorrow?") that picks the
+next weekend's re-solve.
+
+---
+
 ## 2026-09-06 — `STUDY-PLAN.md`, and the two answers that rewrote it
 
 Asked for a realistic schedule: full-time job, gym after office, ~1 hour on a weekday, applying

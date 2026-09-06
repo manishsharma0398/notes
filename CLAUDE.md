@@ -72,6 +72,7 @@ If asked to "continue" with no track named, ask which one — there are four act
 | `node-learnings/` | **complete, 25 chapters** | nothing. Its exercises are underspecified — upgrading them is known debt |
 | `ai/` | 10 chapters; roadmap Phase 0 | see "Current state — `ai/` track" below |
 | `ts-learnings/` | **0 chapters**, contract written | Chapter 1 — structural typing and erasure |
+| **`dsa/`** | **scaffolded, 0 problems attempted** | **not** more material — help while solving. See its `prompt.md` |
 | `redis/` | **0 chapters**, contract written | Chapter 1 — the single-threaded in-memory model |
 | `web-platform/` | **0 chapters** (30 planned), contract written | Chapter 1 — URL to pixels, the request lifecycle |
 | `js-machine-round/` | category 01 of 8 ready | category 02 — function polyfills |
