@@ -6,16 +6,24 @@ Act as a senior **database engineer and SQL interviewer** for product-based comp
 
 **Read this section first. It is the resume point.**
 
-**State: 14 chapters written (README, notes, interview, examples). Exercises are being retrofitted.**
+**State: 14 chapters written under the OLD contract — `README`, `notes`, `interview`, `examples`.
+They are being retrofitted to the full seven-piece standard**, which means each chapter is missing
+`mock.md` and its three exercise files.
 
-| Chapter | Exercises |
-|---|---|
-| `01-logical-vs-physical-query-processing` | **written** |
-| `05-indexes-in-depth` | **written** |
-| all others | not yet — next is **02-select-execution-order** |
+| Chapter | mock.md | exercises |
+|---|---|---|
+| `01-logical-vs-physical-query-processing` | **✓** | **✓** |
+| `05-indexes-in-depth` | **✓** | **✓** |
+| 02, 03, 04, 06–14 | — | — |
 
-**"Continue sql" means: write the exercises for the next chapter in CHAPTER order**, not a 15th
-chapter. **01 → 02 → 03 → 04 → 05 ✓ → 06 → … → 14.**
+**Next: `02-select-execution-order`, complete.**
+
+**"Continue sql" means: bring the next chapter up to the full seven-piece standard**, not write a
+15th chapter. In **chapter order**: 01 ✓ → 02 → 03 → 04 → 05 ✓ → 06 → … → 14.
+
+Per chapter that is **four files**: `mock.md`, `exercises/chapter_exercise.md`,
+`exercises/cumulative_exercise.md`, and a blank `exercises/solution/chapter_exercise_worksheet.md`.
+`README.md`, `notes.md`, `interview.md` and `examples/` already exist — **do not rewrite them.**
 
 **Two orderings, do not confuse them:**
 
@@ -210,8 +218,10 @@ have attempted the current one's.
 written from memory. Where an exercise makes a claim about behaviour, run that too; mis-posed
 exercise questions have been caught this way more than once.
 
-**Applies from the next chapter onward.** Chapters 1–14 were written under the older contract
-(no `mock.md`, no timed answers, no separate exercise files) and are **deliberately left as they are** — the
-depth in them is real, it just is not optimised for the round. Retrofitting them is separate,
-optional work; do not silently rewrite them while adding a new chapter.
+**Retrofit in progress, decided 2026-09-06.** Chapters 1–14 were written under the older contract
+(no `mock.md`, no timed answers, no exercise files). Rather than leaving them, the **four missing
+files per chapter are being added** — see the resume block at the top for the running state.
+
+**The existing four files stay exactly as written.** The depth in them is real; what is missing is
+the timed-round surface and the practice. Add, do not rewrite.
 

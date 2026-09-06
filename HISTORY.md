@@ -9,6 +9,55 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-06 — SQL retrofit begins: chapters 01 and 05 brought to the seven-piece standard
+
+The SQL track's 14 chapters were written under the old contract — `README`, `notes`, `interview`,
+`examples` — and the standardisation on 2026-09-05 explicitly left them alone. That decision was
+reversed on request: SQL is JD-named, already written, and therefore the cheapest revision surface
+in the repo, so the **four missing files per chapter** are being added. The existing four stay as
+written; this is *add*, not rewrite.
+
+**Chapters 01 and 05 are now complete**: `mock.md`, `chapter_exercise.md`,
+`cumulative_exercise.md`, and a blank worksheet each.
+
+**An ordering mistake was caught and corrected mid-way.** I began at Ch5 because `PRACTICE.md`
+orders *revision* by what gets asked (indexes first). But **writing** exercises has to go in
+chapter order, because each `cumulative_exercise.md` is scoped "Ch1–N" — Ch5's says Ch1–5 and was
+standing on nothing. Two different orderings, now stated separately in the prompt: write in
+chapter order, revise in the PRACTICE order.
+
+**Everything was executed against Postgres 16 before shipping, and that caught two real defects
+plus two textbook errors:**
+
+- **Ch5's cumulative fixture was broken.** It spread 400k orders over 100k customers — ~4 each. At
+  that size the planner *correctly* ignores index ordering because sorting four rows is free, so
+  Phase 3's "the `Sort` node disappears" was unobservable. Concentrated onto 5,000 customers (~80
+  each) and verified the `Sort` node count goes **2 → 0**. The fixture now explains why it is
+  shaped that way.
+- **Ch1's stale-statistics demo is far stronger than I had claimed.** Measured: estimated `rows=1`
+  against actual `rows=100000` — a **100,000× error**. The real number went into the exercise and
+  the build criterion was raised from 10× to 100×.
+- **`LIKE 'prefix%'` does not use a plain B-tree index under `en_US.utf8`.** The textbook claim
+  that prefix-LIKE is index-friendly is wrong for a default Postgres database; it needs
+  `text_pattern_ops`. Verified both directions.
+- **Postgres's "leftmost prefix" rule is a cost decision, not a prohibition.** Querying the
+  non-leading column of a composite index still used it, via a Bitmap Heap Scan, at ~7,600× the
+  cost of the leading-column Index Scan. The exercise asks the reader to rewrite the rule so it is
+  actually true.
+
+Also verified for Ch1 and used in its mock: alias-in-`WHERE` and aggregate-in-`WHERE` error as
+described, predicate pushdown removes the `Subquery Scan` node entirely, `where 1=0` plans as
+`Result rows=0`, `in (5)` and `= 5` produce identical plans, and `val + 0 = 500` loses the index
+while `val = 500` keeps it.
+
+`sql/PRACTICE.md` was added alongside: revision order by what gets asked, the verified Postgres
+Docker lab (neither `psql` nor `sqlite3` is on the host), and the measured index demonstration —
+Seq Scan 2.996 ms removing 49,999 rows versus Index Scan 0.022 ms.
+
+**Next: `02-select-execution-order`, complete.**
+
+---
+
 ## 2026-09-06 — DSA language policy: Python first, JS on the re-solve
 
 Asked where the problems come from, and whether solving in Python (to pick up Python syntax
