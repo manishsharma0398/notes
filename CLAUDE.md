@@ -43,6 +43,28 @@ examples/    runnable teaching examples (written by the mentor)
 exercises/   chapter_exercise.md + cumulative_exercise.md + solution(s)/  <- Manish's work
 ```
 
+## The other repo — `career-inventory`
+
+`~/code/personal/career-inventory` is the job-search half: evidence of work done, five resume
+variants, the applications tracker, interview cheat sheet, and mined Jira/GitLab/PostHog/Confluence
+data. **It has its own `CLAUDE.md`; read that before touching it.**
+
+**It is confidential and must never be published** — `CONFIDENTIAL.md` opens with "DO NOT PUBLISH
+THIS REPOSITORY", it has no remote deliberately, and it holds employer data. Derived artifacts (a
+resume bullet, an interview answer) are shareable; the source data is not.
+
+**The two repos feed each other, and the loop matters:**
+
+- **notes → career-inventory.** Finished work becomes evidence: DocuMind's measured numbers become
+  a resume bullet; a chapter's measurement becomes a LinkedIn post (`career-inventory/LINKEDIN.md`
+  keeps a bank of already-verified ones).
+- **career-inventory → notes.** Interviews reprioritise study. `STUDY-PLAN.md` says it outright:
+  **if interviews reveal a different gap than the plan assumes, the interviews are right and the
+  plan is wrong.** The AWS/DynamoDB promotion came from reading actual JDs.
+
+**Do not copy content between them** — link instead. This repo is private but *could* be public;
+that one never can be.
+
 ## Learning tracks — state, and what "continue" means
 
 **`STUDY-PLAN.md` is the current priority order, and it overrides "what is next in this track".**

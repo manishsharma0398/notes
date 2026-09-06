@@ -211,5 +211,17 @@ Not a finished repo. This:
 - **Three months is optimistic for the job search itself**, independent of study. Applying early
   is what compresses that, not studying more first.
 
+## Keeping it honest — the feedback loop
+
+`~/code/personal/career-inventory` is where applications, resumes and interview notes live
+(**confidential — see its own `CLAUDE.md`**). Two habits keep the two halves in sync:
+
+- **After every interview**, note in `applications/APPLICATIONS.md` what was actually asked. If a
+  topic came up that this plan cut, that is a signal to re-cut — not a reason to feel behind.
+  Interviews are better evidence about the market than my assumptions are.
+- **One LinkedIn post a week**, Sunday, from the week's most surprising measurement.
+  `career-inventory/LINKEDIN.md` has the cadence and a bank of already-verified findings from this
+  repo. Never post anything sourced from the career-inventory repo itself.
+
 *Written 2026-09-06. Revisit at week 4 — if interviews are showing a different gap than this plan
 assumes, the interviews are right and the plan is wrong.*
