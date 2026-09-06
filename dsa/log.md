@@ -18,7 +18,7 @@ Log **every** attempt, including the ones you failed — especially those.
 
 | Date | # | Problem | Lang | Min | Unaided | What I missed | Re-solve (other lang) |
 |---|---|---|---|---|---|---|---|
-| | 1 | Two Sum II (167) | | | | | |
+| 2026-09-06 | 1 | Two Sum II (167) | py | | y | — solved clean, opposite-ends | |
 | | 2 | Valid Palindrome (125) | | | | | |
 | | 3 | Remove Duplicates from Sorted Array (26) | | | | | |
 | | 4 | Move Zeroes (283) | | | | | |
@@ -66,7 +66,7 @@ week 8 comes and you filter for `unaided = n`.
 
 | Milestone | Target | Actual |
 |---|---|---|
-| End of week 4 | ~29 | |
+| End of week 4 | ~29 | **1** |
 | End of week 8 | ~60 | |
 | End of week 12 | ~92 | |
 
