@@ -59,14 +59,21 @@ written.
 
 Chapter 1 (structural typing and erasure) is next. Contract written, no chapters yet.
 
-### `web-platform/` — 24 chapters, five parts
+### `web-platform/` — 30 chapters, six parts
 
 Chapter 1 (URL to pixels — the whole request lifecycle) is next. Contract written, no chapters yet.
 Covers everything raised: TCP/TLS handshake, HTTP/HTTPS, cookies and their attributes, `SameSite`,
 localStorage's problems, XSS, session hijacking, **CSRF and CSRF tokens** (Ch17), SQL injection,
 JWT vs sessions, OAuth and the other auth types, Core Web Vitals, crawlers and SEO, redirects,
 public vs private IPs — plus the ones not raised: CORS, caching, HTTP semantics, clickjacking,
-SSRF, IDOR, prototype pollution, supply chain, the critical rendering path.
+SSRF, IDOR, prototype pollution, supply chain, the critical rendering path — and six added on a
+gap review, each verified as appearing nowhere in the repo: **origins vs sites** (the foundation
+CORS/cookies/SameSite all rest on), **passwords and credential storage**, **WebSockets and SSE**,
+**file uploads**, **service workers**, and **secrets leaking into the client bundle**.
+
+**SSH appears twice, deliberately**: Ch30 here is the working subset a web developer needs (keys,
+`~/.ssh/config`, git over SSH and deploy keys, CI, tunnels, agent-forwarding risk, what a changed
+host key means), and `linux/` carries the five-chapter depth.
 
 **Every security chapter carries a real, named, dated case study** — Samy worm, Firesheep,
 Magecart, TalkTalk, `event-stream`. Cumulative exercises are attack-then-defend: build it

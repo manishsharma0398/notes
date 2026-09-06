@@ -95,6 +95,37 @@ carries the working DoH + `--resolve` recipe plus a rule for choosing between th
 **real site where the lesson is what production does (and date the capture, because it changes);
 local server where the reader must reproduce it exactly and forever.**
 
+**Then a gap review, and the plan grew from 24 chapters to 30.** Asked to add SSH at top level
+here as well as in `linux/`, and to check what else was missing. Six additions, each verified as
+returning **zero or only incidental** hits across the repo before being added:
+
+- **Origins and sites** (Ch2) — scheme+host+port versus eTLD+1. Zero files, and it is the
+  foundation CORS, cookie `Domain`, `SameSite` and storage partitioning all rest on. Placed early
+  because four later chapters are incomprehensible without it.
+- **Passwords and credentials** (Ch16) — bcrypt/scrypt/argon2, salts, work factors, timing-safe
+  comparison, reset-flow vulnerabilities, credential stuffing. The auth chapters covered sessions,
+  JWT and OAuth but never "how do you actually store a password", which is asked constantly.
+- **File uploads** (Ch12) — multipart on the wire, streaming vs buffering, presigned URLs, and the
+  security half (content-type lies, path traversal, never serving user uploads from your origin).
+- **Real-time: WebSockets and SSE** (Ch13) — the upgrade handshake, when SSE is the better answer,
+  and that **authentication is the hard part** because a WebSocket has no per-message auth.
+- **Service workers** — folded into the caching chapter rather than given their own, since the
+  interesting angle is that a service worker is a persistent, updatable interceptor on your own
+  origin: a cache layer and a footgun in the same feature. Zero files previously.
+- **Secrets and what leaks to the client** (Ch25) — browser bundles, `NEXT_PUBLIC_`-style prefixes
+  and the false safety around them, `.env` in git history, source maps. The rule underneath:
+  you cannot keep a secret in something you hand to the user.
+
+**SSH is now in both tracks on purpose, and the split is stated in both.** Ch30 here is the
+working subset — keys, `~/.ssh/config` and `ProxyJump`, git over SSH, deploy keys vs personal
+keys, CI, a tunnel to reach a database, why agent forwarding is worse than it looks, and what a
+changed host key means. `linux/` keeps the five-chapter depth. The earlier decision to exclude SSH
+from this track entirely was too literal a reading of the boundary rule: the rule is about where
+*depth* lives, not about refusing a cross-reference a reader obviously needs.
+
+Verified after the rewrite: chapters number 1–30 contiguously across six parts, and every topic
+originally requested is present.
+
 The generalisable lesson, which is the reason this is written down: **one failed command is
 evidence about that command, not about the environment.** The repo's own standard — measure, don't
 assert — was applied to the chapters and not to the tooling assumption underneath them.

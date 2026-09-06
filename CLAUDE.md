@@ -65,7 +65,7 @@ If asked to "continue" with no track named, ask which one — there are four act
 | `ai/` | 10 chapters; roadmap Phase 0 | see "Current state — `ai/` track" below |
 | `ts-learnings/` | **0 chapters**, contract written | Chapter 1 — structural typing and erasure |
 | `redis/` | **0 chapters**, contract written | Chapter 1 — the single-threaded in-memory model |
-| `web-platform/` | **0 chapters**, contract written | Chapter 1 — URL to pixels, the request lifecycle |
+| `web-platform/` | **0 chapters** (30 planned), contract written | Chapter 1 — URL to pixels, the request lifecycle |
 | `js-machine-round/` | category 01 of 8 ready | category 02 — function polyfills |
 | `hands-on-builds/` | build 01 of 11 specified | build 02 — a Promise implementation |
 | `react/` | 2 chapters, **stalled** under the old contract | needs `mock.md` + exercises before new chapters |

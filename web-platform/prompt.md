@@ -223,87 +223,124 @@ system you do not own, and the chapters should say so where it could be misread.
 
 Covered: nothing yet.
 
-Planned, in order — five parts, dependency-ordered:
+Planned, in order — six parts, dependency-ordered. **30 chapters.**
 
 ### Part A — How the web actually works
 
 1. **URL to pixels** — the whole lifecycle: URL parsing, DNS, TCP, TLS, HTTP request, response,
    parse, render. The flagship chapter, and the answer to the most-asked question in the industry.
    Every later chapter is a zoom-in on one step of this.
-2. **DNS, from the application's side** — record types, TTL and why "propagation" is a myth,
+2. **Origins and sites** — scheme + host + port versus eTLD+1, and why the web has *two* different
+   notions of "same place". This is the foundation the security model is built on: it decides
+   what CORS allows, what a cookie's `Domain` can do, what `SameSite` means, and how storage is
+   partitioned. Taught early because four later chapters are incomprehensible without it.
+3. **DNS, from the application's side** — record types, TTL and why "propagation" is a myth,
    resolution order, split-horizon, and what a CNAME at the apex costs you. (Runtime behaviour:
    `node-learnings` Ch09.)
-3. **The connection** — the TCP handshake as a sequence, keep-alive and connection reuse, why
+4. **The connection** — the TCP handshake as a sequence, keep-alive and connection reuse, why
    HTTP/1.1 head-of-line blocking led to HTTP/2 multiplexing and then HTTP/3 over QUIC. What
    changes for you as an app developer, and what does not.
-4. **TLS** — the handshake, what a certificate actually proves (and what it does not), the chain
+5. **TLS** — the handshake, what a certificate actually proves (and what it does not), the chain
    of trust, SNI, HSTS and preloading, mixed content, and reading a cert with `openssl`. Failure
    modes: expiry, SAN mismatch, incomplete chain, clock skew.
-5. **IP addressing for web developers** — public vs private ranges, NAT, why `localhost` and
+6. **IP addressing for web developers** — public vs private ranges, NAT, why `localhost` and
    `0.0.0.0` differ, and **getting the real client IP behind a proxy**: `X-Forwarded-For`,
    `Forwarded`, and why trusting it blindly is a vulnerability.
 
 ### Part B — HTTP itself
 
-6. **HTTP semantics** — methods and what idempotent/safe actually mean, the status codes that
+7. **HTTP semantics** — methods and what idempotent/safe actually mean, the status codes that
    carry decisions, conditional requests, and why `POST` vs `PUT` is a design question.
-7. **Redirects** — 301 / 302 / 303 / 307 / 308, the method-rewriting trap that turns a `POST`
+8. **Redirects** — 301 / 302 / 303 / 307 / 308, the method-rewriting trap that turns a `POST`
    into a `GET`, redirect chains and loops, and the SEO consequences.
-8. **Caching** — `Cache-Control` in full, `ETag` and `Last-Modified`, revalidation,
-   `stale-while-revalidate`, CDN vs browser cache, cache keys and `Vary`, and cache busting.
-   Under-known and asked more than people expect.
-9. **CORS** — the same-origin policy first, then preflight, credentials, and exposed headers.
-   **The chapter's real job is that CORS is not a server-side security boundary** — it restricts
-   what a *browser* lets a page read, and a non-browser client ignores it entirely.
-10. **Content negotiation and transfer** — compression, chunked encoding, streaming responses,
-    range requests, and what a proxy may rewrite.
+9. **Caching, and service workers** — `Cache-Control` in full, `ETag` and `Last-Modified`,
+   revalidation, `stale-while-revalidate`, CDN vs browser cache, `Vary`, cache busting. Then
+   **service workers as a cache layer you control** — and the security surface that comes with
+   them: a service worker is a persistent, updatable interceptor on your own origin, which is
+   enormous power and an enormous footgun.
+10. **CORS** — the same-origin policy from Chapter 2, then preflight, credentials and exposed
+    headers. **The chapter's real job is that CORS is not a server-side security boundary** — it
+    restricts what a *browser* lets a page read, and a non-browser client ignores it entirely.
+11. **Content negotiation and transfer** — compression, chunked encoding, streaming responses,
+    range requests, MIME sniffing and `X-Content-Type-Options`, and what a proxy may rewrite.
+12. **File uploads** — `multipart/form-data` and what is actually on the wire, streaming versus
+    buffering an upload, size limits and where to enforce them, presigned URLs so bytes never
+    touch your server, and the security half: content-type lies, path traversal in filenames,
+    and why you never serve user uploads from your own origin.
+13. **Real-time: WebSockets and SSE** — the HTTP upgrade handshake, frames, when Server-Sent
+    Events are the better answer, and heartbeats and reconnection. **Authentication is the hard
+    part**: a WebSocket has no per-message auth, cookies behave differently, and the origin check
+    is yours to make. (Implementation: `hands-on-builds` build 07. Scaling across instances:
+    `system-design/`.)
 
-### Part C — State, storage and identity
+### Part C — State and identity
 
-11. **Cookies** — every attribute and what it changes: `Domain`, `Path`, `Expires`/`Max-Age`,
+14. **Cookies** — every attribute and what it changes: `Domain`, `Path`, `Expires`/`Max-Age`,
     `Secure`, `HttpOnly`, `SameSite` (`Lax` / `Strict` / `None`), `Partitioned`/CHIPS, and cookie
     prefixes. Size limits, the cookie jar, and the current state of third-party cookies — **date
     that claim, it has changed repeatedly.**
-12. **Browser storage** — `localStorage`, `sessionStorage`, `IndexedDB`, the Cache API: capacity,
+15. **Browser storage** — `localStorage`, `sessionStorage`, `IndexedDB`, the Cache API: capacity,
     lifetime, synchronicity, and origin scoping. **Why a token in `localStorage` is an XSS
-    escalation** and a cookie is not.
-13. **Sessions vs tokens** — what each actually is, server-side sessions, JWT structure and
+    escalation** and a cookie with `HttpOnly` is not.
+16. **Passwords and credentials** — hashing with bcrypt/scrypt/argon2 and why a general-purpose
+    hash is the wrong tool, salts, work factors and how to choose one, peppers, **timing-safe
+    comparison**, password reset flows and the vulnerabilities they introduce, credential
+    stuffing, and breach-list checks. Commonly asked and currently taught nowhere in this repo.
+17. **Sessions vs tokens** — what each actually is, server-side sessions, JWT structure and
     signing, the revocation problem, refresh rotation, and where to put a token. (Build it:
     `hands-on-builds` build 13.)
-14. **OAuth 2.0 and OIDC** — authorization code with PKCE, client credentials, why implicit is
-    dead, and the distinction that the whole chapter turns on: **OAuth is authorization; OIDC is
-    the authentication layer on top.** "Sign in with Google" done wrong is a real vulnerability.
-15. **Everything else called auth** — API keys, mTLS, WebAuthn and passkeys, magic links, TOTP and
+18. **OAuth 2.0 and OIDC** — authorization code with PKCE, client credentials, why implicit is
+    dead, and the distinction the whole chapter turns on: **OAuth is authorization; OIDC is the
+    authentication layer on top.** "Sign in with Google" done wrong is a real vulnerability.
+19. **Everything else called auth** — API keys, mTLS, WebAuthn and passkeys, magic links, TOTP and
     2FA, and when each is the right answer.
 
 ### Part D — Security, with case studies
 
-16. **XSS** — stored, reflected and DOM-based; escaping by context (HTML vs attribute vs JS vs
+20. **XSS** — stored, reflected and DOM-based; escaping by context (HTML vs attribute vs JS vs
     URL); why sanitising input is the wrong layer; CSP and its bypasses; Trusted Types.
     **Case study: the Samy worm.**
-17. **CSRF** — how it works, why `SameSite` mitigates but does not eliminate it, synchroniser
+21. **CSRF** — how it works, why `SameSite` mitigates but does not eliminate it, synchroniser
     tokens, double-submit, and why a JSON-only API with a custom header is already mostly safe.
-18. **Session hijacking and fixation** — sidejacking, fixation, secure cookie handling, rotation
+22. **Session hijacking and fixation** — sidejacking, fixation, secure cookie handling, rotation
     on privilege change. **Case study: Firesheep**, and why it changed the industry.
-19. **Injection** — SQL injection through to parameterised queries; NoSQL and command injection;
+23. **Injection** — SQL injection through to parameterised queries; NoSQL and command injection;
     **prototype pollution** as the JavaScript-native member of the family. **Case studies:
     TalkTalk, Heartland.**
-20. **The rest of the top ten** — clickjacking and frame-ancestors, open redirect, SSRF, IDOR and
+24. **The rest of the top ten** — clickjacking and frame-ancestors, open redirect, SSRF, IDOR and
     broken access control, mass assignment, and a security-header roundup that explains each
     header rather than listing it.
-21. **Supply chain** — dependency confusion, typosquatting, postinstall scripts, lockfile
+25. **Secrets, and what leaks to the client** — what actually ends up in a browser bundle,
+    `NEXT_PUBLIC_`-style prefixes and the false sense of safety around them, `.env` files in git
+    history, secrets in source maps and error payloads, key rotation, and the rule underneath all
+    of it: **you cannot keep a secret in something you hand to the user.**
+26. **Supply chain** — dependency confusion, typosquatting, postinstall scripts, lockfile
     integrity, SRI for CDN scripts. **Case studies: `event-stream`, `ua-parser-js`, Magecart.**
 
 ### Part E — Performance and discoverability
 
-22. **The critical rendering path** — parse, render-blocking CSS and JS, `defer`/`async`,
+27. **The critical rendering path** — parse, render-blocking CSS and JS, `defer`/`async`,
     preload/prefetch/preconnect, and where the time actually goes.
-23. **Core Web Vitals** — LCP, INP and CLS, plus TTFB; field vs lab data; what each one is
+28. **Core Web Vitals** — LCP, INP and CLS, plus TTFB; field vs lab data; what each one is
     actually measuring and how to move it. **Check the current metric set when writing — INP
     replaced FID, and the set is not frozen.**
-24. **Crawlers, indexing and SEO for engineers** — how a crawler fetches and renders, the
+29. **Crawlers, indexing and SEO for engineers** — how a crawler fetches and renders, the
     JavaScript-rendering problem and SSR/SSG/CSR, `robots.txt` and sitemaps, crawl budget,
-    canonical URLs, structured data, and the SEO cost of the redirect decisions from Chapter 7.
+    canonical URLs, structured data, and the SEO cost of the redirect decisions from Chapter 8.
+
+### Part F — Reaching the server
+
+30. **SSH and deployment access — the working subset.** Deliberately **top-level only**: enough to
+    work confidently day to day, with the depth deferred. Keypairs and why ed25519, `ssh-agent`,
+    `~/.ssh/config` and `ProxyJump` for bastions, **git over SSH and deploy keys versus personal
+    keys**, holding a key safely in CI, a local tunnel to reach a database behind a bastion, and
+    **why agent forwarding is more dangerous than it looks**. Plus the one thing everybody hits:
+    what a changed host key actually means and why deleting the `known_hosts` line by reflex is
+    the wrong move.
+
+    **Depth lives in `linux/`** — five chapters there cover keys and the agent, host verification,
+    tunnels, hardening `sshd`, and SSH certificates. This chapter is the part a web developer
+    needs without becoming a systems administrator, and it says so.
 
 Important:
 
