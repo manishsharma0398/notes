@@ -140,9 +140,10 @@ only artifact that tests recall under time pressure, which is the thing actually
   search. **Finish arrays properly this time** — that is the unfinished thread from last year and
   it is the foundation for everything after. Target **~25–30 problems by week 4**, not 40. One
   problem well understood beats three copied.
-- **SQL revision** — the cheapest JD-aligned win you have. Two chapters a week from the existing
-  14: start with indexes, joins internals, transactions/isolation. Write the queries, read the
-  plans; do not just re-read.
+- **SQL revision** — the cheapest JD-aligned win you have. **See `sql/PRACTICE.md`**: revision
+  order by what actually gets asked (indexes → joins internals → transactions/isolation), a
+  verified Postgres-in-Docker lab, and LeetCode SQL 50 as the problem source. Write the queries
+  and **read the plans**; do not just re-read.
 - **Machine round drills** — categories 01 and 02 are built and untouched. Timed, logged.
 - **`js-learnings` mock rounds** — one per weekend, out loud.
 - **DocuMind Phase 1** so the project has a measurable result to talk about.
