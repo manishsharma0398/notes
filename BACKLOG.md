@@ -100,6 +100,19 @@ moved ahead of them.
 
 ---
 
+## On the critical path — promoted by the target JDs (2026-09-06)
+
+Target roles are **backend-heavy full-stack: AWS/cloud, SQL, DynamoDB**. That reversed an earlier
+cut and promoted three things:
+
+| Area | State | Note |
+|---|---|---|
+| **DynamoDB data modelling** | **Uncovered — the biggest JD-aligned gap** | `terraform/17-aws-dynamodb` teaches *provisioning* (capacity modes, GSIs) and scores **zero** on access patterns, single-table design or key overloading — which is what is actually asked. ~4 chapters needed. |
+| **AWS core** | Skeleton only | Six area prompts exist (`storage`, `security`, `compute`, `networking`, `observability`, `operations`); **only SES has content**. `aws/storage/prompt.md` already promises the right things — partition math, 429s, hot partitions, DynamoDB vs RDS vs Aurora. |
+| **SQL** | **Already written, 14 chapters** | JD-named and done. Revision and drilling, not new work — the cheapest win available. |
+
+`STUDY-PLAN.md` schedules these into weeks 5–8.
+
 ## Agreed, but has no home yet — **this is the gap**
 
 | Idea | Status |

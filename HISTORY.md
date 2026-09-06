@@ -9,6 +9,50 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-06 — `STUDY-PLAN.md`, and the two answers that rewrote it
+
+Asked for a realistic schedule: full-time job, gym after office, ~1 hour on a weekday, applying
+for roles now, and a sense that everything pending would take three months or more.
+
+**The useful output was the arithmetic, not the schedule.** ~130–150 hours available over twelve
+weeks against **~400–500 hours pending** in this repo — **3–4× oversubscribed**. So the plan is
+mostly a list of what does not get done, and the selection principle is *optimise for the
+interview loop, not for repo completeness*.
+
+**Two calls drive it, and one is uncomfortable to write:**
+
+1. **DSA starts immediately and runs daily.** Zero coverage here, it is frequently the first
+   filter, elimination there is binary, and it cannot be crammed.
+2. **Stop writing new tracks — start consuming the existing ones.** I have generated a great deal
+   of material this week, and the honest assessment is that writing more is now the *lowest*-value
+   activity available. **10 of the 22 JS chapters have untouched exercises.** Converting read into
+   recallable beats any new chapter. `CLAUDE.md` now says not to propose new tracks during this
+   period.
+
+**Then two answers reshaped the plan, and one reversed a cut:**
+
+- **DSA is near-zero** — arrays started a year ago, never finished. Targets cut from ~120 problems
+  to **~90**, weekday DSA raised from 35 to 40 minutes, and week-4 target lowered from 40 to
+  25–30. One problem in forty minutes is normal when the pattern itself is still being learned.
+- **Target JDs are backend-heavy: AWS, cloud, SQL, DynamoDB.** This **un-cut AWS**, which the
+  first draft had deferred entirely. Verified the state before promoting it: `aws/` is a skeleton —
+  six area prompts and **only SES has content** — and **DynamoDB data modelling is uncovered
+  anywhere.** `terraform/17-aws-dynamodb` teaches provisioning (capacity modes, GSIs) and scores
+  **zero** on access patterns, single-table design or key overloading, which is the part that is
+  actually interviewed. Meanwhile **SQL turned out to be the cheapest win in the plan** — 14
+  chapters already written covering joins internals, indexes, the optimizer, isolation levels and
+  window functions, all JD-named. Revision, not new work.
+- React cut entirely; TypeScript trimmed from 13 chapters to 4; `web-platform` trimmed from 30 to
+  ~8 by dropping the performance/SEO part and keeping the security half.
+
+**The exception to "stop writing tracks" is stated explicitly**: it holds for *breadth*, and AWS
+storage plus DynamoDB are exempt because the JDs name them and there is nothing to read. Without
+that carve-out the rule would have blocked the single most JD-aligned piece of work.
+
+One incidental find, not acted on: `sql/aaaa` is a stray empty directory.
+
+---
+
 ## 2026-09-06 — New track: `web-platform/`, and SSH given a home in `linux/`
 
 Requested as "advanced web development things a 3.5–4 year dev should know anyhow" — the request
