@@ -9,6 +9,31 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-06 — sql Ch1: the JOIN step was missing from the logical order
+
+Reading the Ch1 README, the logical-order diagram went `FROM` → `WHERE` with no `JOIN` anywhere.
+Ch2 line 332 had it as "Cartesian product with ON condition" — correct for `INNER`, silent on the
+step that actually matters.
+
+`FROM` is three steps: cartesian product, `ON`, then — **outer joins only** — unmatched rows added
+back NULL-padded. `ON` is applied before the re-add, `WHERE` after. Measured on Postgres 16, three
+customers and one shipped order:
+
+- filter in `ON` → 3 rows, unmatched customers kept with `o.*` NULL
+- filter in `WHERE` → 1 row; the re-added rows carry `o.status = NULL`, `NULL = 'shipped'` is
+  unknown, and they are dropped again
+
+**A `WHERE` predicate on the nullable side of an outer join silently demotes it to an inner join.**
+It ships wrong data rather than slow data, which makes it worse than most plan problems.
+
+Verified the plan tell rather than asserting it: A is `Hash Left Join`, B is `Hash Join` — Postgres
+does the **join strength reduction** itself. `LEFT JOIN` in the SQL with no `Left` in the plan is
+the diagnostic. The `where o.id is null` anti-join was checked too, and only works against a column
+that can never legitimately be NULL.
+
+Added to Ch1's README, notes.md, interview.md (Q9) and mock.md. Ch2 still describes only the inner
+case; worth revisiting when Ch2 is retrofitted.
+
 ## 2026-09-06 — SQL retrofit begins: chapters 01 and 05 brought to the seven-piece standard
 
 The SQL track's 14 chapters were written under the old contract — `README`, `notes`, `interview`,

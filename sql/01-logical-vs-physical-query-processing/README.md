@@ -25,6 +25,9 @@ This is **pure mathematics**. Given a query, there's a well-defined order in whi
 
 ```
 FROM       (What tables?)
+  ├ CROSS JOIN  (cartesian product of the inputs)
+  ├ ON          (keep only the pairs that match)
+  └ OUTER rows  (LEFT/RIGHT/FULL only: add unmatched rows back, NULL-padded)
 → WHERE    (Which rows?)
 → GROUP BY (Aggregate to groups?)
 → HAVING   (Filter groups?)
@@ -35,6 +38,45 @@ FROM       (What tables?)
 ```
 
 **This order is FIXED and GUARANTEED by the SQL standard.** The result must be _semantically identical_ to this order, regardless of how the database executes it.
+
+### Where JOIN happens — and why it matters
+
+`FROM` is not one step, it is three. For an `INNER JOIN` the third does nothing, which is why the
+distinction usually goes unnoticed. For an **outer** join it is the whole game:
+
+```sql
+-- A: the filter is part of the join condition
+select c.name, o.id from customers c
+left join orders o on o.customer_id = c.id and o.status = 'shipped';
+
+-- B: the filter is a separate WHERE
+select c.name, o.id from customers c
+left join orders o on o.customer_id = c.id
+where o.status = 'shipped';
+```
+
+Three customers, one of whom has a shipped order. Measured on Postgres 16:
+
+```
+A — filter in ON          B — filter in WHERE
+ name | id                 name | id
+------+----                ------+----
+ ana  | 10                  ana  | 10
+ bo   |                    (1 row)
+ cy   |
+(3 rows)
+```
+
+**`ON` is evaluated before the NULL-padded rows are added back; `WHERE` is evaluated after.** In B
+the unmatched customers *are* re-added, each carrying `o.status = NULL` — and then `WHERE` tests
+`NULL = 'shipped'`, which is unknown, not true, so they are dropped again.
+
+> **Any `WHERE` predicate on the nullable side of an outer join silently demotes it to an inner
+> join.** The exception is an explicit `IS NULL`, which is the standard anti-join idiom:
+> `left join ... where o.id is null` finds customers with no orders at all.
+
+This is the most-asked trap on this topic, and it is a pure consequence of the ordering — nothing
+about the optimiser is involved.
 
 ### The Physical World (Execution Engine)
 

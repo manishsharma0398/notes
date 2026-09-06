@@ -584,6 +584,104 @@ WHERE o.status = 'shipped';
 
 ---
 
+## Question 9: ON vs WHERE on an Outer Join
+
+### Setup
+
+`customers` has three rows. `orders` has three rows, one of them `shipped`, belonging to the first
+customer.
+
+### Question
+
+Two queries. Same join, same data, the filter moved by one clause. Do they return the same rows?
+
+```sql
+-- A
+select c.name, o.id from customers c
+left join orders o on o.customer_id = c.id and o.status = 'shipped';
+
+-- B
+select c.name, o.id from customers c
+left join orders o on o.customer_id = c.id
+where o.status = 'shipped';
+```
+
+### What They're Testing
+
+Whether you know that `FROM` is three steps, not one — and whether you can name the step the
+NULL-padded rows are added at. This is the highest-frequency logical-order trap in a backend
+interview, and it is asked because it is a real production bug, not a puzzle.
+
+### Expected Answer
+
+**No. A returns 3 rows, B returns 1.** Verified on Postgres 16:
+
+```
+A — filter in ON          B — filter in WHERE
+ name | id                 name | id
+------+----                ------+----
+ ana  | 10                  ana  | 10
+ bo   |                    (1 row)
+ cy   |
+(3 rows)
+```
+
+The mechanism is the ordering inside `FROM`:
+
+1. cartesian product of `customers` and `orders`
+2. `ON` filters that product
+3. **for an outer join only**, unmatched left rows are added back, NULL-padded
+
+`ON` is applied at step 2 — before the re-add — so in A the unmatched customers survive with
+`o.*` NULL. `WHERE` is applied *after* the whole `FROM` stage, so in B those same re-added rows
+are tested against `o.status = 'shipped'` while `o.status` is NULL. `NULL = 'shipped'` is
+**unknown**, not true, so `WHERE` discards them.
+
+> **A `WHERE` predicate on the nullable side of an outer join silently demotes it to an inner
+> join.** If B is what you wrote and A is what you meant, the query is quietly wrong and returns
+> a correct-looking smaller result — the worst failure mode there is.
+
+### Follow-up
+
+**"When is the `WHERE` version the one you want?"**
+
+When you are looking for the absence of a match. `where o.id is null` is the standard **anti-join**
+idiom — customers with no orders at all — and it works precisely *because* `WHERE` sees the
+NULL-padded rows:
+
+```sql
+select c.name from customers c
+left join orders o on o.customer_id = c.id
+where o.id is null;
+```
+
+Note it tests a column that can never legitimately be NULL — a primary key. Testing a nullable
+column there cannot distinguish "no matching row" from "matched a row whose value is NULL".
+
+**"Does the optimiser turn B's plan into an inner join?"**
+
+Yes — this is called **join strength reduction**. Postgres recognises that a strict `WHERE`
+predicate on the inner side makes the outer join redundant and rewrites it. It is a legal
+transformation precisely because the two *are* provably equivalent for that query.
+
+You can see it in the plan, and it is the fastest way to spot the bug in a query you did not write
+— `explain (costs off)` on both:
+
+```
+A (filter in ON)                        B (filter in WHERE)
+ Hash Left Join                          Hash Join
+   Hash Cond: (c.id = o.customer_id)       Hash Cond: (c.id = o.customer_id)
+   ->  Seq Scan on customers c             ->  Seq Scan on customers c
+   ->  Hash                                ->  Hash
+         ->  Seq Scan on orders o                ->  Seq Scan on orders o
+               Filter: (status = ...)                  Filter: (status = ...)
+```
+
+Identical but for the first line. **You wrote `LEFT JOIN` and the plan says `Hash Join`** — that
+mismatch, on its own, is the tell.
+
+---
+
 ## Summary: What Senior Engineers Know
 
 1. **Logical ≠ Physical** – Never assume execution order

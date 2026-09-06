@@ -5,7 +5,7 @@
 | Aspect           | Logical                                                                 | Physical                            |
 | ---------------- | ----------------------------------------------------------------------- | ----------------------------------- |
 | **What**         | SQL semantics (pure mathematics)                                        | Execution plan (operators)          |
-| **Order**        | FROM → WHERE → GROUP BY → HAVING → SELECT → DISTINCT → ORDER BY → LIMIT | Any order that produces same result |
+| **Order**        | FROM/JOIN → WHERE → GROUP BY → HAVING → SELECT → DISTINCT → ORDER BY → LIMIT | Any order that produces same result |
 | **Determinism**  | Fixed by SQL standard                                                   | Varies by optimizer heuristics      |
 | **What matters** | Correctness                                                             | Cost (I/O, CPU, memory)             |
 
@@ -13,6 +13,9 @@
 
 ```
 FROM        → Which tables?
+  CROSS JOIN  → cartesian product of the inputs
+  ON          → keep only matching pairs
+  OUTER rows  → LEFT/RIGHT/FULL only: unmatched rows added back, NULL-padded
 WHERE       → Filter rows before grouping
 GROUP BY    → Create groups
 HAVING      → Filter groups (only groups matching condition)
@@ -21,6 +24,22 @@ DISTINCT    → Remove duplicate rows
 ORDER BY    → Sort result
 LIMIT       → Take top N
 ```
+
+### ON vs WHERE on an outer join
+
+`ON` runs **before** the NULL-padded rows are added back. `WHERE` runs **after**. Same join, same
+data, verified on Postgres 16:
+
+| Filter placed in | Result |
+| --- | --- |
+| `left join o on ... and o.status='shipped'` | 3 rows — non-matching customers kept, `o.*` NULL |
+| `left join o on ... where o.status='shipped'` | 1 row — the LEFT JOIN became an INNER JOIN |
+
+**Any `WHERE` predicate on the nullable side of an outer join demotes it to an inner join** —
+because the re-added rows carry NULL there, and `NULL = 'x'` is unknown, not true.
+
+Exception, and the standard anti-join idiom: `where o.id is null` finds the unmatched rows on
+purpose.
 
 ## Physical Execution Reality
 

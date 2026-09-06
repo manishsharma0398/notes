@@ -76,6 +76,30 @@ select val * 2 as doubled from t order by doubled;
 ⟵ *This is the confirmation question. Getting both right proves the first answer was a mechanism,
 not a fact.*
 
+> **I:** Same join, same data, filter moved by one clause. Same rows?
+
+```sql
+-- A
+left join orders o on o.customer_id = c.id and o.status = 'shipped'
+-- B
+left join orders o on o.customer_id = c.id
+where o.status = 'shipped'
+```
+
+> **You:** No. A keeps every customer; B returns only the matched ones — the `LEFT JOIN` has become
+> an inner join.
+>
+> `FROM` is three steps, not one: cartesian product, then `ON`, then — for an outer join only —
+> unmatched rows added back NULL-padded. `ON` runs at step two, before the re-add. `WHERE` runs
+> after the whole stage, so it tests `NULL = 'shipped'`, which is unknown, and drops them.
+>
+> The plan confirms it: A is a `Hash Left Join`, B is a plain `Hash Join`. Postgres does the join
+> strength reduction itself. So if I ever see `LEFT JOIN` in the SQL and no `Left` in the plan,
+> that is the bug.
+
+⟵ *The highest-frequency ordering trap there is, and the one that ships wrong data rather than slow
+data. "The plan says Hash Join but I wrote LEFT JOIN" is the senior tell.*
+
 > **I:** And this?
 
 ```sql
@@ -198,6 +222,7 @@ writes is the practical detail that shows you have used it for real.*
 | Clause order | "the order I wrote them" | recites logical order | logical **and** physical order, both different from written |
 | Alias in `WHERE` | "it should work" | "`WHERE` runs before `SELECT`" | uses the error as evidence, and explains why `ORDER BY` differs |
 | Aggregate in `WHERE` | "use `HAVING`" | "`WHERE` is before `GROUP BY`" | "`HAVING` exists precisely because of this ordering" |
+| `ON` vs `WHERE` on a LEFT JOIN | "same thing" | "`WHERE` filters after the join" | names the NULL-pad step; spots join strength reduction in the plan |
 | The slow-overnight plan | tries to rewrite the query | spots the seq scan | **reads estimated vs actual first**, diagnoses stale statistics |
 | Why a wrong estimate matters | "it's inaccurate" | "it picks a bad plan" | "the estimate isn't the damage, the plan choice is" — names nested loop / spill |
 | Three spellings | "the optimiser handles it" | "pushdown" | + names the boundary: it only transforms what it can **prove** equivalent |
@@ -208,6 +233,7 @@ writes is the practical detail that shows you have used it for real.*
 - "SQL is declarative — I describe the result, not the steps."
 - "The error *is* the proof of the evaluation order."
 - "`HAVING` exists precisely because `WHERE` runs before `GROUP BY`."
+- "A `WHERE` on the nullable side of an outer join demotes it to an inner join."
 - "Estimated one row, actually a hundred thousand."
 - "The estimate isn't the damage — the plan choice is."
 - "The optimiser only transforms what it can prove equivalent."
@@ -216,6 +242,7 @@ writes is the practical detail that shows you have used it for real.*
 **Red flags — each of these visibly drops you a level:**
 
 - "The clauses run in the order I wrote them."
+- Filtering the nullable side of a `LEFT JOIN` in `WHERE` and not seeing what it did.
 - Reading `cost=` as milliseconds.
 - Starting to rewrite a query before reading estimated-versus-actual.
 - "The optimiser handles everything, SQL style doesn't matter."
@@ -233,6 +260,7 @@ Say these out loud, timed, until they are boring:
 [ ] the logical evaluation order, from memory                 (30s)
 [ ] alias in WHERE vs ORDER BY — one rule, both sides         (60s)
 [ ] why HAVING exists                                          (30s)
+[ ] ON vs WHERE on a LEFT JOIN, with the mechanism            (60s)
 [ ] the slow-overnight plan, diagnosed from estimated vs actual (90s)
 [ ] why a wrong estimate matters when results are correct      (60s)
 [ ] predicate pushdown, and where the optimiser stops           (90s)
