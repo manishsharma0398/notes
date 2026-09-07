@@ -34,6 +34,17 @@ that can never legitimately be NULL.
 Added to Ch1's README, notes.md, interview.md (Q9) and mock.md. Ch2 still describes only the inner
 case; worth revisiting when Ch2 is retrofitted.
 
+Then made it runnable: `examples/join_on_vs_where.sql`, self-contained and executed end to end on
+16.15 with every expected-output block matching. It carries a second trap the prose did not — the
+anti-join must test a **primary key or NOT NULL** column. Given bo an order with `status = null`,
+`where o.status is null` returns bo *and* cy, because "no matching row" and "matched a row whose
+value is NULL" are indistinguishable on a nullable column.
+
+The best of the four exercises at the end is #2: `where o.status = 'shipped' or o.status is null`
+returns 3 rows, the same count as A, and looks like a fix. Selecting `o.id` shows bo arriving with
+a real order id rather than a NULL pad — same count, different answer. Verified rather than
+assumed, which is the only reason it is in there.
+
 ## 2026-09-06 — SQL retrofit begins: chapters 01 and 05 brought to the seven-piece standard
 
 The SQL track's 14 chapters were written under the old contract — `README`, `notes`, `interview`,

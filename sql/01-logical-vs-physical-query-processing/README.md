@@ -78,6 +78,10 @@ the unmatched customers *are* re-added, each carrying `o.status = NULL` — and 
 This is the most-asked trap on this topic, and it is a pure consequence of the ordering — nothing
 about the optimiser is involved.
 
+**Run it yourself:** `examples/join_on_vs_where.sql` is self-contained — it builds the tables,
+runs both queries with the expected output inline, shows the plan difference, and ends with the
+anti-join and four exercises. `docker exec -i pg-lab psql -U postgres < join_on_vs_where.sql`.
+
 ### The Physical World (Execution Engine)
 
 The database optimizes the logical plan into a tree of _physical operators_:

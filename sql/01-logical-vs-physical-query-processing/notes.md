@@ -39,7 +39,10 @@ data, verified on Postgres 16:
 because the re-added rows carry NULL there, and `NULL = 'x'` is unknown, not true.
 
 Exception, and the standard anti-join idiom: `where o.id is null` finds the unmatched rows on
-purpose.
+purpose. Test a **primary key or NOT NULL** column — on a nullable one,
+"no matching row" and "matched a row whose value is NULL" are indistinguishable.
+
+Runnable: `examples/join_on_vs_where.sql`.
 
 ## Physical Execution Reality
 
