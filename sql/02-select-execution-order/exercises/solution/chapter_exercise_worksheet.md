@@ -220,7 +220,7 @@ what OFFSET cost:
 
 why the sort cannot skip that work:
 
-what this predicts about deep pagination (Ch13):
+what this predicts about deep pagination (Ch16):
 ```
 
 ---

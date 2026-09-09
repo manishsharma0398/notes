@@ -6,46 +6,82 @@ Act as a senior **database engineer and SQL interviewer** for product-based comp
 
 **Read this section first. It is the resume point.**
 
-**State: 14 chapters written under the OLD contract — `README`, `notes`, `interview`, `examples`.
-They are being retrofitted to the full seven-piece standard**, which means each chapter is missing
-`mock.md` and its three exercise files.
+**State: 18 chapters planned. 14 exist and are being retrofitted; 4 are new and unwritten.**
 
-| Chapter | mock.md | exercises |
+The 14 existing chapters were written under the OLD contract — `README`, `notes`, `interview`,
+`examples` — so each is missing `mock.md` and its three exercise files. The 4 new chapters
+(2026-09-09) have nothing yet and get all seven pieces written from scratch.
+
+| # | Chapter | State |
 |---|---|---|
-| `01-logical-vs-physical-query-processing` | **✓** | **✓** |
-| `02-select-execution-order` | **✓** | **✓** |
-| `05-indexes-in-depth` | **✓** | **✓** |
-| 03, 04, 06–14 | — | — |
+| 01 | `01-logical-vs-physical-query-processing` | retrofitted **✓** |
+| 02 | `02-select-execution-order` | retrofitted **✓** |
+| 03 | `03-relational-model-fundamentals` | needs retrofit |
+| 04 | `04-joins-internals` | needs retrofit |
+| 05 | `05-indexes-in-depth` | retrofitted **✓** |
+| 06 | `06-query-optimizer-statistics` | needs retrofit |
+| 07 | `07-transactions-concurrency` | needs retrofit |
+| 08 | `08-null-semantics-three-valued-logic` | needs retrofit |
+| 09 | `09-conditional-expressions` | **NEW — not written** |
+| 10 | `10-dates-times-and-time-zones` | **NEW — not written** |
+| 11 | `11-set-operations` | **NEW — not written** |
+| 12 | `12-subqueries-vs-joins` | needs retrofit (was 09) |
+| 13 | `13-ctes` | needs retrofit (was 10) |
+| 14 | `14-window-functions` | needs retrofit (was 11) |
+| 15 | `15-aggregations-grouping` | needs retrofit (was 12) |
+| 16 | `16-pagination-offset` | needs retrofit (was 13) |
+| 17 | `17-constraints` | needs retrofit (was 14) |
+| 18 | `18-data-modification-and-upserts` | **NEW — not written** |
 
-**Next: `03-relational-model-fundamentals`, complete.**
+**Next: `03-relational-model-fundamentals`, retrofit.**
 
-**"Continue sql" means: bring the next chapter up to the full seven-piece standard**, not write a
-15th chapter. In **chapter order**: 01 ✓ → 02 ✓ → 03 → 04 → 05 ✓ → 06 → … → 14.
+**"Continue sql" means one of two jobs, and which one depends on the chapter:**
 
-**Chapter 2 left one debt behind.** Its `examples/queries.sql` uses `//` for comments from line 39
-onward — 112 lines of it — which is not SQL, so the file dies at the first one. Three factual
-claims in its `README.md`, `notes.md` and `interview.md` are also wrong (see `HISTORY.md`
-2026-09-09). The retrofit rule says add, do not rewrite, so **none of them were touched**; the
-exercise points at them instead and asks Manish to find them. Fixing them is a separate decision.
+- **An existing chapter** — add the **four** missing files: `mock.md`,
+  `exercises/chapter_exercise.md`, `exercises/cumulative_exercise.md`, and a blank
+  `exercises/solution/chapter_exercise_worksheet.md`. `README.md`, `notes.md`, `interview.md` and
+  `examples/` already exist — **do not rewrite them.**
+- **A new chapter (09, 10, 11, 18)** — write all **seven** pieces from scratch.
 
-Per chapter that is **four files**: `mock.md`, `exercises/chapter_exercise.md`,
-`exercises/cumulative_exercise.md`, and a blank `exercises/solution/chapter_exercise_worksheet.md`.
-`README.md`, `notes.md`, `interview.md` and `examples/` already exist — **do not rewrite them.**
+Work in **chapter order**: 03 → 04 → 06 → 07 → 08 → 09 → 10 → 11 → 12 → … → 18.
+
+### The four new chapters, and why they exist
+
+Added 2026-09-09 after an audit of all 14 chapters by heading. Each was confirmed absent, not
+merely thin — see `HISTORY.md` for the audit.
+
+- **09 conditional-expressions** — `CASE` in all its forms, `COALESCE`, `NULLIF`, `GREATEST`/
+  `LEAST`, conditional aggregation, `FILTER` vs `CASE`, pivoting. Currently only present as a NULL
+  topic inside Ch08. Placed after Ch08 because every trap here is a NULL trap.
+- **10 dates-times-and-time-zones** — `timestamptz` vs `timestamp`, `AT TIME ZONE`, half-open
+  ranges vs `BETWEEN`, `date_trunc`/`extract`, intervals and DST. **Zero coverage anywhere**: a
+  grep for `date_trunc`, `extract(`, `age(`, `::date` and `at time zone` matched no file. Placed
+  after Ch05 so the sargability lesson lands — `where date_trunc('day', ts) = ...` cannot use a
+  plain index, which is the same rule as Ch01's `val + 0`.
+- **11 set-operations** — `UNION` vs `UNION ALL` and the dedup cost, `INTERSECT`, `EXCEPT`, and
+  how NULL behaves under set operations (unlike `=`). No heading anywhere in the track.
+- **18 data-modification-and-upserts** — `INSERT`/`UPDATE`/`DELETE`, `RETURNING`, `ON CONFLICT`,
+  `MERGE`, and write amplification. **The track is currently read-only.** Placed last because
+  `ON CONFLICT` needs a unique index to conflict against, so it depends on Ch17.
+
+**Renumbering, 2026-09-09.** Old 09–14 became 12–17 to open slots for the new chapters. Chapters
+01–08 were deliberately left alone so that nothing already retrofitted moved. `HISTORY.md` keeps
+the old numbers in its older entries on purpose — it is a dated record of what was true then.
 
 **Two orderings, do not confuse them:**
 
-- **Writing** exercises goes in **chapter order**, because the chapters build and each
+- **Writing** goes in **chapter order**, because the chapters build and each
   `cumulative_exercise.md` is scoped "Ch1–N". Ch5's cumulative says Ch1–5; if Ch1–4 have no
   exercises it is standing on nothing.
 - **Doing** the revision goes in `PRACTICE.md`'s order, by what actually gets asked
   (indexes → joins → transactions → optimizer → window functions → pagination).
 
-Ch5 was written first because it was the immediate need. Fill in 01–04 next, then continue from
-06.
+Ch5 was written first because it was the immediate need.
 
-Each chapter gets `exercises/chapter_exercise.md`, `exercises/cumulative_exercise.md`, and a blank
-`exercises/solution/chapter_exercise_worksheet.md`. **The chapters themselves stay as they are** —
-do not rewrite them to the new contract while adding exercises.
+For the **14 existing** chapters: **the chapters themselves stay as they are** — do not rewrite
+`README.md`, `notes.md`, `interview.md` or `examples/` to the new contract while adding the
+exercises. Add, do not rewrite. This does not apply to the 4 new chapters, which have nothing to
+preserve.
 
 **Every exercise must run against the verified lab and every claimed plan must have been
 executed** — see `PRACTICE.md` for the Postgres 16 Docker setup. Two facts found only by running
@@ -145,6 +181,10 @@ Topics to eventually cover (but do not dump all at once):
 - Locks, latches, and MVCC
 - Concurrency control and deadlocks
 - NULL semantics and three-valued logic
+- Conditional expressions (`CASE`, `COALESCE`, `NULLIF`, conditional aggregation)
+- Dates, times, intervals and time zones (`timestamptz`, `AT TIME ZONE`, half-open ranges)
+- Set operations (`UNION` / `UNION ALL` / `INTERSECT` / `EXCEPT`)
+- Data modification (`INSERT`/`UPDATE`/`DELETE`, `RETURNING`, `ON CONFLICT`, `MERGE`)
 - Subqueries vs JOINs (when they are equivalent and when they are not)
 - CTEs (inline vs materialized behavior)
 - Window functions and execution model

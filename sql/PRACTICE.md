@@ -18,12 +18,12 @@ re-read.**
 | 2 | `04-joins-internals` | Nested loop vs hash vs merge — the "why is this slow" answer |
 | 3 | `07-transactions-concurrency` | Isolation levels are a standing backend question |
 | 4 | `06-query-optimizer-statistics` | Makes 1 and 2 make sense; explains stale-statistics bugs |
-| 5 | `11-window-functions` | Asked as a live query task more often than people expect |
-| 6 | `13-pagination-offset` | Keyset vs offset — practical, and a good senior signal |
-| 7 | `09-subqueries-vs-joins` | Rewriting one as the other is a common live task |
+| 5 | `14-window-functions` | Asked as a live query task more often than people expect |
+| 6 | `16-pagination-offset` | Keyset vs offset — practical, and a good senior signal |
+| 7 | `12-subqueries-vs-joins` | Rewriting one as the other is a common live task |
 | 8 | `08-null-semantics-three-valued-logic` | Three-valued logic; pairs with `js-learnings` Ch21 |
 
-Remaining chapters (01–03, 10, 12, 14) after those, or on demand.
+Remaining chapters (01–03, 09–11, 13, 15, 17–18) after those, or on demand.
 
 **Per chapter, 15 minutes:** read `notes.md`, then answer three questions from `interview.md`
 **out loud**. Not re-reading the README — that feels like revision and is not.
@@ -69,7 +69,7 @@ Then go further, because these are the questions that get asked:
 - Add a second column to the index and query on the *second* one only — leftmost-prefix rule
 - `select *` versus `select id` on an indexed column — index-only scan
 - Insert 1M rows and re-run — where does the planner switch strategy, and why?
-- `order by created_at limit 10 offset 100000` versus keyset pagination — Chapter 13, measured
+- `order by created_at limit 10 offset 100000` versus keyset pagination — Chapter 16, measured
 
 ## Problem source
 

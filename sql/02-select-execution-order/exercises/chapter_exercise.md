@@ -283,7 +283,7 @@ explain analyze select name from emp order by salary desc limit 10 offset 100000
 
 *Look at `actual rows` on the `Sort` node against the ten rows returned. What did `OFFSET` cost you,
 and why can the sort not skip that work? One sentence on what this predicts about paginating deep
-into a result set — that is Chapter 13.*
+into a result set — that is Chapter 16.*
 
 ---
 

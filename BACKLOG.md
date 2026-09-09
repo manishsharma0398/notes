@@ -110,7 +110,7 @@ cut and promoted three things:
 |---|---|---|
 | **DynamoDB data modelling** | **Uncovered — the biggest JD-aligned gap** | `terraform/17-aws-dynamodb` teaches *provisioning* (capacity modes, GSIs) and scores **zero** on access patterns, single-table design or key overloading — which is what is actually asked. ~4 chapters needed. |
 | **AWS core** | Skeleton only | Six area prompts exist (`storage`, `security`, `compute`, `networking`, `observability`, `operations`); **only SES has content**. `aws/storage/prompt.md` already promises the right things — partition math, 429s, hot partitions, DynamoDB vs RDS vs Aurora. |
-| **SQL** | **Already written, 14 chapters** | JD-named and done. Revision and drilling, not new work — the cheapest win available. |
+| **SQL** | **14 chapters written; 4 more commissioned 2026-09-09** | JD-named. Was "revision only"; a heading-level audit found dates, `CASE`, set operations and the whole write path absent, and Manish chose new chapters over folding them in. Renumbered to 18. |
 
 `STUDY-PLAN.md` schedules these into weeks 5–8.
 

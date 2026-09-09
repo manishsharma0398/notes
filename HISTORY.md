@@ -9,6 +9,68 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-09 — sql audited for gaps, four chapters commissioned, 09–14 renumbered to 12–17
+
+`BACKLOG.md` had SQL as "already written, 14 chapters — revision and drilling, not new work".
+Manish asked what important topics were actually missing. Audited all 14 chapters by **heading**,
+not keyword, because a keyword hit usually turns out to be an incidental mention in an example.
+
+**Chapters 11–14 are stronger than the backlog implied.** Ch12 already covers `ROLLUP`, `CUBE`,
+`GROUPING SETS`, hash vs sort aggregation, `DISTINCT` vs `GROUP BY` and `GROUP BY` on a primary
+key. Ch13 covers keyset pagination properly. Ch10 covers recursive CTEs. Ch7 covers isolation,
+MVCC and deadlocks. None of those are gaps, and the audit's main value was ruling them out.
+
+**Four topics were genuinely absent** — no heading, no teaching content anywhere:
+
+- **The entire write path.** `INSERT`, `UPDATE`, `DELETE`, `RETURNING`, `ON CONFLICT`, `MERGE`.
+  The track is read-only. For a backend engineer this is the second-largest gap, and idempotent
+  upsert is a standard interview question.
+- **Set operations.** `UNION`, `UNION ALL`, `INTERSECT`, `EXCEPT`. No heading anywhere.
+- **Dates, times and time zones.** A grep for `date_trunc`, `extract(`, `age(`, `::date` and
+  `at time zone` matched **no file in the track**. Dates appear only as example column data.
+- **Conditional expressions.** `CASE` exists only inside Ch08 as a NULL topic.
+
+**Deferred to this backlog rather than written:** data types as a design subject (`numeric` vs
+float for money is zero hits, plus JSONB, arrays, enums, UUID vs bigserial as a key); views and
+materialized views; zero-downtime migrations, meaning DDL locking and `CREATE INDEX CONCURRENTLY`;
+partitioning; full-text search; triggers; prepared statements and plan caching. `LATERAL` has one
+passing mention in Ch5 and belongs in Ch12's retrofit rather than its own chapter. SQL injection
+is a `web-platform` security topic, not a SQL one.
+
+**The recommendation was two chapters, not four** — write dates and the write path, fold `CASE`
+into Ch08's retrofit and set operations into Ch03's — because four new seven-piece chapters is
+roughly the same work as the entire remaining retrofit, against a `STUDY-PLAN.md` that is already
+3–4× oversubscribed and explicitly says SQL's value is "revision and drilling, no new reading".
+**Manish chose four.** Recorded because the cost was stated and accepted, not overlooked.
+
+### The renumbering
+
+Old 09–14 became 12–17, opening 09, 10, 11 and 18:
+
+```
+09 conditional-expressions            NEW      12 subqueries-vs-joins   (was 09)
+10 dates-times-and-time-zones         NEW      13 ctes                  (was 10)
+11 set-operations                     NEW      14 window-functions      (was 11)
+18 data-modification-and-upserts      NEW      15 aggregations-grouping (was 12)
+                                               16 pagination-offset     (was 13)
+                                               17 constraints           (was 14)
+```
+
+**01–08 were deliberately left alone**, so none of the three already-retrofitted chapters (01, 02,
+05) moved. Placement is by dependency, not taste: `CASE` after NULL semantics because every trap in
+it is a NULL trap; dates after indexes because the highest-value date lesson is a sargability
+lesson (`where date_trunc('day', ts) = ...` cannot use a plain index — the same rule as Ch01's
+`val + 0`); the write path last because `ON CONFLICT` needs a unique index to conflict against.
+
+Blast radius was smaller than expected: three references in `PRACTICE.md`'s revision-order table,
+two in Ch02's exercises pointing at pagination, plus `prompt.md`, `CLAUDE.md` and `BACKLOG.md`.
+Every other `Ch9`–`Ch14` reference in the root files turned out to be about `js-learnings`, `ai` or
+`web-platform`, and was checked line by line before being left alone.
+
+**`HISTORY.md` keeps the old numbers in entries written before today.** It is a dated record of
+what was true at the time; rewriting it would be falsifying it. The entry below this one still says
+Ch2 and Ch5, and should.
+
 ## 2026-09-09 — sql Ch2 retrofitted, and four of its claims turned out to be wrong
 
 Added the four missing files to `02-select-execution-order`: `mock.md`, `chapter_exercise.md`,

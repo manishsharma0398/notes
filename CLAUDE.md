@@ -100,6 +100,7 @@ If asked to "continue" with no track named, ask which one — there are four act
 | `js-machine-round/` | category 01 of 8 ready | category 02 — function polyfills |
 | `hands-on-builds/` | build 01 of 11 specified | build 02 — a Promise implementation |
 | `react/` | 2 chapters, **stalled** under the old contract | needs `mock.md` + exercises before new chapters |
+| **`sql/`** | 14 chapters, **renumbered to an 18-chapter plan** 2026-09-09 | retrofit the next existing chapter, or write one of the 4 new ones (09, 10, 11, 18). See its `prompt.md` |
 | `docker/` `k8s/` `linux/` `ci-cd-pipelines/` `scripting/` | prompt only, **no content** | not started |
 
 **Every chapter track uses one structure**, standardised 2026-09-05 and written into all 16
