@@ -24,7 +24,7 @@ Log **every** attempt, including the ones you failed — especially those.
 | 2026-09-09 | 4 | [Move Zeroes (283)](https://leetcode.com/problems/move-zeroes/) | py | 25 | y | — at the 25min wall; #3 was 6min on the same fast/slow shape. The tail requirement sent me wide before I found the swap | |
 | 2026-09-09 | 5 | [Container With Most Water (11)](https://leetcode.com/problems/container-with-most-water/) | py | 11 | n | — pointer logic + move rule unaided; needed a nudge that area is min(h)*width, not h*h. Safety argument still to state out loud | |
 | 2026-09-09 | 6 | [3Sum (15)](https://leetcode.com/problems/3sum/) | py | 8 | y | — clean; dup-skip correct. Missing `if a > 0: break` (2x-28x). `sum` shadows the builtin (2nd time after `ascii`) | |
-| | 7 | [Merge Sorted Array (88)](https://leetcode.com/problems/merge-sorted-array/) | | | | | |
+| 2026-09-09 | 7 | [Merge Sorted Array (88)](https://leetcode.com/problems/merge-sorted-array/) | py | 20 | n | — fill-from-back was mine; needed hints that the drain must be `r >= 0` not `r == 0`, and that the l-leftover needs no loop at all (mid == l). `mid` is a misleading name for the write head | |
 | | 8 | [Sort Colors (75)](https://leetcode.com/problems/sort-colors/) | | | | | |
 
 **Sunday question — which pattern would I fail if asked tomorrow?**
@@ -66,7 +66,7 @@ week 8 comes and you filter for `unaided = n`.
 
 | Milestone | Target | Actual |
 |---|---|---|
-| End of week 4 | ~29 | **6** |
+| End of week 4 | ~29 | **7** |
 | End of week 8 | ~60 | |
 | End of week 12 | ~92 | |
 
