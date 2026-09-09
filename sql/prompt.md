@@ -22,7 +22,7 @@ The 14 existing chapters were written under the OLD contract — `README`, `note
 | 06 | `06-query-optimizer-statistics` | needs retrofit |
 | 07 | `07-transactions-concurrency` | needs retrofit |
 | 08 | `08-null-semantics-three-valued-logic` | needs retrofit |
-| 09 | `09-conditional-expressions` | **NEW — not written** |
+| 09 | `09-conditional-expressions` | **NEW — written ✓** (all seven pieces, 2026-09-09) |
 | 10 | `10-dates-times-and-time-zones` | **NEW — written ✓** (all seven pieces, 2026-09-09) |
 | 11 | `11-set-operations` | **NEW — not written** |
 | 12 | `12-subqueries-vs-joins` | needs retrofit (was 09) |
@@ -33,11 +33,11 @@ The 14 existing chapters were written under the OLD contract — `README`, `note
 | 17 | `17-constraints` | needs retrofit (was 14) |
 | 18 | `18-data-modification-and-upserts` | **NEW — not written** |
 
-**Next: `09-conditional-expressions`, write from scratch.**
+**Next: `11-set-operations`, write from scratch.**
 
-Ch10 was written first, out of order, because dates was the gap Manish actually felt — the same
-reason Ch5 jumped the queue during the retrofit. Ch09, Ch11 and Ch18 are still unwritten, and the
-retrofit of 03, 04, 06, 07, 08, 12–17 is still outstanding.
+Ch10 and Ch09 were written first, out of order, because dates was the gap Manish actually felt —
+the same reason Ch5 jumped the queue during the retrofit. **Ch11 and Ch18 are still unwritten**, and
+the retrofit of 03, 04, 06, 07, 08 and 12–17 is still outstanding.
 
 **"Continue sql" means one of two jobs, and which one depends on the chapter:**
 
@@ -47,8 +47,8 @@ retrofit of 03, 04, 06, 07, 08, 12–17 is still outstanding.
   `examples/` already exist — **do not rewrite them.**
 - **A new chapter (09, 10, 11, 18)** — write all **seven** pieces from scratch.
 
-Work in **chapter order** for what remains: 03 → 04 → 06 → 07 → 08 → 09 → 11 → 12 → … → 18.
-(10 is done.)
+Work in **chapter order** for what remains: 03 → 04 → 06 → 07 → 08 → 11 → 12 → … → 18.
+(09 and 10 are done.)
 
 ### The four new chapters, and why they exist
 

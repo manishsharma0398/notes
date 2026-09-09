@@ -9,6 +9,86 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-09 — sql Ch09 written: conditional expressions
+
+Second of the four new chapters, all seven pieces. `CASE`, `COALESCE`, `NULLIF`, `GREATEST`/`LEAST`,
+`FILTER` and conditional aggregation. Ch11 and Ch18 remain unwritten.
+
+**This chapter's bugs do not error — they return plausible numbers**, which is what makes it worth
+writing rather than assuming. Everything below was executed on PostgreSQL 16.15.
+
+**The counting bug, measured on 300,000 rows where 15,000 are refunded:**
+
+```
+ with_else_zero | no_else | sum_with_else | filter_ver | total_rows
+----------------+---------+---------------+------------+------------
+         300000 |   15000 |         15000 |      15000 |     300000
+```
+
+`count(case when p then 1 else 0 end)` returns **the table's row count**, because `count(expr)`
+counts non-NULLs and `0` is not NULL. It does not error and the number looks plausible, which is
+exactly why it survives review. The rule worth memorising: **`count` wants the `ELSE` omitted,
+`sum` wants `else 0`.**
+
+**`FILTER` and `CASE` compile to identical plans** — same `Finalize Aggregate` over the same
+`Partial Aggregate` over the same parallel sequential scan, 17.35 ms against 17.67 ms. So the
+preference for `FILTER` is about safety, not speed: the `else 0` failure mode does not exist in it.
+Worth stating plainly because "FILTER is optimised for this" is a common guess.
+
+### The centrepiece: where the condition sits
+
+`CASE` short-circuits over scalars — `case when false then 100/0 else -1 end` is fine. **It does not
+protect an aggregate.** With 75,000 of 300,000 rows having `discount_cents = 0`:
+
+```sql
+select case when count(*) > 999999999 then sum(100/discount_cents) else 0 end from ord;
+-- ERROR:  division by zero
+```
+
+The guard is false, the branch is never taken, it errors anyway. The plan says why, and this is the
+part I would not have got right from memory:
+
+```
+Finalize Aggregate
+  Output: CASE WHEN (count(*) > 999999999) THEN sum((100 / discount_cents)) ELSE '0'::numeric END
+  ->  Partial Aggregate
+        Output: PARTIAL count(*), PARTIAL sum((100 / discount_cents))
+```
+
+The `Partial Aggregate` computes the sum **unconditionally**; the `CASE` appears only in the
+`Finalize Aggregate` output, running on finished values. **A projection cannot prevent work that
+already happened underneath it.** Both fixes move the condition inside the aggregate, and the plan
+shows the predicate relocating into the `Partial Aggregate` node:
+
+```sql
+sum(100/discount_cents) filter (where discount_cents <> 0)             -- 237000
+sum(case when discount_cents = 0 then 0 else 100/discount_cents end)   -- 237000
+```
+
+**And the reason this bug resists reproduction:** a *literal* `case when false then sum(...)` does
+**not** error, because the planner constant-folds the branch away before execution. The small test
+you write to check it passes; production still breaks. You need a guard the planner cannot fold,
+such as `count(*) > 999999999`. That detail is now in the chapter, the mock and the exercise,
+because it is the difference between having read about this and having debugged it.
+
+**Two smaller findings worth keeping:**
+
+- A `CASE` in `WHERE` costs the access path **and** the estimate: bitmap index scan at cost 2625
+  with `rows=1766`, against a parallel seq scan at cost 4983 with `rows=88235`. And in the example
+  used, the `CASE` null-guard was a **no-op** — `amount_cents > 199000` already drops NULLs because
+  `WHERE` keeps only true. Chapter 8 showing up inside a Chapter 9 question.
+- **`GREATEST`/`LEAST` ignore NULLs** — `greatest(1, null, 3)` is `3` — where `1 + null` is NULL.
+  Postgres and Oracle skip; **MySQL returns NULL**. One of the few places the same query gives a
+  different answer on two engines with no error.
+
+Also confirmed: `case when true then 1 else 'x' end` errors; `case when true then 1 else 2.5 end`
+is `numeric`; and an **all-NULL `CASE` is typed `text`**, which is a trap for placeholder branches.
+
+All six example files execute end to end. Both exercise setups were run from scratch in fresh
+databases, and the cumulative's four trap counts verified exactly (27,272 NULL channels, 3,092 NULL
+amounts, 75,000 zero discounts, 384 NULL tiers). One pasted bitmap-scan cost had to be corrected
+after a clean-database re-run — the same class of catch as Ch10's, and the reason that rule exists.
+
 ## 2026-09-09 — sql Ch10 written: dates, times and time zones
 
 First of the four new chapters, and written out of order — 09, 11 and 18 are still empty, and the
