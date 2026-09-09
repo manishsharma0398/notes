@@ -9,6 +9,97 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-09 — sql Ch4 retrofitted: joins measured, and four chapter claims that did not survive
+
+Chapter 4 is the second-most-asked topic in the track (`PRACTICE.md` ranks it behind indexes) and
+the one with the widest gap between what candidates prepare and what gets scored. Added `mock.md`,
+both exercises and a blank worksheet. The six existing files were not touched.
+
+**The chapter's prose is the best in the track and almost none of it was run.** It has three extra
+topic files (`logical_vs_physical`, `multi_join_execution`, `optimizer_control`) that explain the
+material well. What was missing is evidence. Everything below was executed on Postgres 16.15
+against a deterministic fixture: 100k users, 1M orders, `max_parallel_workers_per_gather = 0`.
+
+**Four claims corrected, each caught by running it:**
+
+- **`examples/00_setup_seed.sql` is not reproducible.** It fills `orders.user_id` with `random()`,
+  so the skew and every resulting plan differ on each load. A seed script for a performance chapter
+  has to be deterministic. The exercises ship their own fixture and say why.
+- **The type-mismatch trap (README §4.3) is MySQL behaviour.** `on users.id = orders.user_id` across
+  `int` and `text` does not silently degrade in Postgres, it errors:
+  `operator does not exist: text = integer`. `int` against `bigint` is allowed and joins normally.
+- **`optimizer_control.md` describes `SET enable_hashjoin = OFF` as "I forbid you".** It is a cost
+  penalty, not a prohibition — Postgres adds `disable_cost` of 1e10 and will still use the node if
+  nothing else can do the job. Visible in the plan as `Nested Loop (cost=10000000000.29..)`, and
+  demonstrated on a range join that stayed a nested loop with `enable_nestloop = off`, at 11× cost.
+- **`interview.md` Q2 implies a spill is 10–100× slower.** Measured at **1.24×** (929 ms against
+  752 ms). The exercise asks for the reader's own ratio and what would have to differ for the
+  chapter's number to be right, rather than repeating it.
+
+**The three algorithms, same query, serial:**
+
+| algorithm | startup | total | shared buffers |
+|---|---|---|---|
+| hash | 34.1 ms | 436 ms | 8,141 |
+| merge | 0.06 ms | 631 ms | 1,002,098 |
+| nested loop, no memoize | 5.6 ms | 780 ms | 1,301,088 |
+| nested loop, memoized | 0.05 ms | 680 ms | 188,553 |
+
+Hash was 1.4× faster than merge in wall time while touching **123× fewer buffer pages** — the gap
+that hides on an idle laptop and decides things on a loaded server. The framing worth keeping:
+buffers measure the work the plan asked for, time measures that plus cache luck.
+
+**Two things the chapter does not mention at all, both of which change its conclusions:**
+
+- **`Memoize`** (Postgres 14+) sits above the inner side of a nested loop and caches lookups. On the
+  skewed fixture it took 1,301,088 buffers down to 188,553 with 939,600 hits out of a million. The
+  flat "nested loop is O(N×M)" claim needs qualifying because of it.
+- **Anti-joins and semi-joins.** `NOT EXISTS` plans as `Hash Right Anti Join`; `NOT IN` frequently
+  does not plan as a join at all.
+
+**The `NOT IN` cliff is the best single item in the chapter, and it has both halves.**
+
+Performance: at 1M rows and default `work_mem`, `NOT IN` becomes `Filter: (NOT (SubPlan 1))` over a
+`Materialize` and did not finish in 165 seconds, where `NOT EXISTS` took 299 ms. But it is not
+simply slow — on smaller data it was 39.8 ms against 28.6 ms, perfectly fine. The difference is one
+word in the plan, `hashed`, and the cliff is `work_mem`: the same full-size query plans as
+`NOT (hashed SubPlan 1)` at `work_mem = 256MB`. So it passes staging and dies in production with no
+query change.
+
+Correctness: a **single NULL** in the subquery took `NOT IN` from 1,600 rows to **0**, silently,
+while `NOT EXISTS` stayed at 1,600. Chapter 3's three-valued logic arriving inside a join.
+
+**Better statistics produced a slower plan, repeatably.** On correlated `country`/`city` the planner
+assumed independence and estimated 4,041 rows against an actual 20,000, then chose a nested loop
+that ran in ~77 ms. Adding `create statistics (dependencies, ndistinct)` fixed the estimate to
+20,300 — and the planner switched to a hash join at ~220 ms. Measured twice each way. Lowering
+`random_page_cost` from 4 to 1.1 improved the hash plan (273 → 204 ms) but did not flip the choice
+back, so the mechanism is left as a pointer to Ch6 rather than asserted. The honest lesson is that
+accurate statistics buy correct *reasoning*, not a faster query.
+
+Also verified: a `LEFT JOIN` planned as **`Hash Right Join`** (the planner swapped the build side and
+mirrored the join type), `FULL` as `Hash Full Join`, `CROSS` as `Nested Loop` over `Materialize` —
+so the chapter's "any logical join can use any physical algorithm" holds, with cross join the real
+exception. Forcing the written join order with `join_collapse_limit = 1` grew the intermediate
+result from 200,000 to 1,000,000 rows and the query from 311 ms to 537 ms.
+
+**The cumulative exercise is a "this report takes three seconds, make it faster" whiteboard
+question**, scoped Ch1–4, on 200k customers / 1M orders / 3M order items (237 MB) with only primary
+key indexes. It is built around a deliberate false lead: **adding every missing foreign-key index
+bought about 3%.** The real wins were `work_mem` (~17%, three separate spills including an external
+merge sort) and replacing `count(distinct)` with `count(*)`, which swapped a `GroupAggregate` over a
+full sort for a `HashAggregate` and roughly halved it again.
+
+That last one carries a trap I nearly shipped as advice. On this data `count(distinct o.id)` and
+`count(*)` return identical numbers, because each order happens to have exactly one matching item —
+but **nothing in the schema guarantees it**, so the rewrite is a latent correctness bug rather than
+an optimisation. The exercise now asks for both answers separately, then asks the reader to refuse
+to ship the fast one and say what would make it safe.
+
+**Next: `06-query-optimizer-statistics`, retrofit.**
+
+---
+
 ## 2026-09-09 — sql Ch3 retrofitted: the relational model, measured rather than recited
 
 Chapter 3 had the old four files and no timed surface. Added the four missing pieces — `mock.md`,
