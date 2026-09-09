@@ -9,6 +9,84 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-09 — sql Ch10 written: dates, times and time zones
+
+First of the four new chapters, and written out of order — 09, 11 and 18 are still empty, and the
+retrofit of 03/04/06/07/08 and 12–17 is still outstanding. Dates jumped the queue for the same
+reason Ch5 did during the retrofit: it is the gap Manish actually felt, and it is the one that
+ships wrong numbers rather than slow ones.
+
+All seven pieces. Everything below was executed on PostgreSQL 16.15; nothing was written from
+memory.
+
+**The chapter has one spine rather than a list of gotchas**, and that turned out to be the whole
+reason it works. Four separate-looking facts are the same fact:
+
+1. `timestamptz` stores an **instant**, not a zone, and renders it in the session's `TimeZone`.
+   Both types are 8 bytes — there is no storage trade-off to argue about.
+2. Therefore the same instant is a **different day** in two zones. `2026-01-03 20:00 UTC` is
+   Jan 3 in UTC and Jan 4 in Kolkata. So "daily revenue" is not a well-formed request.
+3. Therefore `date_trunc(text, timestamptz)` is **STABLE**, not immutable — its answer depends on
+   who is asking.
+4. Therefore you **cannot build an expression index on it**. An index is on disk and shared by
+   every session, so it requires `IMMUTABLE`.
+
+That fourth step is the find. The obvious repair for the slow-report question is rejected outright:
+
+```
+create index ev_day_idx on ev(date_trunc('day', at));
+ERROR:  functions in index expression must be marked IMMUTABLE
+```
+
+Pulled the volatility from `pg_proc` rather than asserting it, and the pattern is perfectly
+consistent: **every `timestamptz` overload is STABLE and every `timestamp` overload is IMMUTABLE**,
+across `date_trunc`, `extract` and one-argument `age`. That is why the blog post showing this index
+works for its author — their column was a plain `timestamp`. Postgres 16's three-argument
+`date_trunc(field, ts, zone)` is IMMUTABLE, which is what that form exists for.
+
+**Measured, on 500,001 rows with a B-tree on `at`:**
+
+| predicate | plan | time |
+|---|---|---|
+| `date_trunc('minute', at) = ...` | parallel seq scan | 17.550 ms |
+| `at >= ... and at < ...` | index only scan | 0.064 ms |
+| `date_trunc('day', at) = ...` | parallel seq scan | 19.200 ms |
+| same, with a zone-pinned expression index | index scan | 6.599 ms |
+
+Roughly 270× on the sargable rewrite. **And there is a second cost most candidates miss**: the
+planner cannot see through the function to the column statistics either, so it estimated
+`rows=1042` against 28,800 actual. Under a join that picks the wrong algorithm, which is a bigger
+bill than the scan.
+
+**Other things only running them could settle:**
+
+- `AT TIME ZONE` **flips the type** — `timestamptz → timestamp` one way, `timestamp → timestamptz`
+  the other. Not a zone converter. People get the direction backwards about half the time.
+- `BETWEEN` fails **quietly**. With a row at `23:59:59.5`, a `...23:59:59` upper bound returns
+  86,400 where the half-open range returns 86,401. Invisible in fixtures that land on whole
+  seconds; inevitable once anything writes `now()`.
+- Date literals are worse: `between '2026-01-03' and '2026-01-04'` gives 86,402 — one day plus two
+  instants — where a human means 172,801.
+- `+ interval '1 day'` and `+ interval '24 hours'` differ by an hour across the US spring-forward
+  (12:00 vs 13:00 local). **In a UTC session both give the same answer** — the session zone changed
+  the result of the query, which is the same fact as #3 above.
+- Month arithmetic clamps and is therefore **not associative**: `Jan 31 + 1 month + 1 month` is
+  Mar 28, `Jan 31 + 2 months` is Mar 31. Three days apart from one start date. A renewal schedule
+  built by repeatedly adding a month drifts earlier every February and never recovers.
+- `now()` is frozen at **transaction** start, and that is a feature — a batch shares a timestamp,
+  so "which rows were in that transaction" stays answerable. `localtimestamp` returns a zone-less
+  `timestamp` and is a trap.
+
+**The cumulative exercise** is six tenants across five reporting zones over 2026-02-15 to
+2026-04-11, so the data window contains real transitions. Two calibration numbers verified in a
+clean database: one event every six seconds gives **14,400 rows in a normal local day and 13,800 on
+2026-03-08** in `America/New_York`, because that day is 23 hours long. And `fmt_money` sorts
+`$1,000.00` before `$999.00`, which is the Chapter 2 projection lesson meeting a correctness bug.
+
+Both exercise setups were run from scratch in a fresh database, and all six example files execute
+end to end. Three pasted counts had to be corrected after the setup gained the sub-second row —
+caught only by re-running, which is why that rule exists.
+
 ## 2026-09-09 — sql audited for gaps, four chapters commissioned, 09–14 renumbered to 12–17
 
 `BACKLOG.md` had SQL as "already written, 14 chapters — revision and drilling, not new work".
