@@ -13,13 +13,20 @@ They are being retrofitted to the full seven-piece standard**, which means each 
 | Chapter | mock.md | exercises |
 |---|---|---|
 | `01-logical-vs-physical-query-processing` | **✓** | **✓** |
+| `02-select-execution-order` | **✓** | **✓** |
 | `05-indexes-in-depth` | **✓** | **✓** |
-| 02, 03, 04, 06–14 | — | — |
+| 03, 04, 06–14 | — | — |
 
-**Next: `02-select-execution-order`, complete.**
+**Next: `03-relational-model-fundamentals`, complete.**
 
 **"Continue sql" means: bring the next chapter up to the full seven-piece standard**, not write a
-15th chapter. In **chapter order**: 01 ✓ → 02 → 03 → 04 → 05 ✓ → 06 → … → 14.
+15th chapter. In **chapter order**: 01 ✓ → 02 ✓ → 03 → 04 → 05 ✓ → 06 → … → 14.
+
+**Chapter 2 left one debt behind.** Its `examples/queries.sql` uses `//` for comments from line 39
+onward — 112 lines of it — which is not SQL, so the file dies at the first one. Three factual
+claims in its `README.md`, `notes.md` and `interview.md` are also wrong (see `HISTORY.md`
+2026-09-09). The retrofit rule says add, do not rewrite, so **none of them were touched**; the
+exercise points at them instead and asks Manish to find them. Fixing them is a separate decision.
 
 Per chapter that is **four files**: `mock.md`, `exercises/chapter_exercise.md`,
 `exercises/cumulative_exercise.md`, and a blank `exercises/solution/chapter_exercise_worksheet.md`.

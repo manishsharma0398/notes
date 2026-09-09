@@ -9,6 +9,79 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-09 — sql Ch2 retrofitted, and four of its claims turned out to be wrong
+
+Added the four missing files to `02-select-execution-order`: `mock.md`, `chapter_exercise.md`,
+`cumulative_exercise.md`, and a blank worksheet. Chapter 2 of 14 for the retrofit; 01, 02, 05 now
+complete.
+
+**The chapter needed an angle, because reciting `FROM → WHERE → GROUP BY → HAVING → SELECT →
+DISTINCT → ORDER BY → LIMIT` is worth nothing in a round — everyone can.** The angle is the gap
+between that list and what the engine does. Everything below was measured on Postgres 16.15.
+
+**Alias visibility is not the evaluation order.** `WHERE` cannot see a select-list alias and
+`ORDER BY` can — that much is well known. But `GROUP BY` **can**, and `HAVING` **cannot**, which is
+backwards from the stage order and cannot be explained by it. It is name resolution in the parser,
+a Postgres/MySQL extension, not a consequence of anything. And the tie-breaks differ: given an alias
+colliding with a real column name, `GROUP BY` picks the **input column** (and then usually errors),
+while `ORDER BY` picks the **alias** — silently. `select amount_cents as closed_at ... order by
+closed_at` sorts by amount and returns a plausible wrong answer with no error.
+
+**The projection is evaluated last, and only for surviving rows.** Counted with
+`pg_stat_user_functions` on a 1000-row table:
+
+| query shape | calls |
+|---|---|
+| `order by` a plain column, `limit 10` | 10 |
+| `order by` the projected alias, `limit 10` | 1000 |
+| `order by`, no `limit` | 1000 |
+| `distinct` on the projection | 1000 |
+| `where` on the projection, `limit 10` | 141 |
+
+The visible tell is a **`Result` node above the `Sort`** — that node *is* the projection. When the
+sort key is the expression, the node vanishes, the expression moves into the scan's target list, and
+the scan's cost goes 18 → 268. Measured 0.836 ms against 6.898 ms. At 500k rows it is 20 calls
+against 420,000. The 141 is the nicest one: `LIMIT` lets the scan stop early, so the `WHERE`
+expression runs ~131 times, not 1000.
+
+Declaring the function `IMMUTABLE` changes **nothing** — checked, because it is the obvious guess.
+Plan shape governs this, not volatility.
+
+**"`WHERE` is cheaper than `HAVING`" is false as stated.** A `HAVING` that references no aggregate
+is pushed down: `where dept = 'eng' group by dept` and `group by dept having dept = 'eng'` produce
+the *same plan*, `Filter: (dept = 'eng'::text)` on the sequential scan in both. `HAVING` is only
+worse when it references an aggregate — the case where you had no choice. The real rule is
+**`HAVING` is not slow, aggregation is**. Also: `Rows Removed by Filter` on an aggregate node counts
+**groups**, not rows.
+
+**`LIMIT` changes the sort algorithm, it does not truncate at the end.** Same query, same data:
+`limit 10` → top-N heapsort, 25 kB, 15.9 ms. No limit → external merge, **5096 kB on disk**, 54.6 ms.
+
+Two more worth keeping: `GROUP BY` on a **primary key** lets you select any column of that table
+(functional dependency, SQL:1999) — so "with `GROUP BY` you may only select grouped columns or
+aggregates" is wrong; and `select count(*) from emp having count(*) > 999999` returns **zero rows**,
+not a row containing 0.
+
+### Four defects in the existing Ch2 files, left in place
+
+The retrofit rule is add, do not rewrite, so none were touched. The exercise points at them and asks
+Manish to find them by measurement instead, which is more useful than a correction he did not make.
+Recorded here so the decision is not lost:
+
+1. **`examples/queries.sql` does not run.** From line 39 it uses `//` for comments — **112 lines** of
+   it. `//` is a syntax error in psql, so the file dies at the first one.
+2. **`examples/queries.sql` Example 8** claims a `WHERE`-filtered department shows `Sales 0`. A group
+   whose rows were all filtered out does not appear at all. Zero-count groups are never produced.
+3. **`interview.md` Q2** says the `WHERE` version returns "departments where all employees > 50K".
+   It returns departments with *at least one*, counting only those.
+4. **`interview.md` Q6** marks `select name from emp order by (select avg(salary))` as valid. It
+   errors — the scalar subquery references the outer table, making the outer query an aggregate
+   query. `notes.md` also marks a valid `SELECT DISTINCT dept, COUNT(*) ... GROUP BY dept` as
+   invalid while its own reason column says it is fine.
+
+Also still open from the 2026-09-06 entry below: **Ch2's README still describes only the inner-join
+case** of the `FROM` stage. Untouched for the same reason.
+
 ## 2026-09-06 — sql Ch1: the JOIN step was missing from the logical order
 
 Reading the Ch1 README, the logical-order diagram went `FROM` → `WHERE` with no `JOIN` anywhere.
