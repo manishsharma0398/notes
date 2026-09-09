@@ -16,7 +16,7 @@ The 14 existing chapters were written under the OLD contract — `README`, `note
 |---|---|---|
 | 01 | `01-logical-vs-physical-query-processing` | retrofitted **✓** |
 | 02 | `02-select-execution-order` | retrofitted **✓** |
-| 03 | `03-relational-model-fundamentals` | needs retrofit |
+| 03 | `03-relational-model-fundamentals` | retrofitted **✓** |
 | 04 | `04-joins-internals` | needs retrofit |
 | 05 | `05-indexes-in-depth` | retrofitted **✓** |
 | 06 | `06-query-optimizer-statistics` | needs retrofit |
@@ -33,11 +33,11 @@ The 14 existing chapters were written under the OLD contract — `README`, `note
 | 17 | `17-constraints` | needs retrofit (was 14) |
 | 18 | `18-data-modification-and-upserts` | **NEW — not written** |
 
-**Next: `11-set-operations`, write from scratch.**
+**Next: `04-joins-internals`, retrofit.**
 
 Ch10 and Ch09 were written first, out of order, because dates was the gap Manish actually felt —
 the same reason Ch5 jumped the queue during the retrofit. **Ch11 and Ch18 are still unwritten**, and
-the retrofit of 03, 04, 06, 07, 08 and 12–17 is still outstanding.
+the retrofit of 04, 06, 07, 08 and 12–17 is still outstanding.
 
 **"Continue sql" means one of two jobs, and which one depends on the chapter:**
 
@@ -47,8 +47,8 @@ the retrofit of 03, 04, 06, 07, 08 and 12–17 is still outstanding.
   `examples/` already exist — **do not rewrite them.**
 - **A new chapter (09, 10, 11, 18)** — write all **seven** pieces from scratch.
 
-Work in **chapter order** for what remains: 03 → 04 → 06 → 07 → 08 → 11 → 12 → … → 18.
-(09 and 10 are done.)
+Work in **chapter order** for what remains: 04 → 06 → 07 → 08 → 11 → 12 → … → 18.
+(03, 09 and 10 are done.)
 
 ### The four new chapters, and why they exist
 

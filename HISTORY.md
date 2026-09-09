@@ -9,6 +9,108 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-09 — sql Ch3 retrofitted: the relational model, measured rather than recited
+
+Chapter 3 had the old four files and no timed surface. Added the four missing pieces — `mock.md`,
+both exercises, and a blank worksheet. The existing four were not touched.
+
+**The problem with this chapter is that it is the easiest one to fake.** Codd, 1970, relations are
+sets of tuples, SQL is a bag — all correct, all recitable, none of it changes a decision. So the
+retrofit is built on one rule: every violation of the relational model has to be attached to a
+measured cost or a corrupted row, or it does not go in. Everything below was executed on Postgres
+16.15 before it was written down.
+
+**Four constraint promises that do not hold, all verified:**
+
+- **`UNIQUE` does not stop duplicates on a nullable column.** Three NULLs inserted into a `unique`
+  column, no complaint — a unique index tests *distinctness*, not equality, and two NULLs are never
+  proven equal. `unique nulls not distinct` (PG15+) is the fix, and its error reads
+  `Key (email)=(null) already exists`.
+- **`CHECK` does not enforce a domain.** `check (age between 18 and 100)` accepts NULL, because a
+  `CHECK` rejects only on **false** and `NULL between ...` is unknown. The rule worth keeping:
+  every `CHECK` has an invisible `OR column IS NULL` on the end. This contradicts the README, which
+  presents `CHECK` as the domain-enforcing constraint.
+- **A foreign key creates no index.** Verified against `pg_indexes`: the child table had only its
+  own primary key. Postgres indexes the PK and the UNIQUE, and leaves the FK bare.
+- **`ORDER BY` alone does not make pagination deterministic** — it has to be a *total* order. Left
+  as a pointer to Ch16.
+
+**The FK measurement is the chapter's best single result.** Deleting a parent row with **zero**
+children, child table 1M rows / 71 MB:
+
+```
+FK unindexed   Trigger for constraint emp_dept_id_fkey: time=64.984   Execution Time: 65.256 ms
+FK indexed     Trigger for constraint emp_dept_id_fkey: time=0.599    Execution Time: 0.663 ms
+```
+
+~100×, reproduced twice, and confirmed again from a clean database at 59.7 vs 0.38 ms. What makes
+it a good teaching plan is that **the plan tree accounts for 0.13 ms of the 65** — all the time is
+on a `Trigger for constraint` line *below* the tree, which is exactly where people stop reading.
+And the row had no children, so it was not cascading work; it was paying to prove there was nothing
+to cascade.
+
+**Two operators spelled `=`, and the safe-looking one is the bug.** Deduplicating a keyless table
+needs `ctid`, and the predicate matters:
+
+| comparison | two identical rows containing NULL |
+|---|---|
+| `row('Bob',null) = row('Bob',null)` | NULL |
+| `a.* = b.*` | **true** |
+| `a.* is not distinct from b.*` | true |
+| `a.name = b.name and a.dept = b.dept` | NULL |
+
+Whole-row comparison uses the composite operator `record_eq`, which deliberately departs from the
+SQL standard and treats NULLs as equal; the row constructor follows the standard and does not. So
+the terse `a.* = b.*` is **correct** and the explicit column-by-column version silently under-deletes.
+Measured on the cumulative fixture: 1,030 duplicates removed versus 1,000, leaving 30 groups behind
+with no error. I had predicted the opposite before running it, which is why it is in the exercise.
+
+**Row order, demonstrated rather than asserted.** The chapter's own Example 2 inserts five rows,
+selects them, and claims the order is undefined — but they come back in insertion order every time,
+so it teaches the opposite of its point. Replaced with something that actually moves: `select id
+from ord limit 3` returns 1,2,3; an unrelated `update ord set v='Z' where id=1` moves that row from
+`ctid (0,1)` to `(0,6)`; the same select now returns **2,3,4**. Same query text, different answer.
+Also verified that a vacuum *reuses* a `ctid` — `(0,1)` held id 1, then held id 999 — which is the
+second, independent reason `ctid` is never a stored identifier.
+
+**Bag-vs-set, costed.** The README justifies duplicates with "checking is expensive". Now it has a
+number: 500k inserts took 733 ms into a plain table and 1,579 ms with a `unique` constraint, 17 MB
+against 28 MB. Paying at read time instead is worse — `select distinct` on 500k distinct values was
+10× the plain scan and **spilled**, `Batches: 41, Disk Usage: 15064kB`, while collapsing 1M rows to
+200 departments stayed in memory at 94 ms. So the rule is cardinality, not table size.
+
+A nice secondary result: `select distinct` on a column with a `unique` constraint **keeps** the
+`Unique` node — the planner does not prove the dedup redundant — but feeds it from an index-only
+scan, so it streams instead of hashing and never spills. The constraint did not remove the work, it
+changed the work.
+
+**1NF, and the trap that makes the array form look fine.** 200k rows, 200 holding a rare skill:
+
+| shape | plan | time |
+|---|---|---|
+| array + GIN, `skills @> array['cobol']` | Bitmap Index Scan | 0.172 ms |
+| array + GIN, `'cobol' = any(skills)` | Parallel Seq Scan | 24.708 ms |
+| junction table + btree | Index Only Scan | 0.094 ms |
+
+Same table, same index, 144× apart. `= ANY()` is not an operator the GIN operator class knows, so
+the index is simply not used and nothing warns you.
+
+**The cumulative exercise is a "turn this dump into a schema" whiteboard question**, scoped Ch1–3,
+on a 101,370-row fixture built to punish assumption: 1,030 exact duplicate groups (30 of them
+containing NULLs), 330 NULL emails, and a `company → tier` dependency that holds for four companies
+and is violated by 40 grandfathered Acme rows. Every calibration number in the file was reproduced
+from a clean database using the file's own SQL.
+
+Three claims were corrected before shipping, each caught by running them: `examples.sql` does run
+(`---` is a valid SQL comment, unlike Ch2's `//`); `unique(full_name)` **succeeds** on the deduped
+fixture rather than failing, so that item became a point about constraints that pass today and
+break tomorrow, with `set not null` on email as the one that genuinely errors; and the fixture has
+no natural `LIKE` false positive, so the exercise now asks the reader to construct one.
+
+**Next: `04-joins-internals`, retrofit.**
+
+---
+
 ## 2026-09-09 — sql Ch09 written: conditional expressions
 
 Second of the four new chapters, all seven pieces. `CASE`, `COALESCE`, `NULLIF`, `GREATEST`/`LEAST`,
