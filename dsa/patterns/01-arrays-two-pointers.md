@@ -36,14 +36,14 @@ Three shapes:
 
 | # | Problem | Shape |
 |---|---|---|
-| 1 | Two Sum II — Input Array Is Sorted (167) | opposite ends |
-| 2 | Valid Palindrome (125) | opposite ends |
-| 3 | Remove Duplicates from Sorted Array (26) | fast/slow |
-| 4 | Move Zeroes (283) | fast/slow |
-| 5 | Container With Most Water (11) | opposite ends, greedy move |
-| 6 | 3Sum (15) | sort + fixed one + two pointers |
-| 7 | Merge Sorted Array (88) | two arrays, **fill from the back** |
-| 8 | Sort Colors (75) | three pointers (Dutch national flag) |
+| 1 | [Two Sum II — Input Array Is Sorted (167)](https://leetcode.com/problems/two-sum-ii-input-array-is-sorted/) | opposite ends |
+| 2 | [Valid Palindrome (125)](https://leetcode.com/problems/valid-palindrome/) | opposite ends |
+| 3 | [Remove Duplicates from Sorted Array (26)](https://leetcode.com/problems/remove-duplicates-from-sorted-array/) | fast/slow |
+| 4 | [Move Zeroes (283)](https://leetcode.com/problems/move-zeroes/) | fast/slow |
+| 5 | [Container With Most Water (11)](https://leetcode.com/problems/container-with-most-water/) | opposite ends, greedy move |
+| 6 | [3Sum (15)](https://leetcode.com/problems/3sum/) | sort + fixed one + two pointers |
+| 7 | [Merge Sorted Array (88)](https://leetcode.com/problems/merge-sorted-array/) | two arrays, **fill from the back** |
+| 8 | [Sort Colors (75)](https://leetcode.com/problems/sort-colors/) | three pointers (Dutch national flag) |
 
 ## Edge cases to name out loud before coding
 

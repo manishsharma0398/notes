@@ -32,13 +32,13 @@ run satisfying a condition).
 
 | # | Problem | Shape |
 |---|---|---|
-| 1 | Best Time to Buy and Sell Stock (121) | the simplest window |
-| 2 | Longest Substring Without Repeating Characters (3) | variable + set |
-| 3 | Maximum Average Subarray I (643) | fixed width |
-| 4 | Longest Repeating Character Replacement (424) | variable + count |
-| 5 | Permutation in String (567) | fixed + frequency compare |
-| 6 | Minimum Size Subarray Sum (209) | shrink while valid |
-| 7 | Minimum Window Substring (76) | the hard one — do it last |
+| 1 | [Best Time to Buy and Sell Stock (121)](https://leetcode.com/problems/best-time-to-buy-and-sell-stock/) | the simplest window |
+| 2 | [Longest Substring Without Repeating Characters (3)](https://leetcode.com/problems/longest-substring-without-repeating-characters/) | variable + set |
+| 3 | [Maximum Average Subarray I (643)](https://leetcode.com/problems/maximum-average-subarray-i/) | fixed width |
+| 4 | [Longest Repeating Character Replacement (424)](https://leetcode.com/problems/longest-repeating-character-replacement/) | variable + count |
+| 5 | [Permutation in String (567)](https://leetcode.com/problems/permutation-in-string/) | fixed + frequency compare |
+| 6 | [Minimum Size Subarray Sum (209)](https://leetcode.com/problems/minimum-size-subarray-sum/) | shrink while valid |
+| 7 | [Minimum Window Substring (76)](https://leetcode.com/problems/minimum-window-substring/) | the hard one — do it last |
 
 ## Edge cases to name out loud
 

@@ -32,10 +32,10 @@ boilerplate that makes the JS version noisy. Watch the ~1000-frame recursion lim
 
 | # | Problem | Shape |
 |---|---|---|
-| 1 | Number of Islands (200) | grid DFS/BFS |
-| 2 | Clone Graph (133) | map from old node to new |
-| 3 | Course Schedule (207) | cycle detection / topological sort |
-| 4 | Rotting Oranges (994) | **multi-source** BFS |
+| 1 | [Number of Islands (200)](https://leetcode.com/problems/number-of-islands/) | grid DFS/BFS |
+| 2 | [Clone Graph (133)](https://leetcode.com/problems/clone-graph/) | map from old node to new |
+| 3 | [Course Schedule (207)](https://leetcode.com/problems/course-schedule/) | cycle detection / topological sort |
+| 4 | [Rotting Oranges (994)](https://leetcode.com/problems/rotting-oranges/) | **multi-source** BFS |
 
 ## Edge cases to name out loud
 

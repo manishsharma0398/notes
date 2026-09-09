@@ -18,14 +18,14 @@ Log **every** attempt, including the ones you failed — especially those.
 
 | Date | # | Problem | Lang | Min | Unaided | What I missed | Re-solve (other lang) |
 |---|---|---|---|---|---|---|---|
-| 2026-09-06 | 1 | Two Sum II (167) | py | | y | — solved clean, opposite-ends | |
-| 2026-09-07 | 2 | Valid Palindrome (125) | py | 30 | y | — over 25min; the skip mechanic was the slow part, not the palindrome idea | |
-| 2026-09-08 | 3 | Remove Duplicates from Sorted Array (26) | py | 6 | y | — nothing; clean fast/slow. `left+1` leans on the n>=1 constraint, say so out loud | |
-| | 4 | Move Zeroes (283) | | | | | |
-| | 5 | Container With Most Water (11) | | | | | |
-| | 6 | 3Sum (15) | | | | | |
-| | 7 | Merge Sorted Array (88) | | | | | |
-| | 8 | Sort Colors (75) | | | | | |
+| 2026-09-06 | 1 | [Two Sum II (167)](https://leetcode.com/problems/two-sum-ii-input-array-is-sorted/) | py | | y | — solved clean, opposite-ends | |
+| 2026-09-07 | 2 | [Valid Palindrome (125)](https://leetcode.com/problems/valid-palindrome/) | py | 30 | y | — over 25min; the skip mechanic was the slow part, not the palindrome idea | |
+| 2026-09-08 | 3 | [Remove Duplicates from Sorted Array (26)](https://leetcode.com/problems/remove-duplicates-from-sorted-array/) | py | 6 | y | — nothing; clean fast/slow. `left+1` leans on the n>=1 constraint, say so out loud | |
+| 2026-09-09 | 4 | [Move Zeroes (283)](https://leetcode.com/problems/move-zeroes/) | py | 25 | y | — at the 25min wall; #3 was 6min on the same fast/slow shape. The tail requirement sent me wide before I found the swap | |
+| 2026-09-09 | 5 | [Container With Most Water (11)](https://leetcode.com/problems/container-with-most-water/) | py | 11 | n | — pointer logic + move rule unaided; needed a nudge that area is min(h)*width, not h*h. Safety argument still to state out loud | |
+| 2026-09-09 | 6 | [3Sum (15)](https://leetcode.com/problems/3sum/) | py | 8 | y | — clean; dup-skip correct. Missing `if a > 0: break` (2x-28x). `sum` shadows the builtin (2nd time after `ascii`) | |
+| | 7 | [Merge Sorted Array (88)](https://leetcode.com/problems/merge-sorted-array/) | | | | | |
+| | 8 | [Sort Colors (75)](https://leetcode.com/problems/sort-colors/) | | | | | |
 
 **Sunday question — which pattern would I fail if asked tomorrow?**
 
@@ -39,13 +39,13 @@ Log **every** attempt, including the ones you failed — especially those.
 
 | Date | # | Problem | Lang | Min | Unaided | What I missed | Re-solve (other lang) |
 |---|---|---|---|---|---|---|---|
-| | 1 | Two Sum (1) | | | | | |
-| | 2 | Contains Duplicate (217) | | | | | |
-| | 3 | Valid Anagram (242) | | | | | |
-| | 4 | Group Anagrams (49) | | | | | |
-| | 5 | Top K Frequent Elements (347) | | | | | |
-| | 6 | Longest Consecutive Sequence (128) | | | | | |
-| | 7 | Subarray Sum Equals K (560) | | | | | |
+| | 1 | [Two Sum (1)](https://leetcode.com/problems/two-sum/) | | | | | |
+| | 2 | [Contains Duplicate (217)](https://leetcode.com/problems/contains-duplicate/) | | | | | |
+| | 3 | [Valid Anagram (242)](https://leetcode.com/problems/valid-anagram/) | | | | | |
+| | 4 | [Group Anagrams (49)](https://leetcode.com/problems/group-anagrams/) | | | | | |
+| | 5 | [Top K Frequent Elements (347)](https://leetcode.com/problems/top-k-frequent-elements/) | | | | | |
+| | 6 | [Longest Consecutive Sequence (128)](https://leetcode.com/problems/longest-consecutive-sequence/) | | | | | |
+| | 7 | [Subarray Sum Equals K (560)](https://leetcode.com/problems/subarray-sum-equals-k/) | | | | | |
 
 **Sunday question:**
 
@@ -66,7 +66,7 @@ week 8 comes and you filter for `unaided = n`.
 
 | Milestone | Target | Actual |
 |---|---|---|
-| End of week 4 | ~29 | **3** |
+| End of week 4 | ~29 | **6** |
 | End of week 8 | ~60 | |
 | End of week 12 | ~92 | |
 

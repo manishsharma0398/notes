@@ -28,10 +28,10 @@ compare element-wise, so `sorted(intervals)` already sorts by start then end.
 
 | # | Problem | Shape |
 |---|---|---|
-| 1 | Merge Intervals (56) | sort by start |
-| 2 | Insert Interval (57) | no sort needed — why? |
-| 3 | Non-overlapping Intervals (435) | sort by **end**, greedy |
-| 4 | Meeting Rooms II (253) | heap, or a sweep line |
+| 1 | [Merge Intervals (56)](https://leetcode.com/problems/merge-intervals/) | sort by start |
+| 2 | [Insert Interval (57)](https://leetcode.com/problems/insert-interval/) | no sort needed — why? |
+| 3 | [Non-overlapping Intervals (435)](https://leetcode.com/problems/non-overlapping-intervals/) | sort by **end**, greedy |
+| 4 | [Meeting Rooms II (253)](https://leetcode.com/problems/meeting-rooms-ii/) | heap, or a sweep line |
 
 ## Edge cases to name out loud
 

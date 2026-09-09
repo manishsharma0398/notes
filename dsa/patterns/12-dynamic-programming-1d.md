@@ -33,14 +33,14 @@ line. Use it *after* you have written the recurrence yourself, never instead of 
 
 | # | Problem | Shape |
 |---|---|---|
-| 1 | Climbing Stairs (70) | Fibonacci in disguise |
-| 2 | Min Cost Climbing Stairs (746) | same + cost |
-| 3 | House Robber (198) | take / skip |
-| 4 | House Robber II (213) | circular — run it twice |
-| 5 | Coin Change (322) | unbounded, minimise |
-| 6 | Longest Increasing Subsequence (300) | O(n²) first, then the patience version |
-| 7 | Word Break (139) | string + dictionary |
-| 8 | Decode Ways (91) | counting with awkward edges |
+| 1 | [Climbing Stairs (70)](https://leetcode.com/problems/climbing-stairs/) | Fibonacci in disguise |
+| 2 | [Min Cost Climbing Stairs (746)](https://leetcode.com/problems/min-cost-climbing-stairs/) | same + cost |
+| 3 | [House Robber (198)](https://leetcode.com/problems/house-robber/) | take / skip |
+| 4 | [House Robber II (213)](https://leetcode.com/problems/house-robber-ii/) | circular — run it twice |
+| 5 | [Coin Change (322)](https://leetcode.com/problems/coin-change/) | unbounded, minimise |
+| 6 | [Longest Increasing Subsequence (300)](https://leetcode.com/problems/longest-increasing-subsequence/) | O(n²) first, then the patience version |
+| 7 | [Word Break (139)](https://leetcode.com/problems/word-break/) | string + dictionary |
+| 8 | [Decode Ways (91)](https://leetcode.com/problems/decode-ways/) | counting with awkward edges |
 
 ## Edge cases to name out loud
 

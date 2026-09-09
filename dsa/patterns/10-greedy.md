@@ -26,10 +26,10 @@ argue the local choice cannot block a better global answer. That argument is wha
 
 | # | Problem | Shape |
 |---|---|---|
-| 1 | Maximum Subarray (53) | Kadane's |
-| 2 | Jump Game (55) | furthest reachable |
-| 3 | Jump Game II (45) | greedy levels |
-| 4 | Gas Station (134) | the argument is the whole problem |
+| 1 | [Maximum Subarray (53)](https://leetcode.com/problems/maximum-subarray/) | Kadane's |
+| 2 | [Jump Game (55)](https://leetcode.com/problems/jump-game/) | furthest reachable |
+| 3 | [Jump Game II (45)](https://leetcode.com/problems/jump-game-ii/) | greedy levels |
+| 4 | [Gas Station (134)](https://leetcode.com/problems/gas-station/) | the argument is the whole problem |
 
 ## Edge cases to name out loud
 

@@ -33,15 +33,15 @@ mention it for a skewed tree.
 
 | # | Problem | Shape |
 |---|---|---|
-| 1 | Maximum Depth of Binary Tree (104) | the template |
-| 2 | Invert Binary Tree (226) | pure recursion |
-| 3 | Same Tree (100) | two trees at once |
-| 4 | Binary Tree Level Order Traversal (102) | BFS |
-| 5 | Validate Binary Search Tree (98) | pass bounds **down** |
-| 6 | Lowest Common Ancestor of a BST (235) | use the BST property |
-| 7 | Diameter of Binary Tree (543) | return one thing, track another |
-| 8 | Balanced Binary Tree (110) | same trick as 7 |
-| 9 | Serialize and Deserialize Binary Tree (297) | the hard one |
+| 1 | [Maximum Depth of Binary Tree (104)](https://leetcode.com/problems/maximum-depth-of-binary-tree/) | the template |
+| 2 | [Invert Binary Tree (226)](https://leetcode.com/problems/invert-binary-tree/) | pure recursion |
+| 3 | [Same Tree (100)](https://leetcode.com/problems/same-tree/) | two trees at once |
+| 4 | [Binary Tree Level Order Traversal (102)](https://leetcode.com/problems/binary-tree-level-order-traversal/) | BFS |
+| 5 | [Validate Binary Search Tree (98)](https://leetcode.com/problems/validate-binary-search-tree/) | pass bounds **down** |
+| 6 | [Lowest Common Ancestor of a BST (235)](https://leetcode.com/problems/lowest-common-ancestor-of-a-binary-search-tree/) | use the BST property |
+| 7 | [Diameter of Binary Tree (543)](https://leetcode.com/problems/diameter-of-binary-tree/) | return one thing, track another |
+| 8 | [Balanced Binary Tree (110)](https://leetcode.com/problems/balanced-binary-tree/) | same trick as 7 |
+| 9 | [Serialize and Deserialize Binary Tree (297)](https://leetcode.com/problems/serialize-and-deserialize-binary-tree/) | the hard one |
 
 ## Edge cases to name out loud
 

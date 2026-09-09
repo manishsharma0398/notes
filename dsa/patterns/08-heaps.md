@@ -31,10 +31,10 @@ the single biggest reason to solve heap problems in Python — JS has nothing.
 
 | # | Problem | Shape |
 |---|---|---|
-| 1 | Kth Largest Element in an Array (215) | min-heap of size k |
-| 2 | K Closest Points to Origin (973) | same shape, custom compare |
-| 3 | Task Scheduler (621) | greedy + counts |
-| 4 | Find Median from Data Stream (295) | **two heaps** |
+| 1 | [Kth Largest Element in an Array (215)](https://leetcode.com/problems/kth-largest-element-in-an-array/) | min-heap of size k |
+| 2 | [K Closest Points to Origin (973)](https://leetcode.com/problems/k-closest-points-to-origin/) | same shape, custom compare |
+| 3 | [Task Scheduler (621)](https://leetcode.com/problems/task-scheduler/) | greedy + counts |
+| 4 | [Find Median from Data Stream (295)](https://leetcode.com/problems/find-median-from-data-stream/) | **two heaps** |
 
 ## Edge cases to name out loud
 

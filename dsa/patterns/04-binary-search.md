@@ -35,13 +35,13 @@ for these problems. The point is the invariant, and `bisect` hides it.
 
 | # | Problem | Shape |
 |---|---|---|
-| 1 | Binary Search (704) | the template |
-| 2 | First Bad Version (278) | predicate, not value |
-| 3 | Search Insert Position (35) | lower bound |
-| 4 | Find Minimum in Rotated Sorted Array (153) | rotated |
-| 5 | Search in Rotated Sorted Array (33) | rotated + target |
-| 6 | Koko Eating Bananas (875) | **binary search the answer** |
-| 7 | Median of Two Sorted Arrays (4) | the hard one — attempt, do not expect to finish |
+| 1 | [Binary Search (704)](https://leetcode.com/problems/binary-search/) | the template |
+| 2 | [First Bad Version (278)](https://leetcode.com/problems/first-bad-version/) | predicate, not value |
+| 3 | [Search Insert Position (35)](https://leetcode.com/problems/search-insert-position/) | lower bound |
+| 4 | [Find Minimum in Rotated Sorted Array (153)](https://leetcode.com/problems/find-minimum-in-rotated-sorted-array/) | rotated |
+| 5 | [Search in Rotated Sorted Array (33)](https://leetcode.com/problems/search-in-rotated-sorted-array/) | rotated + target |
+| 6 | [Koko Eating Bananas (875)](https://leetcode.com/problems/koko-eating-bananas/) | **binary search the answer** |
+| 7 | [Median of Two Sorted Arrays (4)](https://leetcode.com/problems/median-of-two-sorted-arrays/) | the hard one — attempt, do not expect to finish |
 
 ## Edge cases to name out loud
 

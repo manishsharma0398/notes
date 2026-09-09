@@ -30,10 +30,10 @@ itself gives you N references to one list that ends up empty.
 
 | # | Problem | Shape |
 |---|---|---|
-| 1 | Subsets (78) | include / exclude |
-| 2 | Combination Sum (39) | reuse allowed |
-| 3 | Permutations (46) | used-set |
-| 4 | Word Search (79) | grid + undo the visit mark |
+| 1 | [Subsets (78)](https://leetcode.com/problems/subsets/) | include / exclude |
+| 2 | [Combination Sum (39)](https://leetcode.com/problems/combination-sum/) | reuse allowed |
+| 3 | [Permutations (46)](https://leetcode.com/problems/permutations/) | used-set |
+| 4 | [Word Search (79)](https://leetcode.com/problems/word-search/) | grid + undo the visit mark |
 
 ## Edge cases to name out loud
 

@@ -80,6 +80,10 @@ log.md           the attempt log — the only file that tells you the truth
 solutions/       mine, empty
 ```
 
+**Every problem title is a LeetCode link** (added 2026-09-09), in `log.md` and all 14 pattern
+files. Slugs came from LeetCode's own `question__title_slug` API field, matched by exact title, so
+new rows should follow the same shape: `[Title (NNN)](https://leetcode.com/problems/<slug>/)`.
+
 ---
 
 History of this file:

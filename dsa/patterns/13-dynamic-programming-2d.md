@@ -30,10 +30,10 @@ one row, and every write hits all rows. Exactly `js-learnings` Ch18 in a DSA pro
 
 | # | Problem | Shape |
 |---|---|---|
-| 1 | Unique Paths (62) | the grid template |
-| 2 | Longest Common Subsequence (1143) | the two-string template |
-| 3 | Edit Distance (72) | three transitions |
-| 4 | Coin Change II (518) | counting, and order matters |
+| 1 | [Unique Paths (62)](https://leetcode.com/problems/unique-paths/) | the grid template |
+| 2 | [Longest Common Subsequence (1143)](https://leetcode.com/problems/longest-common-subsequence/) | the two-string template |
+| 3 | [Edit Distance (72)](https://leetcode.com/problems/edit-distance/) | three transitions |
+| 4 | [Coin Change II (518)](https://leetcode.com/problems/coin-change-ii/) | counting, and order matters |
 
 ## Edge cases to name out loud
 

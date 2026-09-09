@@ -33,13 +33,13 @@ order. That pop is where the answer gets recorded.
 
 | # | Problem | Shape |
 |---|---|---|
-| 1 | Valid Parentheses (20) | classic matching |
-| 2 | Min Stack (155) | store the min alongside |
-| 3 | Evaluate Reverse Polish Notation (150) | evaluation |
-| 4 | Daily Temperatures (739) | **monotonic** |
-| 5 | Next Greater Element I (496) | monotonic + map |
-| 6 | Generate Parentheses (22) | stack thinking via recursion |
-| 7 | Largest Rectangle in Histogram (84) | the hard one |
+| 1 | [Valid Parentheses (20)](https://leetcode.com/problems/valid-parentheses/) | classic matching |
+| 2 | [Min Stack (155)](https://leetcode.com/problems/min-stack/) | store the min alongside |
+| 3 | [Evaluate Reverse Polish Notation (150)](https://leetcode.com/problems/evaluate-reverse-polish-notation/) | evaluation |
+| 4 | [Daily Temperatures (739)](https://leetcode.com/problems/daily-temperatures/) | **monotonic** |
+| 5 | [Next Greater Element I (496)](https://leetcode.com/problems/next-greater-element-i/) | monotonic + map |
+| 6 | [Generate Parentheses (22)](https://leetcode.com/problems/generate-parentheses/) | stack thinking via recursion |
+| 7 | [Largest Rectangle in Histogram (84)](https://leetcode.com/problems/largest-rectangle-in-histogram/) | the hard one |
 
 ## Edge cases to name out loud
 

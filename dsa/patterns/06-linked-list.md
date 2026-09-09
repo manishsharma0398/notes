@@ -32,14 +32,14 @@ reverse noticeably cleaner than the JS version.
 
 | # | Problem | Shape |
 |---|---|---|
-| 1 | Reverse Linked List (206) | the fundamental |
-| 2 | Merge Two Sorted Lists (21) | dummy head |
-| 3 | Linked List Cycle (141) | fast/slow |
-| 4 | Middle of the Linked List (876) | fast/slow |
-| 5 | Remove Nth Node From End (19) | two pointers, gap of n |
-| 6 | Reorder List (143) | composition of 1, 4 and merge |
-| 7 | Linked List Cycle II (142) | fast/slow + the maths |
-| 8 | Merge k Sorted Lists (23) | heap or divide-and-conquer |
+| 1 | [Reverse Linked List (206)](https://leetcode.com/problems/reverse-linked-list/) | the fundamental |
+| 2 | [Merge Two Sorted Lists (21)](https://leetcode.com/problems/merge-two-sorted-lists/) | dummy head |
+| 3 | [Linked List Cycle (141)](https://leetcode.com/problems/linked-list-cycle/) | fast/slow |
+| 4 | [Middle of the Linked List (876)](https://leetcode.com/problems/middle-of-the-linked-list/) | fast/slow |
+| 5 | [Remove Nth Node From End (19)](https://leetcode.com/problems/remove-nth-node-from-end-of-list/) | two pointers, gap of n |
+| 6 | [Reorder List (143)](https://leetcode.com/problems/reorder-list/) | composition of 1, 4 and merge |
+| 7 | [Linked List Cycle II (142)](https://leetcode.com/problems/linked-list-cycle-ii/) | fast/slow + the maths |
+| 8 | [Merge k Sorted Lists (23)](https://leetcode.com/problems/merge-k-sorted-lists/) | heap or divide-and-conquer |
 
 ## Edge cases to name out loud
 

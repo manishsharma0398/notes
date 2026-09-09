@@ -39,13 +39,13 @@ is the whole of Valid Anagram.
 
 | # | Problem | Use |
 |---|---|---|
-| 1 | Two Sum (1) | index map — the complement |
-| 2 | Contains Duplicate (217) | seen-set |
-| 3 | Valid Anagram (242) | frequency map |
-| 4 | Group Anagrams (49) | key derivation is the whole problem |
-| 5 | Top K Frequent Elements (347) | frequency + bucket sort |
-| 6 | Longest Consecutive Sequence (128) | set, and only start counting at a run's beginning |
-| 7 | Subarray Sum Equals K (560) | prefix sum + map — the hard one |
+| 1 | [Two Sum (1)](https://leetcode.com/problems/two-sum/) | index map — the complement |
+| 2 | [Contains Duplicate (217)](https://leetcode.com/problems/contains-duplicate/) | seen-set |
+| 3 | [Valid Anagram (242)](https://leetcode.com/problems/valid-anagram/) | frequency map |
+| 4 | [Group Anagrams (49)](https://leetcode.com/problems/group-anagrams/) | key derivation is the whole problem |
+| 5 | [Top K Frequent Elements (347)](https://leetcode.com/problems/top-k-frequent-elements/) | frequency + bucket sort |
+| 6 | [Longest Consecutive Sequence (128)](https://leetcode.com/problems/longest-consecutive-sequence/) | set, and only start counting at a run's beginning |
+| 7 | [Subarray Sum Equals K (560)](https://leetcode.com/problems/subarray-sum-equals-k/) | prefix sum + map — the hard one |
 
 ## Edge cases
 
