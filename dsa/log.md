@@ -25,7 +25,7 @@ Log **every** attempt, including the ones you failed — especially those.
 | 2026-09-09 | 5 | [Container With Most Water (11)](https://leetcode.com/problems/container-with-most-water/) | py | 11 | n | — pointer logic + move rule unaided; needed a nudge that area is min(h)*width, not h*h. Safety argument still to state out loud | |
 | 2026-09-09 | 6 | [3Sum (15)](https://leetcode.com/problems/3sum/) | py | 8 | y | — clean; dup-skip correct. Missing `if a > 0: break` (2x-28x). `sum` shadows the builtin (2nd time after `ascii`) | |
 | 2026-09-09 | 7 | [Merge Sorted Array (88)](https://leetcode.com/problems/merge-sorted-array/) | py | 20 | n | — fill-from-back was mine; needed hints that the drain must be `r >= 0` not `r == 0`, and that the l-leftover needs no loop at all (mid == l). `mid` is a misleading name for the write head | |
-| | 8 | [Sort Colors (75)](https://leetcode.com/problems/sort-colors/) | | | | | |
+| 2026-09-10 | 8 | [Sort Colors (75)](https://leetcode.com/problems/sort-colors/) | py | ~15 (not timed) | y | — clean one-pass Dutch National Flag, 0ms. Nothing missed. **Rehearse the follow-up out loud: why `mid` advances on the 0 branch but not the 2 branch** — the value coming back from `low` is known-1, the one from `high` is unexamined. Also be ready to defend `mid <= high`, not `<` | |
 
 **Sunday question — which pattern would I fail if asked tomorrow?**
 
@@ -39,7 +39,7 @@ Log **every** attempt, including the ones you failed — especially those.
 
 | Date | # | Problem | Lang | Min | Unaided | What I missed | Re-solve (other lang) |
 |---|---|---|---|---|---|---|---|
-| | 1 | [Two Sum (1)](https://leetcode.com/problems/two-sum/) | | | | | |
+| 2026-09-10 | 1 | [Two Sum (1)](https://leetcode.com/problems/two-sum/) | py | 3 | y | — clean one-pass, check-before-insert. Two Python habits, both **fixed same day**: `enumerate(nums)` not `range(len(nums))`, and the `else` was dead since the `if` returns. Rehearse *why* one pass is safe: you look up before inserting, so an element can never pair with itself, and `[3,3]` still works | |
 | | 2 | [Contains Duplicate (217)](https://leetcode.com/problems/contains-duplicate/) | | | | | |
 | | 3 | [Valid Anagram (242)](https://leetcode.com/problems/valid-anagram/) | | | | | |
 | | 4 | [Group Anagrams (49)](https://leetcode.com/problems/group-anagrams/) | | | | | |
@@ -66,7 +66,7 @@ week 8 comes and you filter for `unaided = n`.
 
 | Milestone | Target | Actual |
 |---|---|---|
-| End of week 4 | ~29 | **7** |
+| End of week 4 | ~29 | **9** — week 1 complete, week 2 started |
 | End of week 8 | ~60 | |
 | End of week 12 | ~92 | |
 
