@@ -78,6 +78,26 @@ Roughly: patterns 05–09 and 14. Elsewhere, Python first.
 **one** row; `Array(m).fill([])` does the same in JS. That is `js-learnings` Ch18 — shallow copy —
 appearing in a DSA problem.
 
+## Is using the stdlib cheating?
+
+No — the stdlib is the *reason* Python was chosen above. `deque`, `heapq` and `bisect` are not
+conveniences: a BFS on `list.pop(0)` is quadratic, and nobody hand-rolls a heap in a 40-minute
+round.
+
+**The line: does the helper do the thing the problem is testing?**
+
+| Problem | Verdict |
+|---|---|
+| Valid Anagram — `Counter(s) == Counter(t)` | **fine.** The test is "reach for frequency counting"; `Counter` is that answer |
+| Group Anagrams — `defaultdict(list)` | **fine.** Grouping is the supporting work, not the point |
+| Top K Frequent — `Counter(...).most_common(k)` | **not fine.** The problem exists to make you pick heap vs bucket sort; this hides the choice |
+| Any BFS — `deque` | **mandatory** |
+
+So: stdlib for the supporting work, hand-rolled for the part the problem is named after.
+
+Write it manually **once** anyway — that is how you answer "what is `Counter` doing?" when asked.
+Then lead with the stdlib version in the round, and state the complexity either way.
+
 ## In the log
 
 Record the language: `py`, `js`, or `py→js` once the re-solve is done. A problem is **done** when
