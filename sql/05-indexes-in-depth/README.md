@@ -41,6 +41,10 @@ Query: `SELECT * FROM users WHERE id = 530;`
 
 This is the #1 Interview Topic.
 
+> **Engine scope:** this section is **SQL Server and MySQL/InnoDB**. **PostgreSQL has no clustered
+> indexes** — its PK index is an ordinary secondary B-tree, so the diagrams below will not match
+> what you see in `EXPLAIN`. See `index_types.md` §2.5.
+
 ### A. Clustered Index (The Table IS the Index)
 -   The data rows *themselves* are stored in the B-Tree leaf nodes.
 -   There can only be **ONE** per table (because you can only sort the physical data one way).

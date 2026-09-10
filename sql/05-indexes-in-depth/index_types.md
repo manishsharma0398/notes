@@ -18,6 +18,15 @@ Think of it like tools:
 
 Before diving into index algorithms, understand that indexes are organized in two fundamental ways:
 
+> **Two independent axes, easy to conflate.** *Clustered vs non-clustered* is about **where the row
+> lives** — in the index leaf, or somewhere else with the leaf pointing at it. *B-tree vs hash vs
+> GiST vs GIN vs BRIN* (§3) is about **how the keys are organised**. They are separate choices, and
+> a clustered index is almost always a B-tree because it has to support ordered range access.
+>
+> **Scope warning: this whole section describes SQL Server and MySQL/InnoDB.** PostgreSQL — the
+> engine this track's lab runs on — **has no clustered indexes at all**. See §2.5 before applying
+> any of this to Postgres.
+
 ### Clustered Index
 **What:** The table data itself IS the index. The leaf nodes contain the actual rows.
 **Key Point:** There can only be **ONE** clustered index per table (you can only physically sort data one way).
@@ -30,7 +39,9 @@ Root -> Branch -> Leaf (Contains: ID=5, Name="Bob", Email="bob@test.com")
 
 **Characteristics:**
 -   **No Key Lookup needed**: Once you reach the leaf, you have all the data.
--   **Usually the Primary Key**: Most DBs auto-cluster on PK.
+-   **Usually the Primary Key**: **in InnoDB and SQL Server.** InnoDB *always* clusters on the PK
+    (and invents a hidden row id if you declare none); SQL Server makes a `PRIMARY KEY` clustered
+    by default unless you write `PRIMARY KEY NONCLUSTERED`. **Postgres does neither** — see §2.5.
 -   **Fast for range scans**: Data is physically sequential.
 -   **Slow for random inserts**: Inserting ID=5 between ID=4 and ID=6 requires page splits.
 
@@ -62,6 +73,31 @@ Main Table (Clustered Index):                   Find Row with ID=5
 | **Best For** | Primary Key, Range Scans | Filtering on Secondary Columns |
 
 ---
+
+## 2.5 PostgreSQL has no clustered indexes
+
+Everything above is InnoDB and SQL Server. **Postgres cannot cluster a table and has no syntax to
+do so.** The table is always a heap; every index is secondary, including the primary key's, and
+index leaves hold a `ctid` pointing into the heap.
+
+| Engine | `CREATE INDEX` | `PRIMARY KEY` in `CREATE TABLE` |
+| :--- | :--- | :--- |
+| **PostgreSQL** | non-clustered | non-clustered unique B-tree; table stays a heap |
+| **MySQL / InnoDB** | non-clustered secondary | **is** the clustered index, always |
+| **SQL Server** | non-clustered by default | **clustered** by default |
+
+Plain `CREATE INDEX` is non-clustered everywhere. The primary key is where engines diverge.
+
+- **`CLUSTER` is a one-time rewrite**, not a maintained property. Ordering decays as rows are
+  updated. `indisclustered` only records which index a *future* `CLUSTER` would use — it does not
+  mean the table is ordered now.
+- **Postgres's substitute is the index-only scan** (`Heap Fetches: 0`), which needs `VACUUM` to have
+  set the visibility map. A covering index alone is not enough.
+- **InnoDB consequence worth knowing:** secondary leaves store the **PK value**, so a lookup
+  traverses two B-trees. A wide PK bloats every other index and a random UUID PK splits pages on
+  insert. Neither applies to Postgres, so "never use a UUID primary key" needs an engine attached.
+
+> Syntax, locking and operational practice: [`postgres_indexing.md`](postgres_indexing.md).
 
 ## 3. The Index Types (Algorithms)
 
@@ -186,21 +222,17 @@ CREATE INDEX idx_logs_brin ON logs USING BRIN (created_at);
 
 ---
 
-### F. Full-Text Index (GIN in Postgres, FULLTEXT in MySQL)
-**What:** Inverted Index. Maps "Words -> Documents containing them."
-**Best For:**
--   Full-text searches: `WHERE document @@ to_tsquery('database')`.
+### F. GIN — Inverted Index (full-text, arrays, `jsonb`)
+**What:** Maps "element -> rows containing it."
+**Best For:** `WHERE doc @@ to_tsquery(...)`, `WHERE tags @> array['sql']`, `WHERE j @> '{"a":1}'`.
 
-**Example (Postgres):**
-```sql
-CREATE INDEX idx_articles_gin ON articles USING GIN (to_tsvector('english', content));
-
-SELECT * FROM articles WHERE to_tsvector('english', content) @@ to_tsquery('database & performance');
-```
+**The trap is the operator, not the column.** GIN-for-arrays knows *containment* (`@>`), not `=`.
+With a GIN index present, `tags @> array['x']` used it and `'x' = any(tags)` did not — 144x apart on
+200k rows. An index is only usable by operators its operator class knows.
 
 **Trade-offs:**
--   **Pro:** Blazing fast text searches (Google-like).
--   **Con:** Expensive to build. Large index size.
+-   **Pro:** The only practical way to index multi-valued columns.
+-   **Con:** Expensive to build, large, slower writes.
 
 ---
 
@@ -213,7 +245,7 @@ SELECT * FROM articles WHERE to_tsvector('english', content) @@ to_tsquery('data
 | **Bitmap** | Low-cardinality OLAP | OLTP (high writes) |
 | **GiST** | Spatial, Ranges, Geometry | Simple scalar equality |
 | **BRIN** | Huge append-only tables (Logs) | Random inserts / Updates |
-| **Full-Text (GIN)** | Text search | Structured data queries |
+| **GIN** | Text search, arrays, `jsonb` — many values per row | Scalar columns; also if your query says `= ANY()` rather than `@>` |
 
 ---
 

@@ -6,6 +6,8 @@
 -   **Updates**: Slower. Requires page splits and re-balancing.
 
 ## 2. Clustered vs Non-Clustered
+**This distinction is InnoDB / SQL Server. Postgres has neither — see 2b.**
+
 -   **Clustered**:
     -   The Leaf Nodes = The Actual Data Pages.
     -   Sorts the physical rows on disk.
@@ -14,6 +16,26 @@
     -   The Leaf Nodes = Pointers to the Clustered Index.
     -   Can have many.
     -   Requires a **Key Lookup** (Jump) to get full row data unless "Covering".
+
+| Engine | `CREATE INDEX` | `PRIMARY KEY` in `CREATE TABLE` |
+|---|---|---|
+| PostgreSQL | non-clustered | non-clustered unique B-tree; table stays a heap |
+| MySQL / InnoDB | non-clustered secondary | **is** the clustered index, always |
+| SQL Server | non-clustered by default | **clustered** by default |
+
+-   **InnoDB secondary leaves store the PK value**, not an address -> a secondary lookup traverses
+    **two** B-trees. So a wide PK bloats every other index, and a random PK (UUIDv4) splits pages
+    on insert. Neither consequence applies to Postgres.
+
+## 2b. Postgres: everything is a heap
+-   The table is **always** a heap. Every index is secondary, including the PK's.
+-   `CLUSTER` is a **one-time rewrite**, not a maintained property — the ordering decays after
+    updates and you must re-run it.
+-   The Postgres equivalent of "the index is the table" is the **index-only scan**. Look for
+    `Heap Fetches: 0`. It needs the visibility map, so a covering index alone is not enough —
+    `VACUUM` has to have run.
+
+Syntax and operational detail: `postgres_indexing.md`.
 
 ## 3. Covering Index (The Cheat Code)
 -   If the Index contains **ALL** columns requested in the `SELECT`, the DB never touches the table.

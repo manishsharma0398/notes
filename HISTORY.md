@@ -9,6 +9,282 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-10 — sql Ch5 trimmed: the chapter files had become a findings dump
+
+Manish pushed back, correctly: the Ch5 files had turned into a lab notebook. `postgres_indexing.md`
+had reached **718 lines** of measured tables, `EXPLAIN` output, `relfilenode` listings, `ls` byte
+counts and deduplication trivia. His point — these are notes a human revises from, and most of what
+I measured is good-to-have context rather than anything an interview asks.
+
+Three separate problems, all mine:
+
+- **Volume.** Every follow-up question produced another measured section, and I appended rather than
+  deciding what earned its place.
+- **Duplication.** The same clustered-index material was written out three times, in
+  `index_types.md` §2.5, `notes.md` §2b and `postgres_indexing.md`.
+- **Wrong file.** `notes.md` is the morning-of-interview file and had acquired correlation-decay
+  tables and millisecond timings.
+
+Result of the trim:
+
+```
+                       before   after
+index_types.md            402     260
+notes.md                   61      55
+postgres_indexing.md      718     174
+README.md                 116     112
+total (chapter)          1648     956
+```
+
+What was kept: the syntax reference (the thing actually asked for), the `ShareLock`-blocks-writes
+fact, `CONCURRENTLY` and its `INVALID` failure mode, leftmost-prefix redundancy, `idx_scan = 0`, and
+two or three numbers that change a decision — partial-index selectivity, and load-then-index being
+~2x faster with a smaller index.
+
+What was cut: `pg_class`/`relkind` forensics, `pg_relation_filepath` and `ls` output, index-size
+byte comparisons, the B-tree deduplication cardinality tables, the `REINDEX` bloat proof narrative,
+and raw `pg_locks` dumps. Each is reduced to the one sentence that carries the lesson, or gone.
+
+**The rigour was not the problem and does not change** — everything still gets verified before it is
+written. What changes is that verification output belongs *here*, in `HISTORY.md`, which exists to
+record what was measured and why. A chapter file gets the conclusion.
+
+Saved as a standing preference in project memory so it applies to the remaining retrofits
+(`06`, `07`, `08`, `11`–`18`), which are the files most at risk of the same drift.
+
+---
+
+## 2026-09-10 — sql Ch5: new file, `postgres_indexing.md` — the syntax the chapter never gave
+
+Follow-on from the clustered-index correction earlier today. Having established that Chapter 5's
+concepts describe the wrong engine, the gap that remained was practical: **the chapter teaches
+B-trees and selectivity but never shows you a single `CREATE INDEX` statement in context**, and
+never says what Postgres actually does when you run one. Asked for exactly that, step by step,
+covering indexes declared at table-creation time and after.
+
+New file rather than an edit, matching the chapter's existing shape (it already carries
+`index_types.md` and `select_star_with_index.md`). Cross-linked from §2.5. Everything executed on
+16.15 and re-verified end to end from a clean database.
+
+**The organising fact: in Postgres you can only declare *constraints* inline.** There is no inline
+index syntax, because an index is a separate object rather than a table property. `PRIMARY KEY` and
+`UNIQUE` create one as a side effect; everything else needs its own statement. MySQL's
+`INDEX (col)` / `KEY (col)` inside `CREATE TABLE` is a syntax error here.
+
+**The part worth the whole file is the locking, because it is where this becomes an outage.** A
+plain `CREATE INDEX` takes a `ShareLock`, which conflicts with the `RowExclusiveLock` every write
+needs. Observed from a second session mid-build:
+
+```
+       mode       | granted |                query
+------------------+---------+--------------------------------------
+ ShareLock        | t       | create index accounts_blocktest_idx ...
+ RowExclusiveLock | f       | insert into accounts(...) values (...)
+```
+
+`granted = f` on the insert. Writes queue behind the build for its entire duration. Unnoticeable on
+200k rows, a multi-minute outage on 50M. `CREATE INDEX CONCURRENTLY` was confirmed to hold
+`ShareUpdateExclusiveLock` instead, which does not conflict, and an insert issued during a
+concurrent build succeeded immediately.
+
+**`CONCURRENTLY`'s failure mode is the operational trap and it is silent.** A concurrent unique
+build against duplicate data errors, but leaves the index object behind:
+
+```
+ERROR:  could not create unique index "dup_code_uq"
+DETAIL:  Key (code)=(C1) is duplicated.
+
+ index_name  | indisvalid | indisready
+-------------+------------+------------
+ dup_code_uq | f          | f
+```
+
+`\d` labels it `INVALID`. That index is the worst of both worlds — the planner will not read it,
+but every write still maintains it. The file's checklist says to verify `indisvalid` after any
+concurrent build rather than treating absence of an error as success. It also cannot run inside a
+transaction block, which breaks migration tools that wrap everything in one.
+
+**Partial indexes, sized rather than asserted.** The usual advice omits that the benefit tracks
+selectivity. On 200k rows where 95% are `active`:
+
+```
+full index on created_at        1368 kB
+partial, status = 'active'      1296 kB   (95% of rows -- nearly pointless)
+partial, status = 'deleted'       88 kB   (5% of rows  -- 15x smaller)
+```
+
+Also covered with verified output: the generated naming rule (`_pkey`, `_key`, and composite names
+that run toward the 63-byte identifier limit), naming constraints yourself so the index name is
+usable, `INCLUDE` covering indexes, `DESC NULLS LAST`, `IF NOT EXISTS` returning a NOTICE rather
+than an error, and `REINDEX INDEX CONCURRENTLY`.
+
+**Added after a follow-up question — "so it creates three more tables?"** It does not, and the
+`relkind` breakdown answers it better than prose. One `CREATE TABLE` with a PK and two UNIQUE
+constraints produces **five** relations: `r` the table, three `i` indexes, and an `S` sequence for
+the identity column. Indexes get their own on-disk file, which is why they read as tables, but
+`select * from accounts_pkey` returns
+`ERROR: cannot open relation ... DETAIL: This operation is not supported for indexes.` The number
+worth noticing is that at 50,000 rows the table is 4048 kB and its three indexes total 6144 kB —
+half again as large as the data, from constraints alone, with nobody having written a `CREATE
+INDEX`.
+
+**And a second follow-up — "so each index is a new file holding the indexed column's data?"** Yes,
+and making it concrete produced the file's best size argument. On 300,000 rows with a narrow int, a
+low-cardinality int and a 128-char text column:
+
+```
+column data:  id 1172 kB   big 38 MB   table 50 MB
+index sizes:  docs_id_idx 6600 kB   docs_small_idx 2080 kB   docs_big_idx 49 MB
+```
+
+**Indexing the text column produced an index nearly the size of the whole table.** Confirmed on
+disk via `pg_relation_filepath` and `ls`: one file per index (`16389` at 6,758,400 bytes, `16391` at
+51,494,912), plus a `_fsm` fork on the table.
+
+Two non-obvious findings came out of it. Index size tracks **cardinality**, not row count —
+`docs_small_idx` indexes the same 300,000 rows as `docs_id_idx` but is 3x smaller because B-tree
+deduplication (PG13+) stores a repeated key once with a posting list. And overhead dominates narrow
+columns: `id` is 1172 kB of data and 6600 kB of index, because every entry carries a 6-byte ctid, a
+tuple header and page free space.
+
+**Third follow-up — "is it the same if I create the index after the table?" — produced the best
+measurement of the day.** The finished index is byte-identical by definition and by catalog flags.
+The cost is not. Same 500,000 rows, same unique index, only the order differs:
+
+```
+A  index declared with the table, then load     3444 ms total    index 26 MB
+B  load, then add the index                     1589 ms total    index 15 MB
+```
+
+Repeated: 2733 ms vs 1886 ms, sizes 26 MB and 15 MB again. **The incrementally-built index is 73%
+larger**, because 500,000 separate insertions split B-tree pages and leave them partially full,
+where a bulk build sorts first and packs to fillfactor.
+
+Proved rather than asserted: `reindex index a_first_email_key` collapsed it from 26 MB to exactly
+15 MB, with both indexes then at `relpages` 1928. The 11 MB was page-split bloat present from the
+moment the load finished.
+
+Practical rules added: load then index (which is why `pg_dump` restores emit `CREATE INDEX` after
+`COPY`), drop-and-recreate around large loads into existing tables, and the catch that during the
+load nothing enforces uniqueness so duplicates surface in bulk at the end rather than per row.
+
+**Fourth follow-up, on composite indexes and file layout.** Two clarifications added after the
+"one file" phrasing turned out to be ambiguous:
+
+- **One file per index, never shared, never one per column.** A composite on `(a,b,c)` is one index
+  and one file — the columns are packed into a single sorted key. Two indexes are two files even
+  when they overlap. The only wrinkle is 1 GB segmentation (`16389`, `16389.1`, …), which is still
+  that one index's files.
+- **A single-column index whose column already leads a composite is usually dead weight.** Dropped
+  `t_a_idx` and the `(a,b,c)` composite served `where a = 500` unaided via a Bitmap Index Scan.
+  Keeping both stores `a` twice and pays two index updates per write for nothing. Flagged as the
+  most common form of wasted index in a real schema.
+
+The "but the narrow index is smaller" counter-argument was measured rather than assumed, and it
+does not hold generally — on 300,000 rows the composite and the single-column index were **the same
+size** (2032 kB) at low cardinality, because deduplication collapses the repeated leading keys, and
+only diverged at high cardinality (9256 kB vs 6600 kB).
+
+Two things that connect to earlier chapters. The expression-index example reproduces Ch10's finding
+directly — `create index ... (date_trunc('day', created_at))` fails with
+`functions in index expression must be marked IMMUTABLE`, because the timestamptz overload is only
+STABLE. And dropping a constraint-backed index fails with a hint pointing at `ALTER TABLE ... DROP
+CONSTRAINT`, which is the practical reason to know which of your indexes came from a constraint.
+
+The `pg_stat_user_indexes.idx_scan` query is flagged as the most useful index query in production:
+an index sitting at zero scans after weeks of uptime is pure write cost. Noted the two caveats that
+stop that being a blanket rule -- a unique index may exist to enforce a constraint, and the counter
+resets on `pg_stat_reset()` and on a fresh replica.
+
+---
+
+## 2026-09-10 — sql Ch5: the clustered-index sections described the wrong engine
+
+Asked whether clustered and non-clustered indexes both use B-trees. They do — the structure is the
+same and only the leaf contents differ — but checking the chapter to answer it surfaced a bigger
+problem. **Chapter 5 teaches clustered vs non-clustered as universal, and Postgres has neither.**
+The lab for this entire track is Postgres, so the chapter contradicts what the reader measures.
+
+The specific defect was `index_types.md`: *"Usually the Primary Key: Most DBs auto-cluster on PK."*
+That is true of InnoDB and SQL Server and false of Postgres. `notes.md` and `README.md` carried the
+same framing without naming an engine.
+
+This is a correction to existing files, not a retrofit — same category as the Ch1 JOIN fix on
+2026-09-06. Everything below was executed on 16.15 before being written down.
+
+**Postgres has exactly one table access method.** That is the decisive evidence, and it is one
+query:
+
+```
+select amname, amtype from pg_am;
+  brin/btree/gin/gist/hash/spgist -> amtype 'i'   (index)
+  heap                            -> amtype 't'   (table)  <- the only one
+```
+
+`create table t(id int primary key)` produces
+`CREATE UNIQUE INDEX t_pkey ON public.t USING btree (id)` — an ordinary secondary B-tree. A table
+with a PK, a UNIQUE and a plain index gives three peer B-trees over one heap, all with
+`indisclustered = f`.
+
+**`CLUSTER` is a one-time rewrite and it decays.** Measured on 200,000 rows via
+`pg_stats.correlation`:
+
+```
+inserted in id order          1.0
+update half the rows          0.497
+CLUSTER c USING c_pkey        1.0
+update a third of the rows    0.553
+```
+
+The trap is that `indisclustered` stayed **true** through that last step. The flag records which
+index a *future* `CLUSTER` would use, not whether the table is ordered now. `correlation` is the
+honest number, and reading `indisclustered` as "this table is clustered" is a mistake the catalog
+invites.
+
+**The Postgres substitute is the index-only scan, and a covering index is not sufficient.** It also
+needs the visibility map, which `VACUUM` maintains. Same query, same index on `(a, id)`, 500k rows:
+
+```
+before VACUUM   Bitmap Heap Scan   Heap Blocks: exact=500   0.696 ms
+after  VACUUM   Index Only Scan    Heap Fetches: 0          0.154 ms
+```
+
+4.5x, and heap visits went 500 -> 0 with `relallvisible` reaching `relpages` at 7693. That is why
+`Heap Fetches: 0` is the line to look for, and it explains the same line that kept appearing in the
+Ch4 join plans.
+
+**Also fixed: GIN was documented only as a full-text index.** Its array and `jsonb` roles were
+missing, along with the operator trap measured during the Ch3 work — with a GIN index present,
+`skills @> array['cobol']` takes 0.172 ms via a Bitmap Index Scan while `'cobol' = any(skills)`
+takes 24.708 ms via a sequential scan. 144x, same index, because the operator class knows
+containment and not equality. It is the sharpest illustration available of the axis the chapter was
+conflating: *where the row lives* (clustered vs not) is independent of *how keys are organised*
+(btree vs GIN vs BRIN).
+
+Added a per-engine table, since the divergence is entirely about the primary key rather than about
+`CREATE INDEX`:
+
+| engine | `CREATE INDEX` | `PRIMARY KEY` in `CREATE TABLE` |
+|---|---|---|
+| PostgreSQL | non-clustered | non-clustered unique B-tree; table stays a heap |
+| MySQL / InnoDB | non-clustered secondary | **is** the clustered index, always |
+| SQL Server | non-clustered by default | **clustered** by default |
+
+Plus the InnoDB consequence that actually gets asked: secondary leaves store the **PK value**, so a
+secondary lookup traverses two B-trees, a wide PK bloats every other index, and a random UUID PK
+splits pages on insert. None of that transfers to Postgres, which is why the usual "never use a
+UUID primary key" advice needs an engine attached to it.
+
+One smaller syntax find: Postgres rejects MySQL's inline `INDEX (col)` inside `CREATE TABLE` with
+`syntax error at or near "("`. Only `PRIMARY KEY` and `UNIQUE` are inline, because they are
+constraints that happen to be backed by an index.
+
+Files touched: `index_types.md` (new section 2.5, engine scope on section 2, GIN rewritten),
+`notes.md` (new section 2b), `README.md` (engine-scope banner on section 4). The chapter's four
+retrofit files from 2026-09-06 were not touched.
+
+---
+
 ## 2026-09-09 — sql Ch4 retrofitted: joins measured, and four chapter claims that did not survive
 
 Chapter 4 is the second-most-asked topic in the track (`PRACTICE.md` ranks it behind indexes) and
