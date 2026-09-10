@@ -41,7 +41,7 @@ Log **every** attempt, including the ones you failed — especially those.
 |---|---|---|---|---|---|---|---|
 | 2026-09-10 | 1 | [Two Sum (1)](https://leetcode.com/problems/two-sum/) | py | 3 | y | — clean one-pass, check-before-insert. Two Python habits, both **fixed same day**: `enumerate(nums)` not `range(len(nums))`, and the `else` was dead since the `if` returns. Rehearse *why* one pass is safe: you look up before inserting, so an element can never pair with itself, and `[3,3]` still works | |
 | 2026-09-10 | 2 | [Contains Duplicate (217)](https://leetcode.com/problems/contains-duplicate/) | py | 2 | y | — 1m30s, correct early-return set. **Over-applied yesterday's note: `i` is unused, so this wants `for n in nums`, not `enumerate`.** `enumerate` is for when you need the index (Two Sum returns one). Also know the `len(set(nums)) != len(nums)` one-liner — faster in practice (C loop) but no short-circuit; be able to say why you picked the loop | |
-| | 3 | [Valid Anagram (242)](https://leetcode.com/problems/valid-anagram/) | | | | | |
+| 2026-09-10 | 3 | [Valid Anagram (242)](https://leetcode.com/problems/valid-anagram/) | py | 14 | n | — **logic was mine, the help was Python syntax only.** Count-up then decrement with `del` + `len(data)==0` is a good shape and early-exits. Missing the O(1) `len(s) != len(t)` guard up front (**added same day**). Know `Counter(s) == Counter(t)` as the idiomatic answer, and be able to say why the manual version is still worth showing | |
 | | 4 | [Group Anagrams (49)](https://leetcode.com/problems/group-anagrams/) | | | | | |
 | | 5 | [Top K Frequent Elements (347)](https://leetcode.com/problems/top-k-frequent-elements/) | | | | | |
 | | 6 | [Longest Consecutive Sequence (128)](https://leetcode.com/problems/longest-consecutive-sequence/) | | | | | |
@@ -66,7 +66,7 @@ week 8 comes and you filter for `unaided = n`.
 
 | Milestone | Target | Actual |
 |---|---|---|
-| End of week 4 | ~29 | **10** — week 1 complete, week 2 at 2/7 |
+| End of week 4 | ~29 | **11** — week 1 complete, week 2 at 3/7 |
 | End of week 8 | ~60 | |
 | End of week 12 | ~92 | |
 
@@ -76,4 +76,5 @@ Update this whenever a Sunday review says the same thing twice. These are what w
 
 | Pattern | Why it is weak | Re-drilled on |
 |---|---|---|
-| | | |
+| Python loop form | `range(len(x))` + `x[i]`, then over-corrected to `enumerate` with an unused `i` — 5x on 2026-09-10. **Test: if you never type `i` in the body, do not ask for it.** Pick by what the body uses: values -> `for n in nums`; both -> `enumerate`; index alone -> `range(len())`, rare | |
+| Python stdlib for DSA | Reaching for manual dict counting before `Counter`, `defaultdict`, `deque`, `bisect`, `heapq`. See `language-notes.md` | |
