@@ -53,9 +53,19 @@ why comparing costs BETWEEN two different queries is meaningless: it does not pr
 ```
 predicted:                   actual:
 
-which node applied the filter:        which produced the columns:
+how many nodes in the plan:
 
-order they run in:
+which node applied the filter:
+
+is there a separate projection node:
+
+width= for   select label:        select *:        select id:
+
+what width= is therefore telling me:
+
+can this plan tell me WHEN the select list was evaluated?  (yes/no, and why)
+
+what I would have to measure instead:
 ```
 
 ### E · alias in WHERE

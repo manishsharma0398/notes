@@ -73,10 +73,27 @@ The chapter's core claim. Test it.
 
 ```sql
 explain analyze select label from t where val > 990;
+explain select label from t where val > 990;
+explain select *     from t where val > 990;
+explain select id    from t where val > 990;
 ```
 
-*You wrote `SELECT` first. Did the engine evaluate it first? Which node applied the filter, and
-which produced the columns — and in what order do they run?*
+*Start by counting the nodes in the first plan. **There is only one.** So the honest answer to "which
+node filtered and which node projected" is that no separate projection node exists — the `Seq Scan`
+does both, because a scan node carries a target list.*
+
+*Then find the only evidence of the projection in the plan. Compare `width=` across the last three:
+it moves with the columns you asked for. That number is the projection, and it is the whole of it.*
+
+*Now the point of the exercise: **this plan cannot tell you when the select list was evaluated.** It
+shows you *what* is projected, never *when*. Write down what you would have to measure instead to
+settle the ordering — the answer is not in `EXPLAIN` output at all. Chapter 2 does it by counting
+function calls, and finds the select list running 10 times or 1000 for the same 10 rows depending on
+the sort key.*
+
+*The transferable habit is the one being trained here: say what a plan does **not** show. Most wrong
+conclusions about query behaviour come from reading a plan as if it answered a question it never
+addressed.*
 
 ### E · an alias you cannot use
 

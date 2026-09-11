@@ -9,6 +9,43 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-11 — sql Ch1 exercise D was mis-posed; caught by a reader running it
+
+Manish, working the Ch1 worksheet, objected to question D: *"we can't know from here which runs
+first."* He is right, and the question was wrong.
+
+D asks: *"Which node applied the filter, and which produced the columns — and in what order do they
+run?"* It presumes two nodes. Running it, `explain analyze select label from t where val > 990`
+produces exactly **one**:
+
+```
+Seq Scan on t  (cost=0.00..3774.00 rows=1790 width=10) (actual rows=1800)
+  Filter: (val > 990)
+  Rows Removed by Filter: 198200
+```
+
+A scan node carries a target list, so it filters *and* projects. There is no projection node to
+name, and nothing in the output orders the two. The question could not be answered as posed.
+
+**The fix turns the defect into the better lesson**, because "this plan cannot tell you that" is the
+more valuable habit. D now asks the reader to count the nodes, find the projection's only trace —
+`width=` moves 10 / 22 / 4 across `label` / `*` / `id` — and then state explicitly that the plan
+shows *what* is projected and never *when*. It closes by pointing at Ch2, which settles the ordering
+by counting function calls rather than by reading a plan.
+
+Worth recording that the prompt's own rule caught this: *"Where an exercise makes a claim about
+behaviour, run that too; mis-posed exercise questions have been caught this way more than once."*
+This one was written without being executed, which is exactly the gap the rule exists to close. Ch1
+was the first chapter retrofitted, before that discipline was consistently applied.
+
+Also checked while fixing: even `select label, val*2 ... order by val limit 5` does not emit a
+separate `Result` node on 16.15 — the projection folds into the Sort. So the function-call-counting
+approach in Ch2 is not one option among several, it is the only way to observe this.
+
+`exercises/chapter_exercise.md` and the matching worksheet block both updated.
+
+---
+
 ## 2026-09-11 — sql Ch7 retrofitted: the chapter contradicts itself, and justifies SERIALIZABLE wrongly
 
 Added `mock.md` and the three exercise files to `07-transactions-concurrency`. Chapters 01–07, 09
