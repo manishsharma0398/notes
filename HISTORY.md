@@ -9,6 +9,108 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-11 — sql Ch7 retrofitted: the chapter contradicts itself, and justifies SERIALIZABLE wrongly
+
+Added `mock.md` and the three exercise files to `07-transactions-concurrency`. Chapters 01–07, 09
+and 10 are now complete; 08 and 12–17 still need the retrofit, 11 and 18 are unwritten.
+
+Every result executed on PostgreSQL 16.15 using **two concurrent psql sessions** driven by FIFOs —
+this is the first chapter in the track that could not be verified from a single session.
+
+### The chapter is wrong about Postgres in three places
+
+**1. `README.md` §4.A — the dirty read cannot happen.** Postgres *accepts* `READ UNCOMMITTED` and
+even reports it back (`show transaction_isolation` returns `read uncommitted`), but the behaviour is
+Read Committed. Measured: session B held an uncommitted `UPDATE ... = 9999`, session A at read
+uncommitted read the same row and got **500**. The setting is accepted, reported, and inert — which
+is more interesting than "unsupported".
+
+**2. `README.md` §4.C — says Repeatable Read allows phantoms, with an example.** It does not.
+Measured: A at RR counted 3 rows, B inserted a qualifying row and committed, A counted **3** again,
+and still saw the pre-update value of a row B had changed. **The chapter already knows this** —
+`notes.md` §2 annotates that row "❌ (standard), ✅ (Postgres)" and `interview.md` Q2 is titled "Why
+Postgres Repeatable Read Prevents Phantoms". So the README contradicts its own chapter.
+
+**3. `README.md` §4.D justifies SERIALIZABLE with the wrong example**, and this is the one that
+matters. It shows a write-write conflict: A reads X, B updates X and commits, A fails. Measured —
+that is caught at **REPEATABLE READ**, with `could not serialize access due to concurrent update`.
+It is not a reason to use serializable.
+
+**The case that actually requires it is write skew, and the chapter never names it.** Two accounts
+at 400, rule "combined must stay non-negative", each transaction checks the combined balance and
+withdraws 500 from *its own* row:
+
+| isolation | outcome | final combined |
+|---|---|---|
+| repeatable read | both commit | **-200** |
+| serializable | one aborts | 300 |
+
+Different rows, so no write-write conflict, so nothing to detect. Each transaction individually
+checked the invariant and preserved it. That is why snapshot isolation cannot catch it and why SSI
+exists.
+
+**The two serialization-failure messages are diagnostically distinct**, which no file in the chapter
+mentions:
+
+- `could not serialize access due to concurrent update` — same row, and you would get it at
+  repeatable read.
+- `could not serialize access due to read/write dependencies among transactions` (plus
+  `HINT: The transaction might succeed if retried.`) — serializable only, a cycle across *different*
+  rows.
+
+Given a production log line, the wording alone tells you which situation you are in.
+
+### Locking findings
+
+- **Lost update measured**: two read-then-write withdrawals of 100 from 500 left the balance at
+  **400**, not 300. `FOR UPDATE` gives 300.
+- **A blocked `UPDATE` re-reads at READ COMMITTED.** A's `set balance = balance - 100` blocked on B's
+  `set balance = 1000`; when B committed, A computed against **1000** and produced **900**, not the
+  400 it would have got from the value visible at statement start. This is precisely why
+  `set x = x - 1` is concurrency-safe and `select` then `set x = 400` is not — and it does not apply
+  at repeatable read, which holds one snapshot.
+- **Deadlock**, with the full diagnostic: `DETAIL` names both processes and the transaction id,
+  `CONTEXT` names the exact tuple (`while updating tuple (0,23) in relation "accounts"`).
+  `deadlock_timeout` is **1s**, so detection is deliberately lazy — the victim pays a second of
+  latency before the error appears.
+
+### MVCC, and the VACUUM fact the chapter misses
+
+An `UPDATE` is physically a delete plus an insert, and you can watch it: `ctid` went `(0,1)` →
+`(0,2)` and `xmin` 818 → 819 on a single-row update.
+
+| | table size | dead tuples |
+|---|---|---|
+| 50,000 fresh rows | 1776 kB | 0 |
+| after 3 full-table updates | **7080 kB** | 149,935 |
+| after `VACUUM` | **7080 kB** | 0 |
+| after `VACUUM FULL` | 1776 kB | 0 |
+
+**Plain `VACUUM` does not return space to the operating system.** The chapter says VACUUM "cleans
+them up" and `interview.md` offers `VACUUM FULL` as "aggressive cleanup", neither of which says the
+file does not shrink. Verified it is a trade-off rather than a defect: after vacuuming, another
+full-table update left the file the same size instead of doubling again, so the freed space really
+is reused and routine autovacuum keeps you flat.
+
+### The cumulative exercise
+
+Built around two invariants that look identical and are not: `stock >= 0` in a single row, versus
+`sum(reservations.qty) <= stock` across many. The second one is write skew in its purest form — two
+`INSERT`s of different rows — and the measured result is the point of the exercise:
+
+| isolation | invariant M holds? | final sum |
+|---|---|---|
+| read committed | no | 42 |
+| **repeatable read** | **no** | **42** |
+| serializable | yes | 41 |
+
+Single-row invariants are fixable with locking or a self-referential update at the default level.
+Multi-row invariants are not, and no amount of `FOR UPDATE` on the rows being inserted helps,
+because the conflict is not on any row either transaction touches.
+
+Both exercise setups were verified from scratch in a fresh database.
+
+
 ## 2026-09-11 — sql Ch6 retrofitted, and its skew claim is wrong
 
 Added `mock.md` and the three exercise files to `06-query-optimizer-statistics`. Chapters 01–06,
