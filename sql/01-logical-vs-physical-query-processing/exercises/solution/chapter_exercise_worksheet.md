@@ -80,7 +80,10 @@ why comparing costs BETWEEN two different queries is meaningless: it does not pr
 ### D · where SELECT actually happens
 
 ```sql
+-- q1: answers everything except the width= row
 explain analyze select label from t where val > 990;
+
+-- q2-q4: these exist ONLY to fill the width= row — same filter, different column list
 explain select label from t where val > 990;
 explain select *     from t where val > 990;
 explain select id    from t where val > 990;
@@ -111,15 +114,15 @@ select val * 2 as doubled from t where doubled > 100 limit 5;
 ```
 
 ```
-predicted (runs? errors?):
+predicted (runs? errors?): error
 
-actual error:
+actual error: column doubled doesnot exists
 
-what the error proves about evaluation order:
+what the error proves about evaluation order: where runs before select, although the select appears before where in the query
 
 the version that works:
 
-why the alias IS legal in ORDER BY:
+why the alias IS legal in ORDER BY: because select runs before order by
 ```
 
 ### F · aggregate in WHERE
@@ -271,7 +274,7 @@ what the optimiser is NOT allowed to assume about an expression:
 
 ### 1. Prove the evaluation order in SQL
 
-*One query per rule that fails purely because of clause evaluation order, plus the fix.*
+_One query per rule that fails purely because of clause evaluation order, plus the fix._
 
 ```
 alias unusable in WHERE:                      the fix:
@@ -290,7 +293,7 @@ checked against notes.md?  y/n:
 
 ### 2. Make the planner badly wrong
 
-*Aim for an estimate off by 100x or more. Program 4's J reaches 100,000x.*
+_Aim for an estimate off by 100x or more. Program 4's J reaches 100,000x._
 
 ```
 the query:
@@ -306,7 +309,7 @@ what a bad estimate causes DOWNSTREAM:
 
 ### 3. Three spellings, one meaning
 
-*The same question as a subquery, a join, and an `EXISTS`.*
+_The same question as a subquery, a join, and an `EXISTS`._
 
 ```
 subquery version:
