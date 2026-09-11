@@ -9,12 +9,35 @@ Setup and lab: `../chapter_exercise.md` and `../../../PRACTICE.md`.
 
 ---
 
+## Setup — run once
+
+```sql
+create table users(id serial primary key, email text, country text, age int, bio text);
+insert into users(email, country, age, bio)
+select 'u'||g||'@x.com',
+       case when g % 100 = 0 then 'IS' else 'IN' end,   -- 1% IS, 99% IN
+       (g % 60) + 18,
+       repeat('b', 50)
+from generate_series(1, 200000) g;
+
+create index idx_email        on users(email);
+create index idx_country_age  on users(country, age);
+analyze users;
+```
+
+---
+
 ## Program 1 — Will it use the index?
 
 ### A · equality on an indexed column
+
 ```sql
 explain analyze select * from users where email = 'u123@x.com';
 ```
+```sql
+explain analyze select * from users where email = 'u123@x.com';
+```
+
 ```
 predicted scan:                    actual scan:
 
@@ -24,6 +47,11 @@ rule:
 ```
 
 ### B · the 1% value  (`country = 'IS'`)
+
+```sql
+explain analyze select * from users where country = 'IS';
+```
+
 ```
 predicted:                         actual:
 
@@ -31,6 +59,11 @@ rule:
 ```
 
 ### C · the 99% value  (`country = 'IN'`)
+
+```sql
+explain analyze select * from users where country = 'IN';
+```
+
 ```
 predicted:                         actual:
 
@@ -40,6 +73,11 @@ why B and C differ, in ONE sentence (this is the most-asked idea in the chapter)
 ```
 
 ### D · prefix LIKE  (`email like 'u123%'`)
+
+```sql
+explain analyze select * from users where email like 'u123%';
+```
+
 ```
 predicted:                         actual:
 
@@ -51,6 +89,11 @@ if the result surprised you, why:
 ```
 
 ### E · suffix LIKE  (`email like '%23@x.com'`)
+
+```sql
+explain analyze select * from users where email like '%23@x.com';
+```
+
 ```
 predicted:                         actual:
 
@@ -60,6 +103,14 @@ why this is a DIFFERENT reason from D, in terms of B-tree ordering:
 ```
 
 ### F · the operator-class fix  (`text_pattern_ops`)
+
+```sql
+create index idx_email_pat on users(email text_pattern_ops);
+analyze users;
+explain analyze select * from users where email like 'u123%';
+explain analyze select * from users where email = 'u123@x.com';
+```
+
 ```
 prefix LIKE now:                   equality now:
 
@@ -76,11 +127,21 @@ what that says about why the original index could not serve a prefix match:
 ## Program 2 — Composite indexes  (`idx_country_age` on `(country, age)`)
 
 ### G · leading column only
+
+```sql
+explain analyze select * from users where country = 'IS';
+```
+
 ```
 predicted:            actual:            cost:
 ```
 
 ### H · non-leading column only  (`age = 30`)
+
+```sql
+explain analyze select * from users where age = 30;
+```
+
 ```
 predicted:            actual:            cost:
 
@@ -93,11 +154,21 @@ rewrite it so it is actually TRUE for Postgres:
 ```
 
 ### I · both columns
+
+```sql
+explain analyze select * from users where country = 'IS' and age = 30;
+```
+
 ```
 predicted:            actual:
 ```
 
 ### J · reversed predicate order
+
+```sql
+explain analyze select * from users where age = 30 and country = 'IS';
+```
+
 ```
 same plan as I?  y/n:
 
@@ -111,11 +182,21 @@ what DOES the index's column order control:
 ## Program 3 — Covering indexes
 
 ### K · `select *`
+
+```sql
+explain analyze select * from users where country = 'IS' and age = 30;
+```
+
 ```
 scan type:                         width:
 ```
 
 ### L · `select country, age`
+
+```sql
+explain analyze select country, age from users where country = 'IS' and age = 30;
+```
+
 ```
 scan type:                         width:
 
@@ -125,6 +206,11 @@ what the database skipped in L:
 ```
 
 ### M · `select country, age, email`
+
+```sql
+explain analyze select country, age, email from users where country = 'IS' and age = 30;
+```
+
 ```
 scan type:
 

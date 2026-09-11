@@ -10,9 +10,69 @@ Run with `set max_parallel_workers_per_gather = 0;` unless told otherwise.
 
 ---
 
+## Setup — run once
+
+```sql
+drop table if exists orders, users, status, ranges cascade;
+
+create table status(id int primary key, name text not null);
+insert into status values (1,'pending'),(2,'shipped'),(3,'delivered'),(4,'cancelled'),(5,'returned');
+
+create table users(
+  id int primary key,
+  username text not null,
+  country text not null,
+  city text not null,
+  created_at timestamptz not null
+);
+insert into users
+select g,
+       'user_'||g,
+       (array['FR','DE','US','IN','BR'])[(g % 5)+1],
+       (array['Paris','Berlin','Austin','Pune','Recife'])[(g % 5)+1],
+       timestamptz '2024-01-01' + (g || ' minutes')::interval
+from generate_series(1,100000) g;
+
+create table orders(
+  id int primary key,
+  user_id int not null,
+  status_id int not null,
+  amount numeric(10,2) not null,
+  order_date timestamptz not null
+);
+insert into orders
+select g,
+       case when g % 5 < 2 then (g % 1000) + 1 else (g % 100000) + 1 end,
+       (g % 5) + 1,
+       ((g::bigint * 7919) % 50000) / 100.0,   -- the cast matters; plain int overflows at 1M
+       timestamptz '2024-01-01' + (g || ' seconds')::interval
+from generate_series(1,1000000) g;
+
+create index idx_orders_user_id on orders(user_id);
+analyze users, orders, status;
+```
+
+---
+
 ## Program 1 — The same join, three ways
 
 ### A · force each algorithm
+
+```sql
+-- hash (the default here)
+explain (analyze, buffers, costs off) select count(*) from orders o join users u on u.id = o.user_id;
+
+-- merge
+set enable_hashjoin=off; set enable_nestloop=off;
+explain (analyze, buffers, costs off) select count(*) from orders o join users u on u.id = o.user_id;
+reset enable_hashjoin; reset enable_nestloop;
+
+-- nested loop
+set enable_hashjoin=off; set enable_mergejoin=off;
+explain (analyze, buffers, costs off) select count(*) from orders o join users u on u.id = o.user_id;
+reset all;
+```
+
 ```
 algorithm                  startup      total       shared hit
 hash
@@ -29,6 +89,11 @@ which ranking I would trust moving to a busy production server, and why:
 ```
 
 ### B · the switch that does not do what it says
+
+```
+(no query — answer from the question text / an earlier result)
+```
+
 ```
 enable_hashjoin=off alone gives me:      (predicted)          (actual)
 
@@ -40,6 +105,11 @@ what this means for using these switches to "select" an algorithm:
 ```
 
 ### C · the node nobody mentions
+
+```
+(no query — answer from the question text / an earlier result)
+```
+
 ```
 node name:
 
@@ -58,6 +128,17 @@ what it does to the claim that a nested loop is O(N x M):
 ## Program 2 — Startup cost and LIMIT
 
 ### D · one row
+
+```sql
+explain (analyze, costs off)
+select o.id, u.username from orders o join users u on u.id=o.user_id limit 1;
+
+set enable_nestloop=off; set enable_mergejoin=off;
+explain (analyze, costs off)
+select o.id, u.username from orders o join users u on u.id=o.user_id limit 1;
+reset all;
+```
+
 ```
                               predicted        actual
 planner free, LIMIT 1
@@ -72,6 +153,11 @@ the two numbers in explain (costs on) that correspond:
 ```
 
 ### E · when blocking is free
+
+```
+(no query — answer from the question text / an earlier result)
+```
+
 ```
 my query where startup cost does not matter:
 
@@ -85,6 +171,18 @@ the general rule for when a blocking operator is the right choice:
 ## Program 3 — Memory and spilling
 
 ### F · make it spill
+
+```sql
+set enable_mergejoin=off; set enable_nestloop=off;
+
+set work_mem='64kB';
+explain (analyze, buffers, costs off) select count(*) from orders o join orders o2 on o2.id = o.user_id;
+
+set work_mem='256MB';
+explain (analyze, buffers, costs off) select count(*) from orders o join orders o2 on o2.id = o.user_id;
+reset all;
+```
+
 ```
                  Buckets    Batches   Memory Usage   temp read/written   time
 work_mem 64kB
@@ -99,6 +197,11 @@ what would have to differ for the chapter's number to be right:
 ```
 
 ### G · the fix, and its limit
+
+```
+(no query — answer from the question text / an earlier result)
+```
+
 ```
 reason 1 it is a dangerous default answer (concurrency):
 
@@ -110,6 +213,21 @@ reason 2 (what work_mem is allocated PER — find out, it is not per query):
 ## Program 4 — What the algorithms cannot do
 
 ### H · the range join
+
+```sql
+create table ranges(id int primary key, lo int, hi int);
+insert into ranges select g, (g-1)*10000, g*10000 from generate_series(1,10) g;
+analyze ranges;
+
+explain (analyze, costs off)
+select count(*) from users u join ranges r on u.id > r.lo and u.id <= r.hi;
+
+set enable_nestloop=off;
+explain (analyze, costs off)
+select count(*) from users u join ranges r on u.id > r.lo and u.id <= r.hi;
+reset all;
+```
+
 ```
 range join, default:                   algorithm:            time:
 range join, enable_nestloop=off:       algorithm:            time:
@@ -124,6 +242,11 @@ why "forbid" is the wrong verb:
 ```
 
 ### I · why not hash
+
+```
+(no query — answer from the question text / an earlier result)
+```
+
 ```
 why a hash table cannot answer a range predicate
 (must mention what hashing does to ordering):
@@ -132,6 +255,14 @@ why merge join cannot either (a DIFFERENT reason):
 ```
 
 ### J · the type-mismatch claim
+
+```sql
+create table u_txt(id text primary key, username text);
+insert into u_txt select g::text, 'user_'||g from generate_series(1,100000) g;
+analyze u_txt;
+explain (costs off) select count(*) from orders o join u_txt u on u.id = o.user_id;
+```
+
 ```
 int = text join in Postgres ->  (quote exactly what happens)
 
@@ -147,6 +278,14 @@ the corrected Postgres version of the trap:
 ## Program 5 — Semi-joins, anti-joins, and the cliff
 
 ### K · four ways to ask about existence
+
+```sql
+explain (costs off) select count(*) from users u where exists (select 1 from orders o where o.user_id=u.id);
+explain (costs off) select count(*) from users u where not exists (select 1 from orders o where o.user_id=u.id);
+explain (costs off) select count(*) from users u where u.id in (select user_id from orders);
+explain (costs off) select count(*) from users u where u.id not in (select user_id from orders);
+```
+
 ```
 EXISTS      -> top node:
 NOT EXISTS  -> top node:
@@ -157,6 +296,13 @@ the one that is structurally different:
 ```
 
 ### L · time them
+
+```sql
+create table orders_s as select * from orders where id <= 100000;
+create table users_s  as select * from users  where id <= 5000;
+analyze orders_s, users_s;
+```
+
 ```
 NOT EXISTS (full size):
 NOT IN (full size):   gave up after ______ ; what the plan told me would happen:
@@ -169,6 +315,14 @@ the single word present in the small NOT IN plan and absent from the large one:
 ```
 
 ### M · locate the cliff
+
+```sql
+explain (costs off) select count(*) from users u where u.id not in (select user_id from orders);
+set work_mem='256MB';
+explain (costs off) select count(*) from users u where u.id not in (select user_id from orders);
+reset work_mem;
+```
+
 ```
 NOT IN, work_mem 4MB   -> plan form:
 NOT IN, work_mem 256MB -> plan form:
@@ -181,6 +335,18 @@ two distinct ways this passes staging and dies in production:
 ```
 
 ### N · the correctness half
+
+```sql
+select count(*) as a from users_s u where u.id not in (select user_id from orders_s);
+select count(*) as b from users_s u where not exists (select 1 from orders_s o where o.user_id=u.id);
+
+insert into orders_s(id,user_id,status_id,amount,order_date) values (9999999, null, 1, 0, now());
+analyze orders_s;
+
+select count(*) as c from users_s u where u.id not in (select user_id from orders_s);
+select count(*) as d from users_s u where not exists (select 1 from orders_s o where o.user_id=u.id);
+```
+
 ```
                                    predicted      actual
 a  NOT IN, no NULLs
@@ -204,6 +370,16 @@ when I would ever write NOT IN, and what must be true of the column:
 ## Program 6 — Logical vs physical
 
 ### O · the axes are independent
+
+```sql
+explain (costs off) select count(*) from users u left join orders o on o.user_id=u.id;
+set enable_hashjoin=off; set enable_nestloop=off;
+explain (costs off) select count(*) from users u left join orders o on o.user_id=u.id;
+reset all;
+explain (costs off) select count(*) from users u full join orders o on o.user_id=u.id;
+explain (costs off) select count(*) from status s cross join status s2;
+```
+
 ```
 LEFT JOIN                 -> physical node:
 LEFT JOIN, merge only     -> physical node:
@@ -224,6 +400,19 @@ why it is the same underlying reason as the range join:
 ## Program 7 — Join order
 
 ### P · the middle of the plan
+
+```sql
+explain (analyze, costs off)
+select count(*) from orders o join users u on u.id=o.user_id
+ join status s on s.id=o.status_id where s.name='returned';
+
+set join_collapse_limit=1;
+explain (analyze, costs off)
+select count(*) from users u join orders o on u.id=o.user_id
+ join status s on s.id=o.status_id where s.name='returned';
+reset join_collapse_limit;
+```
+
 ```
                           inner join rows=      total time
 planner free

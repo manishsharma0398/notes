@@ -9,9 +9,28 @@ Setup and the two-terminal instructions: `../chapter_exercise.md`. Lab: `../../.
 
 ---
 
+## Setup — run once
+
+```sql
+\set PROMPT1 'A> '     -- and 'B> ' in the other
+```
+
+---
+
 ## Program 1 — The level that is not there
 
 ### A · try to produce a dirty read
+
+```sql
+T1  B:  begin;
+T2  B:  update accounts set balance = 9999 where id = 1;      -- NOT committed
+T3  A:  begin transaction isolation level read uncommitted;
+T4  A:  show transaction_isolation;
+T5  A:  select balance from accounts where id = 1;
+T6  A:  commit;
+T7  B:  rollback;
+```
+
 ```
 MY PREDICTION for T5 (9999 or 500):
 
@@ -27,6 +46,11 @@ what would have to be true for README §4.A's example to work:
 ```
 
 ### B · standard versus measured
+
+```
+(no query — answer from the question text / an earlier result)
+```
+
 ```
 notes.md §2 Read Uncommitted row as written:
 
@@ -40,6 +64,15 @@ notes.md's Repeatable Read row already carries an annotation. why does that matt
 ## Program 2 — The anomaly that does reproduce
 
 ### C · non-repeatable read
+
+```sql
+T1  A:  begin transaction isolation level read committed;
+T2  A:  select balance from accounts where id = 1;
+T3  B:  update accounts set balance = 1000 where id = 1;      -- autocommit
+T4  A:  select balance from accounts where id = 1;
+T5  A:  commit;
+```
+
 ```
 T2 predicted:          actual:
 T4 predicted:          actual:
@@ -50,6 +83,18 @@ why is this the DEFAULT level, given it permits this:
 ```
 
 ### D · the same script one level up
+
+```sql
+T1  A:  begin transaction isolation level repeatable read;
+T2  A:  select count(*) from accounts where balance > 100;
+T3  B:  insert into accounts values (4,'dave',777);
+T4  B:  update accounts set balance = 111 where id = 2;
+T5  A:  select count(*) from accounts where balance > 100;
+T6  A:  select id, balance from accounts order by id;
+T7  A:  commit;
+T8  A:  select count(*) from accounts where balance > 100;
+```
+
 ```
 repeat of C at repeatable read   T2:          T4:
 
@@ -69,6 +114,11 @@ if RR blocks all three standard anomalies, what is SERIALIZABLE for:
 ## Program 3 — The anomaly the ladder never names
 
 ### E · write skew
+
+```sql
+update accounts set balance = 400 where id in (1,2);
+```
+
 ```
 MY PREDICTION (does either commit fail? final combined?):
 
@@ -84,6 +134,11 @@ why is there nothing for the engine to detect:
 ```
 
 ### F · the same script at serializable
+
+```
+(no query — answer from the question text / an earlier result)
+```
+
 ```
 which session failed:
 
@@ -95,6 +150,14 @@ final combined balance:
 ```
 
 ### G · the conflict repeatable read does catch
+
+```sql
+T1  A:  begin transaction isolation level repeatable read;
+T2  A:  select balance from accounts where id = 1;
+T3  B:  update accounts set balance = 1000 where id = 1;      -- autocommit
+T4  A:  update accounts set balance = 600 where id = 1;
+```
+
 ```
 EXACT error:
 
@@ -110,6 +173,17 @@ RUNBOOK RULE:
 ## Program 4 — Locking
 
 ### H · the lost update
+
+```sql
+T1  A:  begin;                       T1  B:  begin;
+T2  A:  select balance from accounts where id = 1;
+T3                                   B:  select balance from accounts where id = 1;
+T4  A:  update accounts set balance = 400 where id = 1;
+T5  A:  commit;
+T6                                   B:  update accounts set balance = 400 where id = 1;
+T7                                   B:  commit;
+```
+
 ```
 predicted final balance:          actual:
 
@@ -119,6 +193,11 @@ why nothing complained:
 ```
 
 ### I · two fixes
+
+```
+(no query — answer from the question text / an earlier result)
+```
+
 ```
 fix 1 (self-referential update):
 
@@ -132,6 +211,16 @@ when option 2 is REQUIRED — what must the application be doing:
 ```
 
 ### J · the re-read rule
+
+```sql
+T1  A:  begin;                       T1  B:  begin;
+T2                                   B:  update accounts set balance = 1000 where id = 1;
+T3  A:  update accounts set balance = balance - 100 where id = 1;    -- BLOCKS
+T4                                   B:  commit;
+T5  A:  select balance from accounts where id = 1;
+T6  A:  commit;
+```
+
 ```
 predicted what A computes against (500 or 1000):
 
@@ -147,6 +236,15 @@ why it does NOT apply at repeatable read:
 ## Program 5 — Deadlock
 
 ### K · make one
+
+```sql
+T1  A:  begin;                       T1  B:  begin;
+T2  A:  update accounts set balance = balance - 10 where id = 1;
+T3                                   B:  update accounts set balance = balance - 10 where id = 2;
+T4  A:  update accounts set balance = balance - 10 where id = 2;     -- BLOCKS
+T5                                   B:  update accounts set balance = balance - 10 where id = 1;
+```
+
 ```
 predicted victim:              actual victim:
 
@@ -159,6 +257,11 @@ what CONTEXT names, and how I would use it:
 ```
 
 ### L · how long did that take
+
+```sql
+show deadlock_timeout;
+```
+
 ```
 deadlock_timeout =
 
@@ -170,6 +273,11 @@ what checking instantly would cost:
 ```
 
 ### M · prevent it
+
+```
+(no query — answer from the question text / an earlier result)
+```
+
 ```
 rewritten K:
 
@@ -183,6 +291,15 @@ why "keep transactions short" is a mitigation not a fix:
 ## Program 6 — MVCC and what it costs
 
 ### N · watch a row move
+
+```sql
+create table mv(id int primary key, v int);
+insert into mv values (1, 100);
+select ctid, xmin, xmax, * from mv;
+update mv set v = 200 where id = 1;
+select ctid, xmin, xmax, * from mv;
+```
+
 ```
 before:  ctid          xmin          v
 after:   ctid          xmin          v
@@ -195,6 +312,20 @@ what notes.md's visibility rule leaves out (think: rolled-back writer):
 ```
 
 ### O · bloat
+
+```sql
+truncate mv;
+insert into mv select g, g from generate_series(1,50000) g;
+vacuum analyze mv;
+select pg_size_pretty(pg_relation_size('mv'));
+
+update mv set v = v + 1;
+update mv set v = v + 1;
+update mv set v = v + 1;
+select pg_size_pretty(pg_relation_size('mv'));
+select n_live_tup, n_dead_tup from pg_stat_user_tables where relname='mv';
+```
+
 ```
 size before:                    size after 3 updates:
 
@@ -202,6 +333,13 @@ n_live_tup:                     n_dead_tup:
 ```
 
 ### P · what VACUUM actually does
+
+```sql
+vacuum mv;
+select n_live_tup, n_dead_tup from pg_stat_user_tables where relname='mv';
+select pg_size_pretty(pg_relation_size('mv'));
+```
+
 ```
 MY PREDICTION of size after plain VACUUM:
 

@@ -9,9 +9,49 @@ Setup: `../chapter_exercise.md`. Lab: `../../../PRACTICE.md`.
 
 ---
 
+## Setup — run once
+
+```sql
+drop table if exists emp, small, calls cascade;
+
+create table emp(
+  id serial primary key,
+  dept text not null,
+  name text not null,
+  salary int not null,
+  hired date not null
+);
+
+insert into emp(dept, name, salary, hired)
+select case
+         when g % 100 < 45 then 'eng'
+         when g % 100 < 70 then 'sales'
+         when g % 100 < 85 then 'support'
+         when g % 100 < 97 then 'marketing'
+         else 'ops'
+       end,
+       'emp-'||g,
+       30000 + (g % 70) * 1000,
+       date '2015-01-01' + (g % 3000)
+from generate_series(1, 200000) g;
+
+analyze emp;
+```
+
+---
+
 ## Program 1 — What each clause can see
 
 ### A · the alias, five ways
+
+```sql
+select salary * 2 as doubled from emp where doubled > 100 limit 3;
+select salary * 2 as doubled from emp order by doubled desc limit 3;
+select salary * 2 as doubled, count(*) from emp group by doubled limit 3;
+select dept, count(*) as c from emp group by dept having c > 100;
+select salary as s, s * 2 as d from emp limit 3;
+```
+
 ```
                                         predicted    actual (ok / exact error)
 WHERE       ... where doubled > 100
@@ -26,6 +66,11 @@ the two that surprised me:
 ```
 
 ### B · the row that breaks the explanation
+
+```
+(no query — answer from the question text / an earlier result)
+```
+
 ```
 GROUP BY runs BEFORE SELECT, yet sees the alias. HAVING runs AFTER, and cannot.
 
@@ -37,6 +82,12 @@ what it does NOT govern:
 ```
 
 ### C · shadowing
+
+```sql
+select dept as salary, count(*) from emp group by salary;
+select dept as salary from emp order by salary limit 3;
+```
+
 ```
 select dept as salary ... group by salary   ->  which wins:
 
@@ -54,6 +105,14 @@ the rule I will follow when writing SQL:
 ## Program 2 — What ORDER BY is allowed to sort by
 
 ### D · the freedom, and where it stops
+
+```sql
+select name from emp order by salary desc limit 3;
+select distinct dept from emp order by salary desc limit 3;
+select dept from emp group by dept order by salary desc limit 3;
+select dept from emp group by dept order by max(salary) desc limit 3;
+```
+
 ```
 select name ... order by salary                    ->
 
@@ -69,6 +128,13 @@ why the fourth is allowed when the third is not:
 ```
 
 ### E · the same rule from the other end
+
+```sql
+select dept, hired, count(*) from emp group by dept limit 3;
+select id, name, salary, count(*) from emp group by id limit 3;
+select name, salary from emp group by name limit 3;
+```
+
 ```
 group by dept,  select hired      ->
 
@@ -84,6 +150,15 @@ corrected version of "with GROUP BY you may only select grouped columns or aggre
 ```
 
 ### F · aggregates and windows, where they may not go
+
+```sql
+select dept, count(*) from emp where count(*) > 100 group by dept;
+select count(*) from emp having salary > 100;
+select name from emp where row_number() over (order by salary) < 5;
+select dept from emp group by dept having row_number() over () < 5;
+select count(*) from emp group by row_number() over ();
+```
+
 ```
 aggregate in WHERE          ->
 bare column in HAVING       ->
@@ -99,6 +174,12 @@ window functions sit AFTER stage:            and BEFORE stage:
 ```
 
 ### G · HAVING with nothing to group
+
+```sql
+select count(*) from emp having count(*) > 100;
+select count(*) from emp having count(*) > 999999;
+```
+
 ```
 having count(*) > 100      predicted:            actual:
 
@@ -113,6 +194,12 @@ why:
 ## Program 3 — WHERE versus HAVING, measured
 
 ### H · the same predicate, two clauses
+
+```sql
+explain analyze select dept, count(*) from emp where dept = 'eng' group by dept;
+explain analyze select dept, count(*) from emp group by dept having dept = 'eng';
+```
+
 ```
 WHERE version  — node carrying the filter:
 
@@ -124,6 +211,11 @@ what this does to "WHERE is cheaper than HAVING":
 ```
 
 ### I · the predicate that cannot move
+
+```sql
+explain analyze select dept, count(*) from emp group by dept having count(*) > 25000;
+```
+
 ```
 node carrying the filter:
 
@@ -133,6 +225,12 @@ Rows Removed by Filter =            unit being counted:
 ```
 
 ### J · not the same question
+
+```sql
+select dept, count(*) from emp where salary > 90000 group by dept order by 1;
+select dept, count(*) from emp group by dept having max(salary) > 90000 order by 1;
+```
+
 ```
 WHERE  salary > 90000  result:
 
@@ -146,6 +244,11 @@ is "which is faster" meaningful for this pair? why:
 ```
 
 ### K · the group that vanishes
+
+```
+(no query — answer from the question text / an earlier result)
+```
+
 ```
 my query:
 
@@ -161,6 +264,15 @@ what I would have to write instead to get a zero:
 ## Program 4 — When is the select list actually evaluated?
 
 ### L · counting the calls
+
+```sql
+select counted(salary) from small order by salary desc limit 10;
+select counted(salary) as s from small order by s desc limit 10;
+select counted(salary) from small order by salary desc;
+select counted(salary) from small limit 10;
+select distinct counted(salary) from small;
+```
+
 ```
 small has 1000 rows.                     predicted    actual
 
@@ -174,6 +286,12 @@ the rule, in one sentence — what makes the projection run for every row:
 ```
 
 ### M · finding it in the plan
+
+```sql
+explain analyze select counted(salary) from small order by salary desc limit 10;
+explain analyze select counted(salary) as s from small order by s desc limit 10;
+```
+
 ```
 node present in one plan and absent from the other — name:
 
@@ -185,6 +303,12 @@ a plain scan of small costs 18. account for the difference:
 ```
 
 ### N · what else pulls it down
+
+```sql
+select counted(salary), count(*) from small group by counted(salary) limit 10;
+select counted(salary) from small where counted(salary) > 90000 limit 10;
+```
+
 ```
 group by counted(salary)          calls:        why:
 
@@ -200,6 +324,12 @@ where in the plan did LIMIT save work this time:
 ## Program 5 — LIMIT is not "take ten at the end"
 
 ### O · the sort changes shape
+
+```sql
+explain analyze select name, salary from emp order by salary desc limit 10;
+explain analyze select name, salary from emp order by salary desc;
+```
+
 ```
 with limit 10   Sort Method:                    memory:
 
@@ -213,6 +343,11 @@ show work_mem =            what a larger work_mem would change:
 ```
 
 ### P · the one that does not get the discount
+
+```sql
+explain analyze select name from emp order by salary desc limit 10 offset 100000;
+```
+
 ```
 rows returned:              actual rows at the Sort node:
 

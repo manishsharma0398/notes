@@ -11,9 +11,43 @@ Setup: `../chapter_exercise.md`. Lab: `../../../PRACTICE.md`.
 
 ---
 
+## Setup — run once
+
+```sql
+drop table if exists ord;
+
+create table ord(
+  id             bigserial primary key,
+  status         text        not null,
+  channel        text,               -- ~9% NULL
+  amount_cents   bigint,             -- ~1% NULL
+  discount_cents bigint,             -- 25% ZERO
+  placed_at      timestamptz not null
+);
+
+insert into ord(status, channel, amount_cents, discount_cents, placed_at)
+select case when g % 20 = 0 then 'refunded' when g % 7 = 0 then 'pending' else 'paid' end,
+       case when g % 11 = 0 then null else (array['web','ios','android'])[(g % 3) + 1] end,
+       case when g % 97 = 0 then null else ((g::bigint * 7919) % 200000) + 100 end,
+       case when g % 4  = 0 then 0    else (g % 500) end,
+       timestamptz '2026-05-01 00:00:00+00' + ((g % 300000) || ' seconds')::interval
+from generate_series(1, 300000) g;
+
+create index ord_amount_idx on ord(amount_cents);
+analyze ord;
+```
+
+---
+
 ## Program 1 — What CASE actually is
 
 ### A · two spellings, one difference
+
+```sql
+select case channel when null then 'unknown' else channel end from ord limit 5;
+select case when channel is null then 'unknown' else channel end from ord limit 5;
+```
+
 ```
 case channel when null then 'unknown' ...       predicted:        actual:
 
@@ -25,6 +59,13 @@ why (name the Chapter 8 rule):
 ```
 
 ### B · one expression, one type
+
+```sql
+select case when true then 1 else 'x' end;
+select pg_typeof(case when true then 1 else 2.5 end);
+select pg_typeof(case when false then null else null end);
+```
+
 ```
 case when true then 1 else 'x' end              predicted:        actual (exact error):
 
@@ -40,6 +81,16 @@ what breaks if I add a real branch to an all-NULL CASE next week:
 ## Program 2 — The counting bug
 
 ### C · five ways to count the same thing
+
+```sql
+select count(case when status = 'refunded' then 1 else 0 end) as with_else_zero,
+       count(case when status = 'refunded' then 1 end)        as no_else,
+       sum(case when status = 'refunded' then 1 else 0 end)   as sum_with_else,
+       count(*) filter (where status = 'refunded')            as filter_ver,
+       count(*)                                                as total_rows
+from ord;
+```
+
 ```
                                           predicted     actual
 count(case ... then 1 else 0 end)
@@ -56,6 +107,11 @@ the rule, one line, covering count AND sum:
 ```
 
 ### D · the same mistake, harder to see
+
+```
+(no query — answer from the question text / an earlier result)
+```
+
 ```
 refund rate per channel, count() version:
 
@@ -69,6 +125,13 @@ the cast that fixed it:
 ```
 
 ### E · does FILTER protect you?
+
+```sql
+select count(*) filter (where status = 'refunded') as a,
+       count(*) filter (where status = 'REFUNDED') as b
+from ord;
+```
+
 ```
 count(*) filter (where status = 'refunded')  ->
 count(*) filter (where status = 'REFUNDED')  ->
@@ -83,6 +146,12 @@ class it does not:
 ## Program 3 — FILTER versus CASE
 
 ### F · the plans
+
+```sql
+explain analyze select count(*) filter (where status='refunded'), count(*) filter (where status='paid') from ord;
+explain analyze select count(case when status='refunded' then 1 end), count(case when status='paid' then 1 end) from ord;
+```
+
 ```
 FILTER plan nodes:
 
@@ -102,6 +171,11 @@ two reasons to choose between them, pointing OPPOSITE ways:
 ## Program 4 — Where the condition sits
 
 ### G · scalars short-circuit
+
+```sql
+select case when false then 100/0 else -1 end;
+```
+
 ```
 case when false then 100/0 else -1 end   predicted:      actual:
 
@@ -109,6 +183,11 @@ is this a guarantee I can rely on:
 ```
 
 ### H · aggregates do not
+
+```sql
+select case when count(*) > 999999999 then sum(100/discount_cents) else 0 end from ord;
+```
+
 ```
 MY PREDICTION (write it before running):
 
@@ -118,6 +197,12 @@ was I wrong:
 ```
 
 ### I · find it in the plan
+
+```sql
+explain (verbose, costs off)
+select case when count(*) > 999999999 then sum(100/discount_cents) else 0 end from ord;
+```
+
 ```
 Output: line 1 —  node:
         text:
@@ -131,6 +216,13 @@ the GENERAL rule, one sentence, about projections and aggregate nodes:
 ```
 
 ### J · the two shapes that protect
+
+```sql
+select sum(100/discount_cents) filter (where discount_cents <> 0) from ord;
+select sum(case when discount_cents = 0 then 0 else 100/discount_cents end) from ord;
+explain (verbose, costs off) select sum(100/discount_cents) filter (where discount_cents <> 0) from ord;
+```
+
 ```
 FILTER version result:               CASE-inside version result:
 
@@ -142,6 +234,11 @@ why that node placement is the whole answer:
 ```
 
 ### K · why you could not reproduce it
+
+```sql
+select case when false then sum(100/discount_cents) else 0 end from ord;
+```
+
 ```
 case when false then sum(...) end    predicted:       actual:
 
@@ -155,6 +252,13 @@ what this means for writing a regression test for H:
 ## Program 5 — CASE where it costs you
 
 ### L · in the WHERE clause
+
+```sql
+explain select count(*) from ord where amount_cents > 199000;
+explain select count(*) from ord
+  where case when amount_cents is null then false else amount_cents > 199000 end;
+```
+
 ```
 plain predicate    scan:              cost:            est rows:
 CASE predicate     scan:              cost:            est rows:
@@ -169,6 +273,15 @@ if yes, the guard is a no-op — why (Chapter 8 rule):
 ```
 
 ### M · in ORDER BY and GROUP BY
+
+```sql
+select status, count(*) from ord group by status
+order by case status when 'refunded' then 1 when 'pending' then 2 else 3 end;
+
+select case when channel is null then 'unknown' else channel end as ch, count(*)
+from ord group by 1 order by 1;
+```
+
 ```
 ORDER BY CASE — when is it a good idea:
 
@@ -182,6 +295,13 @@ what I would check before using either on a large filtered scan:
 ## Program 6 — The small ones
 
 ### N · COALESCE and NULLIF
+
+```sql
+select coalesce(1, 1/0);
+select 10 / nullif(0, 0);
+select coalesce(10 / nullif(0,0), -1);
+```
+
 ```
 coalesce(1, 1/0)            predicted:        actual:
 10 / nullif(0, 0)           predicted:        actual:
@@ -193,6 +313,11 @@ why that swap is useful:
 ```
 
 ### O · GREATEST and LEAST break the rule
+
+```sql
+select greatest(1, null, 3), least(1, null, 3), 1 + null;
+```
+
 ```
 greatest(1, null, 3)   predicted:      actual:
 least(1, null, 3)      predicted:      actual:
@@ -208,6 +333,11 @@ why this matters even if I never use MySQL:
 ```
 
 ### P · COALESCE is not free
+
+```
+(no query — answer from the question text / an earlier result)
+```
+
 ```
 avg ignoring NULLs:                 avg with coalesce(x, 0):
 

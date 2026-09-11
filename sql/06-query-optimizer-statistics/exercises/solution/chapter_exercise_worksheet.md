@@ -11,9 +11,67 @@ Setup: `../chapter_exercise.md`. Lab: `../../../PRACTICE.md`.
 
 ---
 
+## Setup — run once
+
+```sql
+drop table if exists orders, users cascade;
+
+create table users(
+  id         serial primary key,
+  status     text not null,
+  country    text not null,
+  city       text not null,
+  age        int  not null,
+  created_at timestamptz not null
+);
+
+insert into users(status, country, city, age, created_at)
+select
+  case when g % 1000 < 990 then 'active'
+       when g % 1000 < 997 then 'suspended'
+       else 'deleted' end,
+  c.country,
+  case when (g / 10) % 10 < 9 then c.main_city else c.other_city end,
+  18 + ((g::bigint * 7919) % 63)::int,          -- the cast matters; int overflows
+  timestamptz '2026-01-01' + ((g % 200000) || ' minutes')::interval
+from generate_series(1, 500000) g
+cross join lateral (
+  select (array['FR','DE','IN','US','BR','JP','GB','NG','MX','ID'])[(g % 10) + 1] as country,
+         (array['Paris','Berlin','Mumbai','NewYork','SaoPaulo','Tokyo','London','Lagos','MexicoCity','Jakarta'])[(g % 10) + 1] as main_city,
+         (array['Lyon','Hamburg','Delhi','Boston','Rio','Osaka','Leeds','Kano','Puebla','Bandung'])[(g % 10) + 1] as other_city
+) c;
+
+create table orders(
+  id        bigserial primary key,
+  user_id   int not null,
+  amount    int not null,
+  placed_at timestamptz not null
+);
+insert into orders(user_id, amount, placed_at)
+select (g % 500000) + 1,
+       ((g::bigint * 7919) % 5000)::int,
+       timestamptz '2026-02-01' + ((g % 100000) || ' minutes')::interval
+from generate_series(1, 1000000) g;
+
+create index users_status_idx on users(status);
+create index users_country_city_idx on users(country, city);
+create index orders_user_idx on orders(user_id);
+analyze users, orders;
+```
+
+---
+
 ## Program 1 — What the planner actually knows
 
 ### A · the catalogue
+
+```sql
+select attname, n_distinct,
+       array_length(most_common_vals, 1)  as mcv_entries,
+       array_length(histogram_bounds, 1)  as hist_buckets
+from pg_stats where tablename='users' order by attname;
+```
+
 ```
 attname      n_distinct   mcv_entries   hist_buckets
 status
@@ -39,6 +97,11 @@ created_at
 ```
 
 ### B · the other correlation
+
+```sql
+select attname, correlation from pg_stats where tablename='users' order by attname;
+```
+
 ```
 attname      correlation
 id
@@ -60,6 +123,13 @@ connection to random_page_cost:
 ## Program 2 — The question you will get wrong
 
 ### C · 99% skew
+
+```sql
+set max_parallel_workers_per_gather = 0;
+explain analyze select count(*) from users where status = 'active';
+explain analyze select count(*) from users where status = 'deleted';
+```
+
 ```
 MY PREDICTION (write before running):
   status='active'   est:              status='deleted'  est:
@@ -78,6 +148,11 @@ why BOTH plan choices are correct:
 ```
 
 ### D · where the fallback does apply
+
+```
+(no query — answer from the question text / an earlier result)
+```
+
 ```
 column I constructed / used:
 
@@ -95,12 +170,23 @@ the setting that governs how many values escape the MCV list:
 ## Program 3 — Where estimation actually fails
 
 ### E · each predicate alone
+
+```sql
+explain select count(*) from users where country = 'FR';
+explain select count(*) from users where city = 'Paris';
+```
+
 ```
 country='FR'    est:            actual:            ratio:
 city='Paris'    est:            actual:            ratio:
 ```
 
 ### F · both together
+
+```sql
+explain analyze select count(*) from users where country='FR' and city='Paris';
+```
+
 ```
 MY PREDICTION:
 
@@ -125,6 +211,17 @@ why this data violates it:
 ## Program 4 — Teaching the planner
 
 ### G · extended statistics
+
+```sql
+create statistics stx_country_city (dependencies, ndistinct, mcv)
+  on country, city from users;
+analyze users;
+explain analyze select count(*) from users where country='FR' and city='Paris';
+```
+```sql
+select dependencies, n_distinct from pg_stats_ext where statistics_name='stx_country_city';
+```
+
 ```
 est after CREATE STATISTICS:            actual:            ratio:
 
@@ -144,6 +241,11 @@ n_distinct raw value:
 ```
 
 ### H · the three kinds
+
+```
+(no query — answer from the question text / an earlier result)
+```
+
 ```
 kind           query it helps                        query it does NOT help
 dependencies
@@ -158,6 +260,14 @@ which kind does NOT help query G, and why:
 ## Program 5 — How statistics go stale
 
 ### I · the threshold
+
+```sql
+select name, setting from pg_settings
+where name in ('autovacuum_analyze_threshold','autovacuum_analyze_scale_factor');
+
+select relname, reltuples::bigint from pg_class where relname='users';
+```
+
 ```
 autovacuum_analyze_threshold =        scale_factor =
 
@@ -171,6 +281,17 @@ which tables spend most time stale, and why that is the worst place for it:
 ```
 
 ### J · break it
+
+```sql
+insert into users(status, country, city, age, created_at)
+select 'active','FR','Paris', 30, timestamptz '2026-06-01' from generate_series(1, 200000);
+
+select n_live_tup, n_mod_since_analyze from pg_stat_user_tables where relname='users';
+
+set max_parallel_workers_per_gather = 0;
+explain analyze select count(*) from users where country='FR' and city='Paris';
+```
+
 ```
 n_live_tup:              n_mod_since_analyze:
 
@@ -190,6 +311,15 @@ what I would do instead:
 ## Program 6 — The other half: cost
 
 ### K · same query, same statistics, three plans
+
+```sql
+set max_parallel_workers_per_gather = 0;
+set random_page_cost = 1.0;  explain select * from users where city='Lyon';
+set random_page_cost = 4.0;  explain select * from users where city='Lyon';
+set random_page_cost = 25.0; explain select * from users where city='Lyon';
+reset random_page_cost;
+```
+
 ```
 random_page_cost   plan chosen              total cost      ESTIMATED ROWS
 1.0
@@ -202,6 +332,11 @@ why no amount of ANALYZE would change any of these three plans:
 ```
 
 ### L · what the default means
+
+```
+(no query — answer from the question text / an earlier result)
+```
+
 ```
 the hardware claim in seq_page_cost=1.0 / random_page_cost=4.0, in one sentence:
 
@@ -219,6 +354,16 @@ justification from the cost formula:
 ## Program 7 — Reading a plan you did not write
 
 ### M · find the first wrong node
+
+```sql
+drop statistics if exists stx_country_city;
+analyze users;
+set max_parallel_workers_per_gather = 0;
+explain analyze
+select count(*) from users u join orders o on o.user_id = u.id
+where u.country='FR' and u.city='Paris';
+```
+
 ```
 node (bottom-up)                     est        actual      ratio
 Seq Scan on orders
@@ -237,6 +382,14 @@ what it means:
 ```
 
 ### N · fix the base, then look again
+
+```sql
+select count(*) filter (where id <= 500000) as have_orders,
+       count(*) filter (where id >  500000) as no_orders
+from users where country='FR' and city='Paris';
+select min(user_id), max(user_id), count(distinct user_id) from orders;
+```
+
 ```
 base node after CREATE STATISTICS   est:            actual:
 
