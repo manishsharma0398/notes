@@ -5,13 +5,34 @@ Work entirely in this file. **Predict the plan before running it.**
 Rule names to use: "predicate pushdown", "the optimiser rewrote it", "cost-based choice",
 "logical order is not execution order", "the estimate was wrong".
 
-Setup: `../chapter_exercise.md`. Lab: `../../../PRACTICE.md`.
+Full question text: `../chapter_exercise.md`. Lab: `../../../PRACTICE.md`.
+
+---
+
+## Setup — run once
+
+```sql
+create table t(
+  id serial primary key,
+  grp int not null,
+  val int not null,
+  label text not null
+);
+insert into t(grp, val, label)
+select (g % 100) + 1, (g % 1000), 'row-'||g
+from generate_series(1, 200000) g;
+analyze t;
+```
 
 ---
 
 ## Program 1 — Reading a plan
 
 ### A · the shape of a plan
+
+```sql
+explain select * from t where grp = 5;
+```
 
 ```
 which node runs FIRST: Sequential scan
@@ -25,6 +46,10 @@ width= means:   each output row will occupy approx average byte
 
 ### B · estimate vs reality
 
+```sql
+explain analyze select * from t where grp = 5;
+```
+
 ```
 estimated rows:  2107
 actual rows:    2000
@@ -34,6 +59,10 @@ what would make that estimate badly wrong: stale statistics, but our ratio is ac
 ```
 
 ### C · cost units
+
+```
+(no query — read the cost= from A, e.g. cost=0.00..3854.00)
+```
 
 ```
 what the two numbers in cost=X..Y are:
@@ -49,6 +78,13 @@ why comparing costs BETWEEN two different queries is meaningless: it does not pr
 ## Program 2 — Logical order is not execution order
 
 ### D · where SELECT actually happens
+
+```sql
+explain analyze select label from t where val > 990;
+explain select label from t where val > 990;
+explain select *     from t where val > 990;
+explain select id    from t where val > 990;
+```
 
 ```
 predicted:                   actual:
@@ -70,6 +106,10 @@ what I would have to measure instead:
 
 ### E · alias in WHERE
 
+```sql
+select val * 2 as doubled from t where doubled > 100 limit 5;
+```
+
 ```
 predicted (runs? errors?):
 
@@ -83,6 +123,10 @@ why the alias IS legal in ORDER BY:
 ```
 
 ### F · aggregate in WHERE
+
+```sql
+select grp, count(*) from t where count(*) > 100 group by grp;
+```
 
 ```
 predicted:                   actual error:
@@ -100,6 +144,11 @@ the ONE rule shared by E and F:
 
 ### G · predicate pushdown
 
+```sql
+explain analyze
+select * from (select * from t) as sub where grp = 5;
+```
+
 ```
 Subquery Scan node present?  y/n:
 
@@ -110,6 +159,10 @@ name of the transformation:
 
 ### H · where 1 = 0
 
+```sql
+explain select * from t where 1 = 0;
+```
+
 ```
 plan says:
 
@@ -117,6 +170,12 @@ what the optimiser worked out before touching data:
 ```
 
 ### I · three spellings
+
+```sql
+explain analyze select * from t where grp in (5);
+explain analyze select * from t where grp = 5;
+explain analyze select * from t where exists (select 1 from t t2 where t2.id = t.id and t.grp = 5);
+```
 
 ```
 in (5)   plan:
@@ -134,6 +193,17 @@ where the optimiser STOPPED being able to prove equivalence:
 
 ### J · stale statistics
 
+```sql
+insert into t(grp, val, label)
+select 999, 1, 'skew-'||g from generate_series(1, 100000) g;
+-- deliberately do NOT analyze
+explain analyze select * from t where grp = 999;
+
+-- then:
+analyze t;
+explain analyze select * from t where grp = 999;
+```
+
 ```
 estimated rows:              actual rows:            ratio:
 
@@ -143,6 +213,13 @@ what the planner DOES with a wrong estimate (the estimate is not the damage):
 ```
 
 ### K · function on a column
+
+```sql
+create index idx_val on t(val);
+analyze t;
+explain analyze select * from t where val = 500;
+explain analyze select * from t where val + 0 = 500;
+```
 
 ```
 val = 500       plan:
@@ -194,6 +271,8 @@ what the optimiser is NOT allowed to assume about an expression:
 
 ### 1. Prove the evaluation order in SQL
 
+*One query per rule that fails purely because of clause evaluation order, plus the fix.*
+
 ```
 alias unusable in WHERE:                      the fix:
 
@@ -211,6 +290,8 @@ checked against notes.md?  y/n:
 
 ### 2. Make the planner badly wrong
 
+*Aim for an estimate off by 100x or more. Program 4's J reaches 100,000x.*
+
 ```
 the query:
 
@@ -224,6 +305,8 @@ what a bad estimate causes DOWNSTREAM:
 ```
 
 ### 3. Three spellings, one meaning
+
+*The same question as a subquery, a join, and an `EXISTS`.*
 
 ```
 subquery version:

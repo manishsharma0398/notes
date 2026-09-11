@@ -269,7 +269,10 @@ them exist:
   true/false **with the mechanism**, and small things to build from scratch. Hints section at the
   bottom, graded and numbered, plus a "what to verify" checklist.
 - `exercises/solution/chapter_exercise_worksheet.md` — every problem and question duplicated
-  inline with **blank answer blocks**. Do NOT pre-fill it.
+  inline with **blank answer blocks**. Do NOT pre-fill it. **The runnable SQL for each question
+  must be inlined immediately above its answer block**, plus the setup block at the top, so the
+  worksheet is self-contained — you work in one file and never flip back to `chapter_exercise.md`
+  to copy a query. Where a question has no query, say so explicitly in that slot.
 - `exercises/cumulative_exercise.md` — 1–3 hours, integrating everything so far. Prefer something
   that **doubles as a whiteboard question** at this level: a schema + query set you optimise and measure, an index experiment, an isolation-level demo. Phased, with success
   criteria per phase, and a final phase that breaks the thing and asks what was lost.

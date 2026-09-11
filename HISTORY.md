@@ -9,6 +9,28 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-11 — worksheets were not self-contained; queries lived in the other file
+
+Manish, part-way through the Ch1 worksheet: *"we have queries in one file and you ask to answer in
+different."* Fair — the worksheets carried terse answer-block labels but none of the runnable SQL,
+so working one meant flipping to `chapter_exercise.md` for every query and copying it across.
+
+The contract already said worksheets should have "every problem and question duplicated inline". I
+had read that as the prose and not the SQL, which makes the file a form to fill rather than
+something you can work from.
+
+Ch1's worksheet now inlines the setup block plus the query for every question, immediately above
+its answer block. His existing answers for A, B and C were preserved verbatim. Where a question has
+no query (C, which reads the cost off A's plan) the slot says so rather than being silently empty.
+
+Amended the contract in `sql/prompt.md` so the remaining chapters do not repeat it.
+
+**The other eight worksheets have the same gap** — 02, 03, 04, 06, 07, 09 and 10 have zero inline
+SQL blocks and 05 has one. Left for now rather than bulk-editing files he has not started, but they
+need the same treatment before those chapters are worked.
+
+---
+
 ## 2026-09-11 — sql Ch1 exercise D was mis-posed; caught by a reader running it
 
 Manish, working the Ch1 worksheet, objected to question D: *"we can't know from here which runs
