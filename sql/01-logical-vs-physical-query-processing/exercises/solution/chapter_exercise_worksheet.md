@@ -12,28 +12,36 @@ Setup: `../chapter_exercise.md`. Lab: `../../../PRACTICE.md`.
 ## Program 1 — Reading a plan
 
 ### A · the shape of a plan
+
 ```
-which node runs FIRST:
+which node runs FIRST: Sequential scan
 
-which node runs LAST:
+which node runs LAST: No node as there is only one node - seq scan
 
-cost= means:            rows= means:            width= means:
+cost= means:    total cost of performing sequential scan and producing all the required rows
+rows= means:    estimates matching rows count
+width= means:   each output row will occupy approx average byte
 ```
 
 ### B · estimate vs reality
-```
-estimated rows:              actual rows:            ratio:
 
-what would make that estimate badly wrong:
+```
+estimated rows:  2107
+actual rows:    2000
+ratio: 1.0535
+
+what would make that estimate badly wrong: stale statistics, but our ratio is actually good.
 ```
 
 ### C · cost units
+
 ```
 what the two numbers in cost=X..Y are:
+first is the startup cost and second is the total cost units
 
-is cost measured in ms? if not, what:
+is cost measured in ms? if not, what: no they are not measured in ms, instaed it is a postgres internal cost estimates, it is measured in cost units.
 
-why comparing costs BETWEEN two different queries is meaningless:
+why comparing costs BETWEEN two different queries is meaningless: it does not predicts time.
 ```
 
 ---
@@ -41,6 +49,7 @@ why comparing costs BETWEEN two different queries is meaningless:
 ## Program 2 — Logical order is not execution order
 
 ### D · where SELECT actually happens
+
 ```
 predicted:                   actual:
 
@@ -50,6 +59,7 @@ order they run in:
 ```
 
 ### E · alias in WHERE
+
 ```
 predicted (runs? errors?):
 
@@ -63,6 +73,7 @@ why the alias IS legal in ORDER BY:
 ```
 
 ### F · aggregate in WHERE
+
 ```
 predicted:                   actual error:
 
@@ -78,6 +89,7 @@ the ONE rule shared by E and F:
 ## Program 3 — The optimiser rewrites what you wrote
 
 ### G · predicate pushdown
+
 ```
 Subquery Scan node present?  y/n:
 
@@ -87,6 +99,7 @@ name of the transformation:
 ```
 
 ### H · where 1 = 0
+
 ```
 plan says:
 
@@ -94,6 +107,7 @@ what the optimiser worked out before touching data:
 ```
 
 ### I · three spellings
+
 ```
 in (5)   plan:
 = 5      plan:
@@ -109,6 +123,7 @@ where the optimiser STOPPED being able to prove equivalence:
 ## Program 4 — When the planner is wrong
 
 ### J · stale statistics
+
 ```
 estimated rows:              actual rows:            ratio:
 
@@ -118,6 +133,7 @@ what the planner DOES with a wrong estimate (the estimate is not the damage):
 ```
 
 ### K · function on a column
+
 ```
 val = 500       plan:
 
@@ -167,6 +183,7 @@ what the optimiser is NOT allowed to assume about an expression:
 ## Build these
 
 ### 1. Prove the evaluation order in SQL
+
 ```
 alias unusable in WHERE:                      the fix:
 
@@ -183,6 +200,7 @@ checked against notes.md?  y/n:
 ```
 
 ### 2. Make the planner badly wrong
+
 ```
 the query:
 
@@ -196,6 +214,7 @@ what a bad estimate causes DOWNSTREAM:
 ```
 
 ### 3. Three spellings, one meaning
+
 ```
 subquery version:
 
