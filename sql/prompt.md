@@ -19,7 +19,7 @@ The 14 existing chapters were written under the OLD contract — `README`, `note
 | 03 | `03-relational-model-fundamentals` | retrofitted **✓** |
 | 04 | `04-joins-internals` | retrofitted **✓** |
 | 05 | `05-indexes-in-depth` | retrofitted **✓** |
-| 06 | `06-query-optimizer-statistics` | needs retrofit |
+| 06 | `06-query-optimizer-statistics` | retrofitted **✓** |
 | 07 | `07-transactions-concurrency` | needs retrofit |
 | 08 | `08-null-semantics-three-valued-logic` | needs retrofit |
 | 09 | `09-conditional-expressions` | **NEW — written ✓** (all seven pieces, 2026-09-09) |
@@ -33,11 +33,16 @@ The 14 existing chapters were written under the OLD contract — `README`, `note
 | 17 | `17-constraints` | needs retrofit (was 14) |
 | 18 | `18-data-modification-and-upserts` | **NEW — not written** |
 
-**Next: `06-query-optimizer-statistics`, retrofit.**
+**Next: `07-transactions-concurrency`, retrofit.**
+
+**Ch6 left a defect behind.** Its `README.md` §5.B and `notes.md` §4.2 both claim Postgres
+estimates skewed columns badly ("the DB thinks it is evenly distributed"). **Measured false** —
+the most-common-values list handles skew accurately; see `HISTORY.md` 2026-09-11. Untouched per
+the add-do-not-rewrite rule; the exercise makes Manish measure it and record the disagreement.
 
 Ch10 and Ch09 were written first, out of order, because dates was the gap Manish actually felt —
 the same reason Ch5 jumped the queue during the retrofit. **Ch11 and Ch18 are still unwritten**, and
-the retrofit of 06, 07, 08 and 12–17 is still outstanding.
+the retrofit of 07, 08 and 12–17 is still outstanding.
 
 **"Continue sql" means one of two jobs, and which one depends on the chapter:**
 
@@ -47,8 +52,8 @@ the retrofit of 06, 07, 08 and 12–17 is still outstanding.
   `examples/` already exist — **do not rewrite them.**
 - **A new chapter (09, 10, 11, 18)** — write all **seven** pieces from scratch.
 
-Work in **chapter order** for what remains: 06 → 07 → 08 → 11 → 12 → … → 18.
-(03, 04, 09 and 10 are done.)
+Work in **chapter order** for what remains: 07 → 08 → 11 → 12 → … → 18.
+(03, 04, 06, 09 and 10 are done.)
 
 ### The four new chapters, and why they exist
 

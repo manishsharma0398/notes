@@ -9,6 +9,94 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-11 — sql Ch6 retrofitted, and its skew claim is wrong
+
+Added `mock.md` and the three exercise files to `06-query-optimizer-statistics`. Chapters 01–06,
+09 and 10 are now complete; 07, 08 and 12–17 still need the retrofit, and 11 and 18 are unwritten.
+
+Measured on PostgreSQL 16.15, 500,000 users and 1,000,000 orders,
+`max_parallel_workers_per_gather = 0`.
+
+**The chapter's central claim about skew is false.** `README.md` §5.B and `notes.md` §4 item 2 both
+say Postgres assumes even distribution and therefore mis-estimates a 99%-skewed column. It does
+not:
+
+| predicate | estimated | actual |
+|---|---|---|
+| `status='active'` (99%) | 495,250 | 495,000 |
+| `status='deleted'` (0.3%) | 1,400 | 1,500 |
+
+Postgres keeps `most_common_vals` / `most_common_freqs`. With three distinct values all three land
+in that list with measured frequencies, so **skew is the case the MCV list exists for**. The
+`total_rows / n_distinct` formula the chapter quotes is the *fallback* for values that miss the MCV
+list. The planner also picked correctly on both — seq scan for the 99% value, index-only scan for
+the 0.3% one. The README's suggested fix is wrong too: `CREATE STATISTICS` addresses multi-column
+correlation, not single-column skew.
+
+**Where estimation actually fails is conjunctions**, and the arithmetic is reproducible to the row:
+
+```
+country='FR'              est 49,883   actual 50,000
+city='Paris'              est 44,483   actual 45,000
+country='FR' AND city='Paris'   est 4,438   actual 45,000     <- 10x under
+0.099766 x 0.088966 x 500000 = 4,438                          <- the planner's exact number
+```
+
+**The three extended-statistics kinds are not interchangeable**, which no source I have seen states
+plainly. Measured separately on the same query:
+
+| kind | est for the conjunction | verdict |
+|---|---|---|
+| none | 4,438 | 10x under |
+| `dependencies` | 44,067 | fixes it |
+| `ndistinct` | **4,797** | **does not help** |
+| `mcv` | 44,950 | fixes it, most accurately |
+
+`ndistinct`'s job is elsewhere: `GROUP BY country, city` estimates **200** without it (10 x 20, the
+independence product) and **20** with it, which is the true number of combinations.
+
+**Two findings that became the chapter's best teaching artifacts:**
+
+- **A bad estimate has a visible physical consequence.** In a hash join whose base node was 86,207
+  estimated against 245,000 actual, the plan reported `Batches: 2 (originally 1)`. The planner sized
+  `work_mem` for the wrong row count and the hash re-partitioned mid-flight. After fixing the base
+  estimate the `(originally 1)` disappears and the query goes 362 ms to 270 ms. That parenthesis is
+  the tell, and it connects an estimate to a spill in one line.
+- **Fixing base statistics does not fix join estimates.** With the base node corrected to 0.3%
+  accuracy, the join node went *from* 1.4x over *to* 3.9x over — 351,133 estimated against 90,000
+  actual. Cause, verified: 200,000 of the 245,000 filtered users have ids entirely outside the range
+  present in `orders.user_id`. The planner prices joins from distinct counts and **assumes the keys
+  overlap**; it never checks ranges. No statistics object in Postgres fixes that.
+
+**Other things only running them settled:**
+
+- Columns with few distinct values get a complete MCV list and **no histogram at all** — `age` has
+  63 distinct values, all 63 in the MCV list, `histogram_bounds` null. High-cardinality columns get
+  the reverse.
+- **A negative `n_distinct` is a ratio, not a count.** `id` is `-1` (unique), `created_at` is
+  `-0.386626`. Stored as a ratio so it stays valid as the table grows.
+- **Autoanalyze's threshold scales with table size**: `50 + 0.1 x reltuples`, so 50,050 changed rows
+  on a 500k table and five million on a 50M table. Big tables stay stale longest, which is exactly
+  where a bad plan costs most. Demonstrated: 200,000 rows loaded without analysing gave 60,896
+  estimated against 245,000 actual; `ANALYZE` brought it to 247,520.
+- **Cost constants alone flip the plan.** One query, three settings of `random_page_cost`, with the
+  row estimate identical at 4,620 in all three:
+
+  | `random_page_cost` | plan | cost |
+  |---|---|---|
+  | 1.0 | Index Scan | 9,082 |
+  | 4.0 (default) | Bitmap Heap Scan | 13,186 |
+  | 25.0 | Seq Scan | 14,247 |
+
+  That unchanged `rows` column is the cleanest demonstration in the chapter that cardinality
+  estimation and cost modelling are separate machines.
+
+Both exercise setups were run from scratch in fresh databases and every distribution in their
+calibration tables verified exactly. Note added to the mock and the exercise that `ANALYZE` samples
+rather than reading the whole table, so estimates move about a percent between runs — the ratios
+hold, the digits do not.
+
+
 ## 2026-09-10 — sql Ch5 trimmed: the chapter files had become a findings dump
 
 Manish pushed back, correctly: the Ch5 files had turned into a lab notebook. `postgres_indexing.md`
