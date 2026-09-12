@@ -43,8 +43,8 @@ Log **every** attempt, including the ones you failed — especially those.
 | 2026-09-10 | 2 | [Contains Duplicate (217)](https://leetcode.com/problems/contains-duplicate/) | py | 2 | y | — 1m30s, correct early-return set. **Over-applied yesterday's note: `i` is unused, so this wants `for n in nums`, not `enumerate`.** `enumerate` is for when you need the index (Two Sum returns one). Also know the `len(set(nums)) != len(nums)` one-liner — faster in practice (C loop) but no short-circuit; be able to say why you picked the loop | |
 | 2026-09-10 | 3 | [Valid Anagram (242)](https://leetcode.com/problems/valid-anagram/) | py | 14 | n | — **logic was mine, the help was Python syntax only.** Count-up then decrement with `del` + `len(data)==0` is a good shape and early-exits. Missing the O(1) `len(s) != len(t)` guard up front (**added same day**). Know `Counter(s) == Counter(t)` as the idiomatic answer, and be able to say why the manual version is still worth showing | |
 | 2026-09-11 | 4 | [Group Anagrams (49)](https://leetcode.com/problems/group-anagrams/) | py | 27 | n | — **the insight was mine**: anagrams share a canonical form, use it as the dict key. Two misses. (1) grouped the *index* instead of the word, which was the part I needed help on. (2) the key encoding is the real cost — `str({26-key dict})` rebuilt per word, hence **beats 5%**. **Rewritten same day** to `counts=[0]*26` + `tuple(counts)` key + `setdefault`, which is O(n*k). Know that `setdefault` builds the default on every call where `defaultdict` only builds on a miss. Over 25min, 2nd time | |
-| | 5 | [Top K Frequent Elements (347)](https://leetcode.com/problems/top-k-frequent-elements/) | | | | | |
-| | 6 | [Longest Consecutive Sequence (128)](https://leetcode.com/problems/longest-consecutive-sequence/) | | | | | |
+| 2026-09-12 | 5 | [Top K Frequent Elements (347)](https://leetcode.com/problems/top-k-frequent-elements/) | py | 47 | y | — **chose bucket sort unaided, which is the O(n) answer this problem exists to test** (beats the heap's O(n log k)). Also dodged the `[[]]*n` aliasing trap by using the comprehension. Dead weight: `if len(bucket[freq]) <= 0: continue` — an empty list already makes the inner loop a no-op. `for i in nums` names a value `i`. **47min: syntax was the bottleneck, not the algorithm — 2nd time. Third overrun of the 25min rule** | |
+| 2026-09-12 | 6 | [Longest Consecutive Sequence (128)](https://leetcode.com/problems/longest-consecutive-sequence/) | py | 30 | y | — **got the one insight that matters: only start a run where `num-1 not in data`.** That guard is what makes it O(n) instead of O(n^2), and it is the whole interview answer. Iterating the *set* not `nums` is right too (dedupes). Two polish notes: `count = 1 if len(nums) > 0 else 0` can just be `count = 0` — verified identical on 7 cases, because a non-empty set always has a run-start. And rebinding the loop variable `num` inside the `while` works but a separate `cur` reads better. 4th overrun; tab history was all Python syntax lookups again | |
 | | 7 | [Subarray Sum Equals K (560)](https://leetcode.com/problems/subarray-sum-equals-k/) | | | | | |
 
 **Sunday question:**
@@ -55,7 +55,27 @@ Log **every** attempt, including the ones you failed — especially those.
 
 ---
 
-## Weeks 3+ — copy the block above
+## Week 3 — Sliding window
+
+| Date | # | Problem | Lang | Min | Unaided | What I missed | Re-solve (other lang) |
+|---|---|---|---|---|---|---|---|
+| 2026-09-12 | 1 | [Best Time to Buy and Sell Stock (121)](https://leetcode.com/problems/best-time-to-buy-and-sell-stock/) | py | ~30 (not exact) | y | — correct single pass: track min-so-far, best profit. `elif` is safe because a new lower `buy` can never improve profit in the same step. One fix: `prices[1:]` **copies the list** (800KB at n=1e5) — `for price in prices` is identical, verified on 8 cases, since `price < buy` is false and `price-buy` is 0 on the first element | |
+| | 2 | [Longest Substring Without Repeating Characters (3)](https://leetcode.com/problems/longest-substring-without-repeating-characters/) | | | | | |
+| | 3 | [Maximum Average Subarray I (643)](https://leetcode.com/problems/maximum-average-subarray-i/) | | | | | |
+| | 4 | [Longest Repeating Character Replacement (424)](https://leetcode.com/problems/longest-repeating-character-replacement/) | | | | | |
+| | 5 | [Permutation in String (567)](https://leetcode.com/problems/permutation-in-string/) | | | | | |
+| | 6 | [Minimum Size Subarray Sum (209)](https://leetcode.com/problems/minimum-size-subarray-sum/) | | | | | |
+| | 7 | [Minimum Window Substring (76)](https://leetcode.com/problems/minimum-window-substring/) | | | | | |
+
+**Sunday question:**
+
+```
+
+```
+
+---
+
+## Weeks 4+ — copy the block above
 
 Keep one table per week. Do not start a new file; the value is in seeing all of it at once when
 week 8 comes and you filter for `unaided = n`.
@@ -66,7 +86,7 @@ week 8 comes and you filter for `unaided = n`.
 
 | Milestone | Target | Actual |
 |---|---|---|
-| End of week 4 | ~29 | **12** — week 1 complete, week 2 at 4/7 |
+| End of week 4 | ~29 | **15** — week 1 done; week 2 at 6/7 (**560 skipped**); week 3 at 1/7 |
 | End of week 8 | ~60 | |
 | End of week 12 | ~92 | |
 
@@ -78,3 +98,4 @@ Update this whenever a Sunday review says the same thing twice. These are what w
 |---|---|---|
 | Python loop form | `range(len(x))` + `x[i]`, then over-corrected to `enumerate` with an unused `i` — 6x across 2026-09-10/11. **Test: if you never type `i` in the body, do not ask for it.** Pick by what the body uses: values -> `for n in nums`; both -> `enumerate`; index alone -> `range(len())`, rare | |
 | Python stdlib for DSA | Reaching for manual dict counting before `Counter`, `defaultdict`, `deque`, `bisect`, `heapq`. See `language-notes.md` | |
+| **Python fluency is the time sink** | Not the algorithms — those are landing. Syntax was the stated bottleneck on 242 (14min) and 347 (47min), and 5 of 15 problems have blown the 25min rule. The thinking is ahead of the typing | |
