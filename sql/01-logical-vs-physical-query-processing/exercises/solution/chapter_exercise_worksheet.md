@@ -223,7 +223,8 @@ ratio:          100000
 after analyze — estimated:     99130
                 actual:        100000
 
-what the planner DOES with a wrong estimate (the estimate is not the damage): Only the plan is wrong. That is what "the estimate is not the damage" means.
+what the planner DOES with a wrong estimate (the estimate is not the damage):
+The planner spends the estimate on choices, not on correctness. Row counts decide the join algorithm, the join order, index scan against sequential scan, and how much memory to size a sort or hash for. A wrong count makes each of those a decision for a different query. The rows still come back correct, so the plan is the only thing damaged. Concretely: an estimate of one row picks a nested loop, which is right for one row and ruinous for a hundred thousand where a hash join belongs. My own run never showed that, because with no index on grp a sequential scan was the only plan available and there was no decision to corrupt.
 ```
 
 ### K · function on a column
@@ -252,7 +253,8 @@ Gather  (cost=1000.00..5708.06 rows=1500 width=22) (actual time=1.518..11.660 ro
 Planning Time: 0.938 ms
 Execution Time: 11.863 ms
 
-what the optimiser is NOT allowed to assume about an expression: PostgreSQL cannot just assume that an arbitrary expression applied to an indexed column preserves the ordering needed by the index.
+what the optimiser is NOT allowed to assume about an expression:
+That it is invertible. The index stores val, not val + 0, so using it would mean solving the expression back for val, and the planner may not assume an arbitrary expression can be inverted or is even immutable. It treats f(column) as an opaque black box, which costs two things at once: the index becomes unusable, and with no statistics on the expression the row estimate falls back to a fixed default selectivity rather than a measurement. Building an index on the expression itself restores both.
 ```
 
 ---
