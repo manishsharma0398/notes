@@ -78,6 +78,35 @@ HAVING COUNT(*) > 2;  -- Filter after counting
 
 ---
 
+## What WHERE Can Reference
+
+**The rule: anything that already has a value for the one row in front of it.**
+
+| Expression | Legal in WHERE? | Why |
+| --- | --- | --- |
+| `val * 2`, `upper(label)` | ✅ | Scalar — one row in, one value out |
+| `count(*)`, `avg(val)` | ❌ | Aggregate — many rows in, one value out, and no group exists yet |
+| `row_number() over (...)` | ❌ | Window — computed after GROUP BY and HAVING (Ch14) |
+| a select-list alias | ❌ | Output names do not exist at name-resolution time (see `mock.md`) |
+| `(select avg(val) from t)` | ✅ | A different query level that already finished and handed up a scalar |
+
+**The aggregate case is circular, not arbitrary.** The input to `count(*)` is the set of rows that
+survived WHERE. Filtering on it would need its value before deciding which rows feed it. HAVING
+exists to be that filter, after grouping.
+
+**Query level, not keyword.** An aggregate is fine in a WHERE clause when it belongs to a
+*different* SELECT:
+
+```sql
+select * from t where val > (select avg(val) from t);  -- legal
+select * from t where val > avg(val);                  -- not legal
+```
+
+**Legal is not fast.** `where upper(label) = 'X'` is valid SQL and will not use an index on
+`label` (Ch5).
+
+---
+
 ## DISTINCT: After SELECT
 
 ```
@@ -180,5 +209,6 @@ But final result is always the same
 - "SELECT is fourth, not first."
 - "With GROUP BY, SELECT only grouped columns or aggregates."
 - "WHERE filters rows (cheap); HAVING filters groups (expensive)."
+- "WHERE can use anything that has a value for one row."
 - "DISTINCT removes duplicates from SELECT columns."
 - "ORDER BY can use any column from earlier stages."

@@ -9,6 +9,33 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-13 — the rule for what WHERE can reference was in three chapters, nowhere whole
+
+Working Ch1's E and F, Manish asked why an aggregate is rejected in `WHERE` but `upper(label)` is
+fine, then: *"do i have some note anywhere that says what's accessible to where?"* The pieces all
+existed and the general rule did not:
+
+- Ch2 `notes.md` — the WHERE/HAVING table, whose "Can use" cell said only "Column values"
+- Ch2 `mock.md` — alias visibility across all five clauses, with both precedence traps
+- Ch3 `notes.md` — why an alias in `WHERE` fails
+- Ch14 — window functions rejected there
+
+Three chapters, four places, and nothing connecting them. The unifying rule is one sentence:
+**`WHERE` can use anything that already has a value for the one row in front of it.** Scalar
+functions qualify, aggregates and window functions do not, and a select-list alias does not exist
+yet at name-resolution time.
+
+Added **"What WHERE Can Reference"** to Ch2 `notes.md`, next to the WHERE/HAVING table: the rule,
+a five-row legality table covering scalar/aggregate/window/alias/subquery, the circularity
+argument for why the aggregate case is not arbitrary (`count(*)`'s input is the set of rows that
+survived `WHERE`, so filtering on it would need its own output), and the query-level point — an
+aggregate *is* legal in a `WHERE` clause when it belongs to a different `SELECT`, because that one
+finished and handed up a scalar. Closes with the reminder that legal is not fast, pointing at Ch5.
+
+Ch2 is an old-contract chapter, so this is an addition beside what is there, not a rewrite.
+
+---
+
 ## 2026-09-11 — worksheets were not self-contained; queries lived in the other file
 
 Manish, part-way through the Ch1 worksheet: *"we have queries in one file and you ask to answer in

@@ -118,11 +118,11 @@ predicted (runs? errors?): error
 
 actual error: column doubled doesnot exists
 
-what the error proves about evaluation order: where runs before select, although the select appears before where in the query
+what the error proves about evaluation order: WHERE is resolved against the table actual column names and not the alias.
 
-the version that works:
+the version that works: select val * 2 as doubled from t where val * 2 > 100 limit 5;
 
-why the alias IS legal in ORDER BY: because select runs before order by
+why the alias IS legal in ORDER BY: because select runs before order by so the aliases are accessible by ORDER BY
 ```
 
 ### F · aggregate in WHERE
@@ -132,13 +132,15 @@ select grp, count(*) from t where count(*) > 100 group by grp;
 ```
 
 ```
-predicted:                   actual error:
+predicted: error
 
-the fix:
+actual error: aggregate functions are not allowed in WHERE
 
-the clause that exists precisely because of this ordering rule:
+the fix: select grp, count(*) from t group by grp having count(*) > 100;
 
-the ONE rule shared by E and F:
+the clause that exists precisely because of this ordering rule: having
+
+the ONE rule shared by E and F: WHERE can only resolve what exists when it runs.
 ```
 
 ---
@@ -153,11 +155,11 @@ select * from (select * from t) as sub where grp = 5;
 ```
 
 ```
-Subquery Scan node present?  y/n:
+Subquery Scan node present?  y/n: n
 
-did 200,000 rows materialise?
+did 200,000 rows materialise? n
 
-name of the transformation:
+name of the transformation: predicate pushdown / flatenned subquery
 ```
 
 ### H · where 1 = 0
@@ -167,9 +169,9 @@ explain select * from t where 1 = 0;
 ```
 
 ```
-plan says:
+plan says: One-Time Filter: False
 
-what the optimiser worked out before touching data:
+what the optimiser worked out before touching data: 1=0 is always false so it didn't bother check the rows
 ```
 
 ### I · three spellings
@@ -181,13 +183,19 @@ explain analyze select * from t where exists (select 1 from t t2 where t2.id = t
 ```
 
 ```
-in (5)   plan:
-= 5      plan:
+in (5)   plan: seq scan on t ; cost = 0.00....3774.0, rows = 2060, width = 22 ; filter grp = 5, rows = 2000, loop = 1
+
+= 5      plan: seq scan on t ; cost = 0.00....3774.0, rows = 2060, width = 22 ; filter grp = 5, rows = 2000, loop = 1
+
 exists   plan:
+    Gather
+        -> Nested Loop
+            -> Parallel seq scan on t        Filter: (grp=5)
+            -> index only scan using t_pkey  Index Cond: (id = t.id)
 
-which pairs got identical plans:
+which pairs got identical plans: in(5) and = 5
 
-where the optimiser STOPPED being able to prove equivalence:
+where the optimiser STOPPED being able to prove equivalence: EXISTS (...) is not reduced to the simple grp = 5 filter. Instead, PostgreSQL transforms it into a semi-join.
 ```
 
 ---
@@ -208,11 +216,14 @@ explain analyze select * from t where grp = 999;
 ```
 
 ```
-estimated rows:              actual rows:            ratio:
+estimated rows: 1
+actual rows:    100000
+ratio:          100000
 
-after analyze — estimated:                           actual:
+after analyze — estimated:     99130
+                actual:        100000
 
-what the planner DOES with a wrong estimate (the estimate is not the damage):
+what the planner DOES with a wrong estimate (the estimate is not the damage): Only the plan is wrong. That is what "the estimate is not the damage" means.
 ```
 
 ### K · function on a column
@@ -226,10 +237,22 @@ explain analyze select * from t where val + 0 = 500;
 
 ```
 val = 500       plan:
+Index Scan using idx_val on t  (cost=0.42..478.06 rows=200 width=22) (actual time=0.014..0.500 rows=200 loops=1)
+"  Index Cond: (val = 500)"
+Planning Time: 0.505 ms
+Execution Time: 0.535 ms
 
 val + 0 = 500   plan:
+Gather  (cost=1000.00..5708.06 rows=1500 width=22) (actual time=1.518..11.660 rows=200 loops=1)
+"  Workers Planned: 1"
+"  Workers Launched: 1"
+"  ->  Parallel Seq Scan on t  (cost=0.00..4558.06 rows=882 width=22) (actual time=0.040..5.828 rows=100 loops=2)"
+"        Filter: ((val + 0) = 500)"
+"        Rows Removed by Filter: 149900"
+Planning Time: 0.938 ms
+Execution Time: 11.863 ms
 
-what the optimiser is NOT allowed to assume about an expression:
+what the optimiser is NOT allowed to assume about an expression: PostgreSQL cannot just assume that an arbitrary expression applied to an indexed column preserves the ordering needed by the index.
 ```
 
 ---
