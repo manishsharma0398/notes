@@ -45,7 +45,7 @@ exercises/   chapter_exercise.md + cumulative_exercise.md + solution(s)/  <- Man
 
 ## The other repo — `career-inventory`
 
-`~/code/personal/career-inventory` is the job-search half: evidence of work done, five resume
+`~/code/personal/career/career-inventory` is the job-search half: evidence of work done, five resume
 variants, the applications tracker, interview cheat sheet, and mined Jira/GitLab/PostHog/Confluence
 data. **It has its own `CLAUDE.md`; read that before touching it.**
 

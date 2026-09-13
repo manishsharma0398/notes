@@ -214,7 +214,7 @@ Not a finished repo. This:
 
 ## Keeping it honest — the feedback loop
 
-`~/code/personal/career-inventory` is where applications, resumes and interview notes live
+`~/code/personal/career/career-inventory` is where applications, resumes and interview notes live
 (**confidential — see its own `CLAUDE.md`**). Two habits keep the two halves in sync:
 
 - **After every interview**, note in `applications/APPLICATIONS.md` what was actually asked. If a
