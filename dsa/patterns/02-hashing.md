@@ -46,6 +46,8 @@ is the whole of Valid Anagram.
 | 5 | [Top K Frequent Elements (347)](https://leetcode.com/problems/top-k-frequent-elements/) | frequency + bucket sort |
 | 6 | [Longest Consecutive Sequence (128)](https://leetcode.com/problems/longest-consecutive-sequence/) | set, and only start counting at a run's beginning |
 | 7 | [Subarray Sum Equals K (560)](https://leetcode.com/problems/subarray-sum-equals-k/) | prefix sum + map — the hard one |
+| 8 | [Contiguous Array (525)](https://leetcode.com/problems/contiguous-array/) | prefix sum + map — same reframe, different thing stored |
+| 9 | [Subarray Sums Divisible by K (974)](https://leetcode.com/problems/subarray-sums-divisible-by-k/) | prefix sum + map — equality replaced by an equivalence class |
 
 ## Edge cases
 
@@ -59,6 +61,8 @@ is the whole of Valid Anagram.
 2. Group Anagrams: two anagrams must produce the same key. What key?
 3. Longest Consecutive: how do you avoid recounting a run you already walked?
 4. Subarray Sum: if `prefix[j] - prefix[i] == k`, what do you store and what do you look up?
+5. Contiguous Array: what one substitution turns "equal counts of two values" into "sum is zero"? Then ask what the map's *value* has to be here — 560 stored a count, and this question is not a counting question.
+6. Divisible by K: 560 looked up prefix sums that differ by exactly `k`. What replaces exact equality when the requirement is *divisible* by `k`? Say why Python's `%` makes this cleaner than JS's.
 
 ## Done when
 
