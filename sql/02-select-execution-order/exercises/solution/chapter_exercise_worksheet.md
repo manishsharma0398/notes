@@ -45,7 +45,7 @@ analyze emp;
 
 ## Program 1 — What each clause can see
 
-### A · the alias, five ways  `[DO NOW]`
+### A · the alias, five ways `[DO NOW]`
 
 ```sql
 select salary * 2 as doubled from emp where doubled > 100 limit 3;
@@ -57,18 +57,18 @@ select salary as s, s * 2 as d from emp limit 3;
 
 ```
                                         predicted    actual (ok / exact error)
-WHERE       ... where doubled > 100
-ORDER BY    ... order by doubled
-GROUP BY    ... group by doubled
-HAVING      ... having c > 100
-SELECT item ... select salary as s, s * 2
+WHERE       ... where doubled > 100     error         column "doubled" does not exist
+ORDER BY    ... order by doubled        correct       ok
+GROUP BY    ... group by doubled        correct       ok
+HAVING      ... having c > 100          error         column "c" does not exist
+SELECT item ... select salary as s, s * 2 error       column "s" does not exist
 
-visibility table — which clauses can see a select-list alias:
+visibility table — which clauses can see a select-list alias: group, order by
 
-the two that surprised me:
+the two that surprised me: group by and select
 ```
 
-### B · the row that breaks the explanation  `[LATER]`
+### B · the row that breaks the explanation `[LATER]`
 
 ```
 (no query — answer from the question text / an earlier result)
@@ -84,7 +84,7 @@ so what does the logical order actually govern:
 what it does NOT govern:
 ```
 
-### C · shadowing  `[LATER]`
+### C · shadowing `[LATER]`
 
 ```sql
 select dept as salary, count(*) from emp group by salary;
@@ -107,7 +107,7 @@ the rule I will follow when writing SQL:
 
 ## Program 2 — What ORDER BY is allowed to sort by
 
-### D · the freedom, and where it stops  `[LATER]`
+### D · the freedom, and where it stops `[LATER]`
 
 ```sql
 select name from emp order by salary desc limit 3;
@@ -130,7 +130,7 @@ why the failures fail, argued from what a row MEANS after collapsing:
 why the fourth is allowed when the third is not:
 ```
 
-### E · the same rule from the other end  `[DO NOW]`
+### E · the same rule from the other end `[DO NOW]`
 
 ```sql
 select dept, hired, count(*) from emp group by dept limit 3;
@@ -139,20 +139,20 @@ select name, salary from emp group by name limit 3;
 ```
 
 ```
-group by dept,  select hired      ->
+group by dept,  select hired      ->          error, hired is not used in group by or aggregrate function
 
-group by id,    select name,salary ->
+group by id,    select name,salary ->         correct , 3 rows returned
 
-group by name,  select salary     ->
+group by name,  select salary     ->          error, salary is not used in group by or aggregrate function
 
-what property does id have that name does not:
+what property does id have that name does not:  unique
 
-the rule is called:
+the rule is called: functional dependency.
 
-corrected version of "with GROUP BY you may only select grouped columns or aggregates":
+corrected version of "with GROUP BY you may only select grouped columns or aggregates": With GROUP BY you may select grouped columns, aggregates, and any column functionally dependent on the grouped columns — which Postgres recognises only when the table's primary key is in the GROUP BY.
 ```
 
-### F · aggregates and windows, where they may not go  `[DO NOW]`
+### F · aggregates and windows, where they may not go `[DO NOW]`
 
 ```sql
 select dept, count(*) from emp where count(*) > 100 group by dept;
@@ -163,20 +163,20 @@ select count(*) from emp group by row_number() over ();
 ```
 
 ```
-aggregate in WHERE          ->
-bare column in HAVING       ->
-window fn in WHERE          ->
-window fn in HAVING         ->
-window fn in GROUP BY       ->
+aggregate in WHERE          -> Error, aggregate functions are not allowed in WHERE
+bare column in HAVING       -> Error, column "emp.salary" must appear in the GROUP BY clause or be used in an aggregate function
+window fn in WHERE          -> Error, window functions are not allowed in WHERE
+window fn in HAVING         -> Error, window functions are not allowed in HAVING
+window fn in GROUP BY       -> Error, window functions are not allowed in GROUP BY
 
-which failures are about aggregates:
+which failures are about aggregates: Where and Having
 
-which are about window functions:
+which are about window functions: Where, Having and Group By
 
-window functions sit AFTER stage:            and BEFORE stage:
+window functions sit AFTER stage:  HAVING          and BEFORE stage: ORDER BY
 ```
 
-### G · HAVING with nothing to group  `[LATER]`
+### G · HAVING with nothing to group `[LATER]`
 
 ```sql
 select count(*) from emp having count(*) > 100;
@@ -196,7 +196,7 @@ why:
 
 ## Program 3 — WHERE versus HAVING, measured
 
-### H · the same predicate, two clauses  `[DO NOW]`
+### H · the same predicate, two clauses `[DO NOW]`
 
 ```sql
 explain analyze select dept, count(*) from emp where dept = 'eng' group by dept;
@@ -213,7 +213,7 @@ are the plans the same?
 what this does to "WHERE is cheaper than HAVING":
 ```
 
-### I · the predicate that cannot move  `[LATER]`
+### I · the predicate that cannot move `[LATER]`
 
 ```sql
 explain analyze select dept, count(*) from emp group by dept having count(*) > 25000;
@@ -227,7 +227,7 @@ why the planner could not move it:
 Rows Removed by Filter =            unit being counted:
 ```
 
-### J · not the same question  `[DO NOW]`
+### J · not the same question `[DO NOW]`
 
 ```sql
 select dept, count(*) from emp where salary > 90000 group by dept order by 1;
@@ -246,7 +246,7 @@ what each query actually asks:
 is "which is faster" meaningful for this pair? why:
 ```
 
-### K · the group that vanishes  `[DO NOW]`
+### K · the group that vanishes `[DO NOW]`
 
 ```
 (no query — answer from the question text / an earlier result)
@@ -266,7 +266,7 @@ what I would have to write instead to get a zero:
 
 ## Program 4 — When is the select list actually evaluated?
 
-### L · counting the calls  `[LATER]`
+### L · counting the calls `[LATER]`
 
 ```sql
 select counted(salary) from small order by salary desc limit 10;
@@ -288,7 +288,7 @@ select distinct counted(salary)
 the rule, in one sentence — what makes the projection run for every row:
 ```
 
-### M · finding it in the plan  `[LATER]`
+### M · finding it in the plan `[LATER]`
 
 ```sql
 explain analyze select counted(salary) from small order by salary desc limit 10;
@@ -305,7 +305,7 @@ Seq Scan cost, deferred version:          forced version:
 a plain scan of small costs 18. account for the difference:
 ```
 
-### N · what else pulls it down  `[LATER]`
+### N · what else pulls it down `[LATER]`
 
 ```sql
 select counted(salary), count(*) from small group by counted(salary) limit 10;
@@ -326,7 +326,7 @@ where in the plan did LIMIT save work this time:
 
 ## Program 5 — LIMIT is not "take ten at the end"
 
-### O · the sort changes shape  `[LATER]`
+### O · the sort changes shape `[LATER]`
 
 ```sql
 explain analyze select name, salary from emp order by salary desc limit 10;
@@ -345,7 +345,7 @@ why the limit permits the cheaper method:
 show work_mem =            what a larger work_mem would change:
 ```
 
-### P · the one that does not get the discount  `[DO NOW]`
+### P · the one that does not get the discount `[DO NOW]`
 
 ```sql
 explain analyze select name from emp order by salary desc limit 10 offset 100000;
@@ -363,9 +363,9 @@ what this predicts about deep pagination (Ch16):
 
 ---
 
-## True / false — with the mechanism  `[DO NOW: only 4, 5, 6, 7, 9]`
+## True / false — with the mechanism `[DO NOW: only 4, 5, 6, 7, 9]`
 
-*A bare true/false scores zero.*
+_A bare true/false scores zero._
 
 ```
 1.  SELECT is the first clause evaluated.
@@ -401,7 +401,7 @@ what this predicts about deep pagination (Ch16):
 
 ---
 
-## Build 1 — The visibility table, proven  `[LATER]`
+## Build 1 — The visibility table, proven `[LATER]`
 
 ```
 clause        input cols   output alias   aggregates   window fns   evidence query
@@ -419,7 +419,7 @@ the two cells that contradict the naive reading of the logical order:
 standard SQL vs Postgres extension:
 ```
 
-## Build 2 — Make the projection expensive, then stop paying for it  `[LATER]`
+## Build 2 — Make the projection expensive, then stop paying for it `[LATER]`
 
 ```
 slow version (1000 calls, 10 rows):
@@ -435,7 +435,7 @@ node that appears:                       change in scan cost:
 when this matters in production — what kind of expression:
 ```
 
-## Build 3 — WHERE and HAVING, honestly  `[LATER]`
+## Build 3 — WHERE and HAVING, honestly `[LATER]`
 
 ```
 equivalent pair:
@@ -456,7 +456,7 @@ my rule for choosing, with no mention of speed:
 
 ---
 
-## What to verify  `[LATER]`
+## What to verify `[LATER]`
 
 ```
 [ ] every query predicted before running
@@ -478,11 +478,11 @@ my rule for choosing, with no mention of speed:
 
 ---
 
-## Chapter-file disagreements found  `[LATER]`
+## Chapter-file disagreements found `[LATER]`
 
-*Programs 2, 3 and 4 contradict claims made in this chapter's `README.md`, `notes.md` and
+_Programs 2, 3 and 4 contradict claims made in this chapter's `README.md`, `notes.md` and
 `interview.md`. Record them here as you hit them — which file, which claim, what the database
-actually did.*
+actually did._
 
 ```
 file:            claim:
