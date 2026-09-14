@@ -1,4 +1,8 @@
-# Chapter 3 — Cumulative Exercise: Turn a Dump Into a Schema
+# Chapter 3 — Cumulative Exercise: Turn a Dump Into a Schema  `[LATER]`
+
+> **Triage (2026-09-14): `[LATER]` — the whole exercise.** 1.5–3 hours each, and the interview
+> value is already captured by this chapter's `mock.md` and the `[DO NOW]` worksheet questions. Come
+> back after revision is finished. If you ever do only one piece, do the final out-loud question.
 
 **Time:** 2–3 hours. **Scope:** Chapters 1–3 — reading plans and estimates, clause evaluation
 order, and the relational model.

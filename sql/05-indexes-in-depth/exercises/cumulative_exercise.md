@@ -1,4 +1,8 @@
-# Chapter 5 — Cumulative Exercise: Make a Slow Table Fast, and Prove It
+# Chapter 5 — Cumulative Exercise: Make a Slow Table Fast, and Prove It  `[LATER]`
+
+> **Triage (2026-09-14): `[LATER]` — the whole exercise.** 1.5–3 hours each, and the interview
+> value is already captured by this chapter's `mock.md` and the `[DO NOW]` worksheet questions. Come
+> back after revision is finished. If you ever do only one piece, do the final out-loud question.
 
 **Time:** 1.5–3 hours. **Scope:** Ch1–5 — logical vs physical processing, execution order, the
 relational model, joins internals, indexes.

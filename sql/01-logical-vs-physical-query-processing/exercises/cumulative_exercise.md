@@ -1,4 +1,8 @@
-# Chapter 1 — Cumulative Exercise: Diagnose a Query You Did Not Write
+# Chapter 1 — Cumulative Exercise: Diagnose a Query You Did Not Write  `[LATER]`
+
+> **Triage (2026-09-14): `[LATER]` — the whole exercise.** 1.5–3 hours each, and the interview
+> value is already captured by this chapter's `mock.md` and the `[DO NOW]` worksheet questions. Come
+> back after revision is finished. If you ever do only one piece, do the final out-loud question.
 
 **Time:** 1.5–3 hours. **Scope:** Chapter 1 — logical vs physical processing, the optimiser's
 steps, plans and estimates.

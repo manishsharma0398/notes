@@ -1,4 +1,8 @@
-# Chapter 2 — Cumulative Exercise: Build the Revenue Dashboard Query
+# Chapter 2 — Cumulative Exercise: Build the Revenue Dashboard Query  `[LATER]`
+
+> **Triage (2026-09-14): `[LATER]` — the whole exercise.** 1.5–3 hours each, and the interview
+> value is already captured by this chapter's `mock.md` and the `[DO NOW]` worksheet questions. Come
+> back after revision is finished. If you ever do only one piece, do the final out-loud question.
 
 **Time:** 1.5–3 hours. **Scope:** Chapters 1–2 — logical vs physical processing, plans and
 estimates, and clause evaluation order.

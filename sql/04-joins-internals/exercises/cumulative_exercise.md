@@ -1,4 +1,8 @@
-# Chapter 4 — Cumulative Exercise: Make the Revenue Dashboard Fast
+# Chapter 4 — Cumulative Exercise: Make the Revenue Dashboard Fast  `[LATER]`
+
+> **Triage (2026-09-14): `[LATER]` — the whole exercise.** 1.5–3 hours each, and the interview
+> value is already captured by this chapter's `mock.md` and the `[DO NOW]` worksheet questions. Come
+> back after revision is finished. If you ever do only one piece, do the final out-loud question.
 
 **Time:** 2–3 hours. **Scope:** Chapters 1–4 — reading plans and estimates, clause evaluation order,
 the relational model and its constraints, and join algorithms.

@@ -8,6 +8,9 @@ Quote the **node name** from the plan, not a paraphrase. Record **both** `Execut
 Setup: `../chapter_exercise.md`. Lab: `../../../PRACTICE.md`.
 Run with `set max_parallel_workers_per_gather = 0;` unless told otherwise.
 
+> **Triage (2026-09-14) — interview value first.** `[DO NOW]` is what gets asked. `[LATER]` is real
+> depth but rarely asked; come back after revision is done. `[DONE]` is already answered.
+
 ---
 
 ## Setup — run once
@@ -56,7 +59,7 @@ analyze users, orders, status;
 
 ## Program 1 — The same join, three ways
 
-### A · force each algorithm
+### A · force each algorithm  `[DO NOW]`
 
 ```sql
 -- hash (the default here)
@@ -88,7 +91,7 @@ the pair that disagrees most:
 which ranking I would trust moving to a busy production server, and why:
 ```
 
-### B · the switch that does not do what it says
+### B · the switch that does not do what it says  `[LATER]`
 
 ```
 (no query — answer from the question text / an earlier result)
@@ -104,7 +107,7 @@ why the third step needed TWO settings off:
 what this means for using these switches to "select" an algorithm:
 ```
 
-### C · the node nobody mentions
+### C · the node nobody mentions  `[LATER]`
 
 ```
 (no query — answer from the question text / an earlier result)
@@ -127,7 +130,7 @@ what it does to the claim that a nested loop is O(N x M):
 
 ## Program 2 — Startup cost and LIMIT
 
-### D · one row
+### D · one row  `[LATER]`
 
 ```sql
 explain (analyze, costs off)
@@ -152,7 +155,7 @@ what the planner compared to get this right:
 the two numbers in explain (costs on) that correspond:
 ```
 
-### E · when blocking is free
+### E · when blocking is free  `[LATER]`
 
 ```
 (no query — answer from the question text / an earlier result)
@@ -170,7 +173,7 @@ the general rule for when a blocking operator is the right choice:
 
 ## Program 3 — Memory and spilling
 
-### F · make it spill
+### F · make it spill  `[DO NOW]`
 
 ```sql
 set enable_mergejoin=off; set enable_nestloop=off;
@@ -196,7 +199,7 @@ the chapter's implied ratio (interview.md Q2):
 what would have to differ for the chapter's number to be right:
 ```
 
-### G · the fix, and its limit
+### G · the fix, and its limit  `[DO NOW]`
 
 ```
 (no query — answer from the question text / an earlier result)
@@ -212,7 +215,7 @@ reason 2 (what work_mem is allocated PER — find out, it is not per query):
 
 ## Program 4 — What the algorithms cannot do
 
-### H · the range join
+### H · the range join  `[LATER]`
 
 ```sql
 create table ranges(id int primary key, lo int, hi int);
@@ -241,7 +244,7 @@ what enable_nestloop=off actually does (one sentence):
 why "forbid" is the wrong verb:
 ```
 
-### I · why not hash
+### I · why not hash  `[DO NOW]`
 
 ```
 (no query — answer from the question text / an earlier result)
@@ -254,7 +257,7 @@ why a hash table cannot answer a range predicate
 why merge join cannot either (a DIFFERENT reason):
 ```
 
-### J · the type-mismatch claim
+### J · the type-mismatch claim  `[LATER]`
 
 ```sql
 create table u_txt(id text primary key, username text);
@@ -277,7 +280,7 @@ the corrected Postgres version of the trap:
 
 ## Program 5 — Semi-joins, anti-joins, and the cliff
 
-### K · four ways to ask about existence
+### K · four ways to ask about existence  `[DO NOW]`
 
 ```sql
 explain (costs off) select count(*) from users u where exists (select 1 from orders o where o.user_id=u.id);
@@ -295,7 +298,7 @@ NOT IN      -> top node:
 the one that is structurally different:
 ```
 
-### L · time them
+### L · time them  `[LATER]`
 
 ```sql
 create table orders_s as select * from orders where id <= 100000;
@@ -314,7 +317,7 @@ small tables:
 the single word present in the small NOT IN plan and absent from the large one:
 ```
 
-### M · locate the cliff
+### M · locate the cliff  `[LATER]`
 
 ```sql
 explain (costs off) select count(*) from users u where u.id not in (select user_id from orders);
@@ -334,7 +337,7 @@ two distinct ways this passes staging and dies in production:
   2.
 ```
 
-### N · the correctness half
+### N · the correctness half  `[DO NOW]`
 
 ```sql
 select count(*) as a from users_s u where u.id not in (select user_id from orders_s);
@@ -369,7 +372,7 @@ when I would ever write NOT IN, and what must be true of the column:
 
 ## Program 6 — Logical vs physical
 
-### O · the axes are independent
+### O · the axes are independent  `[DO NOW]`
 
 ```sql
 explain (costs off) select count(*) from users u left join orders o on o.user_id=u.id;
@@ -399,7 +402,7 @@ why it is the same underlying reason as the range join:
 
 ## Program 7 — Join order
 
-### P · the middle of the plan
+### P · the middle of the plan  `[DO NOW]`
 
 ```sql
 explain (analyze, costs off)
@@ -427,7 +430,7 @@ what the optimiser is trying to minimise when it reorders joins:
 
 ---
 
-## True / false — with the mechanism
+## True / false — with the mechanism  `[DO NOW: only 1, 2, 3, 7, 8]`
 
 ```
 1.  A nested loop join is O(N x M) and therefore unusable on large tables.
@@ -463,7 +466,7 @@ what the optimiser is trying to minimise when it reorders joins:
 
 ---
 
-## Build 1 — The algorithm selection table
+## Build 1 — The algorithm selection table  `[LATER]`
 
 ```
 algorithm    | planner picks it when | impossible when | startup | memory | plan text to grep
@@ -485,7 +488,7 @@ a chapter claim this table contradicts:
   correction:
 ```
 
-## Build 2 — The NOT IN incident report
+## Build 2 — The NOT IN incident report  `[LATER]`
 
 ```
 fast plan (the one-word difference marked):
@@ -501,7 +504,7 @@ the rewrite, and proof it is faster AND correct on NULL data:
 review rule (<30 words, checkable by reading a diff):
 ```
 
-## Build 3 — Make the planner choose wrong
+## Build 3 — Make the planner choose wrong  `[LATER]`
 
 ```
 query with >=10x estimate error:
@@ -521,7 +524,7 @@ what I would actually do in production, given my numbers:
 
 ---
 
-## Closing
+## Closing  `[DO NOW]`
 
 ```
 Out loud, 90 seconds:

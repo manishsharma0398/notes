@@ -7,6 +7,9 @@ For each answer, name the **rule**: "selectivity above the tipping point", "left
 
 Setup and lab: `../chapter_exercise.md` and `../../../PRACTICE.md`.
 
+> **Triage (2026-09-14) — interview value first.** `[DO NOW]` is what gets asked. `[LATER]` is real
+> depth but rarely asked; come back after revision is done. `[DONE]` is already answered.
+
 ---
 
 ## Setup — run once
@@ -29,7 +32,7 @@ analyze users;
 
 ## Program 1 — Will it use the index?
 
-### A · equality on an indexed column
+### A · equality on an indexed column  `[DO NOW]`
 
 ```sql
 explain analyze select * from users where email = 'u123@x.com';
@@ -46,7 +49,7 @@ estimated rows:                    actual rows:
 rule:
 ```
 
-### B · the 1% value  (`country = 'IS'`)
+### B · the 1% value  (`country = 'IS'`)  `[DO NOW]`
 
 ```sql
 explain analyze select * from users where country = 'IS';
@@ -58,7 +61,7 @@ predicted:                         actual:
 rule:
 ```
 
-### C · the 99% value  (`country = 'IN'`)
+### C · the 99% value  (`country = 'IN'`)  `[DO NOW]`
 
 ```sql
 explain analyze select * from users where country = 'IN';
@@ -72,7 +75,7 @@ why B and C differ, in ONE sentence (this is the most-asked idea in the chapter)
 
 ```
 
-### D · prefix LIKE  (`email like 'u123%'`)
+### D · prefix LIKE  (`email like 'u123%'`)  `[DO NOW]`
 
 ```sql
 explain analyze select * from users where email like 'u123%';
@@ -88,7 +91,7 @@ if the result surprised you, why:
 
 ```
 
-### E · suffix LIKE  (`email like '%23@x.com'`)
+### E · suffix LIKE  (`email like '%23@x.com'`)  `[DO NOW]`
 
 ```sql
 explain analyze select * from users where email like '%23@x.com';
@@ -102,7 +105,7 @@ why this is a DIFFERENT reason from D, in terms of B-tree ordering:
 
 ```
 
-### F · the operator-class fix  (`text_pattern_ops`)
+### F · the operator-class fix  (`text_pattern_ops`)  `[LATER]`
 
 ```sql
 create index idx_email_pat on users(email text_pattern_ops);
@@ -126,7 +129,7 @@ what that says about why the original index could not serve a prefix match:
 
 ## Program 2 — Composite indexes  (`idx_country_age` on `(country, age)`)
 
-### G · leading column only
+### G · leading column only  `[DO NOW]`
 
 ```sql
 explain analyze select * from users where country = 'IS';
@@ -136,7 +139,7 @@ explain analyze select * from users where country = 'IS';
 predicted:            actual:            cost:
 ```
 
-### H · non-leading column only  (`age = 30`)
+### H · non-leading column only  (`age = 30`)  `[DO NOW]`
 
 ```sql
 explain analyze select * from users where age = 30;
@@ -153,7 +156,7 @@ rewrite it so it is actually TRUE for Postgres:
 
 ```
 
-### I · both columns
+### I · both columns  `[LATER]`
 
 ```sql
 explain analyze select * from users where country = 'IS' and age = 30;
@@ -163,7 +166,7 @@ explain analyze select * from users where country = 'IS' and age = 30;
 predicted:            actual:
 ```
 
-### J · reversed predicate order
+### J · reversed predicate order  `[DO NOW]`
 
 ```sql
 explain analyze select * from users where age = 30 and country = 'IS';
@@ -181,7 +184,7 @@ what DOES the index's column order control:
 
 ## Program 3 — Covering indexes
 
-### K · `select *`
+### K · `select *`  `[DO NOW]`
 
 ```sql
 explain analyze select * from users where country = 'IS' and age = 30;
@@ -191,7 +194,7 @@ explain analyze select * from users where country = 'IS' and age = 30;
 scan type:                         width:
 ```
 
-### L · `select country, age`
+### L · `select country, age`  `[DO NOW]`
 
 ```sql
 explain analyze select country, age from users where country = 'IS' and age = 30;
@@ -205,7 +208,7 @@ what the database skipped in L:
 
 ```
 
-### M · `select country, age, email`
+### M · `select country, age, email`  `[DO NOW]`
 
 ```sql
 explain analyze select country, age, email from users where country = 'IS' and age = 30;
@@ -223,7 +226,7 @@ what would you change about the index to get it back, and what does that cost:
 
 ---
 
-## True / false — with the mechanism
+## True / false — with the mechanism  `[DO NOW: only 1, 3, 4, 5, 6, 10]`
 
 ```
 1.  An index always makes a query faster.
@@ -261,7 +264,7 @@ what would you change about the index to get it back, and what does that cost:
 
 ## Build these
 
-### 1. A slow query, then the index that fixes it
+### 1. A slow query, then the index that fixes it  `[LATER]`
 ```
 BEFORE plan (paste):
 
@@ -278,7 +281,7 @@ actual time:
 what the index costs on writes:
 ```
 
-### 2. An index the planner refuses to use
+### 2. An index the planner refuses to use  `[LATER]`
 ```
 the index:
 
@@ -291,7 +294,7 @@ WHY (selectivity / collation / function on column / type mismatch):
 the rewritten query that DOES use it:
 ```
 
-### 3. Index Only Scan, then break it
+### 3. Index Only Scan, then break it  `[LATER]`
 ```
 query producing Index Only Scan:
 
@@ -306,7 +309,7 @@ what non-zero Heap Fetches means:
 
 ---
 
-## The 60-second answer
+## The 60-second answer  `[DO NOW]`
 
 Say it out loud, timed.
 
@@ -320,7 +323,7 @@ Say it out loud, timed.
 
 ---
 
-## What to verify
+## What to verify  `[LATER]`
 
 - [ ] Every plan **predicted before running**
 - [ ] B and C explained with one shared rule

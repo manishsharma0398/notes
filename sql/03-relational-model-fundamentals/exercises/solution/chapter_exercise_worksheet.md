@@ -7,6 +7,9 @@ that you expected to be rejected, write down what you expected — that gap is t
 
 Setup: `../chapter_exercise.md`. Lab: `../../../PRACTICE.md`.
 
+> **Triage (2026-09-14) — interview value first.** `[DO NOW]` is what gets asked. `[LATER]` is real
+> depth but rarely asked; come back after revision is done. `[DONE]` is already answered.
+
 ---
 
 ## Setup — run once
@@ -32,7 +35,7 @@ analyze dept, emp;
 
 ## Program 1 — Bags, sets, and what the difference costs
 
-### A · paying at write time
+### A · paying at write time  `[LATER]`
 
 ```sql
 create table bag_t(v int);
@@ -59,7 +62,7 @@ the chapter says SQL allows duplicates because checking is "expensive".
 does my measurement support that? (one sentence, with the ratio)
 ```
 
-### B · paying at read time instead
+### B · paying at read time instead  `[LATER]`
 
 ```sql
 analyze bag_t;
@@ -85,7 +88,7 @@ DISTINCT is expensive when ______ is true:
 why the million-row query is the cheap one:
 ```
 
-### C · the one you cannot buy your way out of
+### C · the one you cannot buy your way out of  `[LATER]`
 
 ```
 (no query — answer from the question text / an earlier result)
@@ -109,7 +112,7 @@ what a planner infers from a constraint vs what it exploits from an index:
 
 ## Program 2 — Order, identity, and the row that moves
 
-### D · the demonstration
+### D · the demonstration  `[DO NOW]`
 
 ```sql
 create table ord(id int, v text);
@@ -139,7 +142,7 @@ what an UPDATE physically is in Postgres:
 why it must work that way (what else needs the old version):
 ```
 
-### E · the address is not the row
+### E · the address is not the row  `[LATER]`
 
 ```sql
 create table reuse(id int);
@@ -161,7 +164,7 @@ reason 1 that ctid is not a stored identifier (from D):
 reason 2 that ctid is not a stored identifier (from E):
 ```
 
-### F · what a duplicate row actually is
+### F · what a duplicate row actually is  `[LATER]`
 
 ```sql
 create table dup(name text, dept text);
@@ -183,7 +186,7 @@ why it cannot work (one sentence):
 
 ## Program 3 — Constraints: what they actually promise
 
-### G · UNIQUE and NULL
+### G · UNIQUE and NULL  `[DO NOW]`
 
 ```sql
 create table u1(email text unique);
@@ -205,7 +208,7 @@ why three NULLs coexist:
 what I expected before running:
 ```
 
-### H · stopping it
+### H · stopping it  `[LATER]`
 
 ```sql
 create table u2(email text unique nulls not distinct);
@@ -229,7 +232,7 @@ which of the three I would ship, and why:
 (one of them is a design change, not a constraint — which:)
 ```
 
-### I · CHECK and NULL
+### I · CHECK and NULL  `[DO NOW]`
 
 ```sql
 create table ck(id int, age int check (age between 18 and 100));
@@ -254,7 +257,7 @@ the one-line rule about CHECK and NULL:
 what you must write alongside it:
 ```
 
-### J · which constraints build indexes
+### J · which constraints build indexes  `[DO NOW]`
 
 ```sql
 create table parent(id int primary key, name text unique);
@@ -273,7 +276,7 @@ number of indexes on child:
 what that means for the cost of deleting from parent:
 ```
 
-### K · the bill for J
+### K · the bill for J  `[DO NOW]`
 
 ```sql
 insert into dept select g, 'empty-'||g from generate_series(201,210) g;
@@ -300,7 +303,7 @@ the line that carries the time is called:
 the deleted department had ZERO children. what was the time spent on?
 ```
 
-### L · so should every foreign key be indexed?
+### L · so should every foreign key be indexed?  `[DO NOW]`
 
 ```
 (no query — answer from the question text / an earlier result)
@@ -318,7 +321,7 @@ why this defect is invisible until production:
 
 ## Program 4 — Atomicity, and what leaving 1NF costs
 
-### M · the same question, three spellings
+### M · the same question, three spellings  `[LATER]`
 
 ```sql
 explain analyze select count(*) from e_arr   where skills @> array['cobol'];
@@ -338,7 +341,7 @@ what determines whether a GIN index can be used
 (not the column, not the value):
 ```
 
-### N · the design question
+### N · the design question  `[DO NOW]`
 
 ```
 (no query — answer from the question text / an earlier result)
@@ -358,7 +361,7 @@ one workload where I would ship the array anyway:
 
 ## Program 5 — Removing duplicates from a table with no key
 
-### O · the dedup
+### O · the dedup  `[DO NOW]`
 
 ```sql
 create table dedup(name text, dept text);
@@ -393,7 +396,7 @@ was my prediction right:
 why a.ctid > b.ctid keeps exactly one row per group (not zero, not all):
 ```
 
-### P · two operators spelled `=`
+### P · two operators spelled `=`  `[LATER]`
 
 ```sql
 create table rt(name text, dept text);
@@ -423,7 +426,7 @@ why the most explicit-looking one is not it:
 
 ---
 
-## True / false — with the mechanism
+## True / false — with the mechanism  `[DO NOW: only 2, 4, 5, 6, 10]`
 
 ```
 1.  A SQL table is a set of rows.
@@ -459,7 +462,7 @@ why the most explicit-looking one is not it:
 
 ---
 
-## Build 1 — The constraint promise table
+## Build 1 — The constraint promise table  `[LATER]`
 
 ```
 constraint    | promises | does NOT promise | index created | write cost
@@ -487,7 +490,7 @@ a chapter claim my measurements contradict:
   correction:
 ```
 
-## Build 2 — One active email per user
+## Build 2 — One active email per user  `[LATER]`
 
 ```
 first attempt (plain UNIQUE):
@@ -505,7 +508,7 @@ four inserts:
 what it still does not promise:
 ```
 
-## Build 3 — The 65-millisecond delete
+## Build 3 — The 65-millisecond delete  `[LATER]`
 
 ```
 plan, zero children removed, >50ms:
@@ -524,7 +527,7 @@ review note (<100 words, must not say "index" in the first sentence):
 
 ---
 
-## Closing
+## Closing  `[DO NOW]`
 
 ```
 Out loud, 60 seconds:

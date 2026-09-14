@@ -7,6 +7,9 @@ For every answer, say whether your reason is about **meaning** (what the query m
 
 Setup: `../chapter_exercise.md`. Lab: `../../../PRACTICE.md`.
 
+> **Triage (2026-09-14) — interview value first.** `[DO NOW]` is what gets asked. `[LATER]` is real
+> depth but rarely asked; come back after revision is done. `[DONE]` is already answered.
+
 ---
 
 ## Setup — run once
@@ -42,7 +45,7 @@ analyze emp;
 
 ## Program 1 — What each clause can see
 
-### A · the alias, five ways
+### A · the alias, five ways  `[DO NOW]`
 
 ```sql
 select salary * 2 as doubled from emp where doubled > 100 limit 3;
@@ -65,7 +68,7 @@ visibility table — which clauses can see a select-list alias:
 the two that surprised me:
 ```
 
-### B · the row that breaks the explanation
+### B · the row that breaks the explanation  `[LATER]`
 
 ```
 (no query — answer from the question text / an earlier result)
@@ -81,7 +84,7 @@ so what does the logical order actually govern:
 what it does NOT govern:
 ```
 
-### C · shadowing
+### C · shadowing  `[LATER]`
 
 ```sql
 select dept as salary, count(*) from emp group by salary;
@@ -104,7 +107,7 @@ the rule I will follow when writing SQL:
 
 ## Program 2 — What ORDER BY is allowed to sort by
 
-### D · the freedom, and where it stops
+### D · the freedom, and where it stops  `[LATER]`
 
 ```sql
 select name from emp order by salary desc limit 3;
@@ -127,7 +130,7 @@ why the failures fail, argued from what a row MEANS after collapsing:
 why the fourth is allowed when the third is not:
 ```
 
-### E · the same rule from the other end
+### E · the same rule from the other end  `[DO NOW]`
 
 ```sql
 select dept, hired, count(*) from emp group by dept limit 3;
@@ -149,7 +152,7 @@ the rule is called:
 corrected version of "with GROUP BY you may only select grouped columns or aggregates":
 ```
 
-### F · aggregates and windows, where they may not go
+### F · aggregates and windows, where they may not go  `[DO NOW]`
 
 ```sql
 select dept, count(*) from emp where count(*) > 100 group by dept;
@@ -173,7 +176,7 @@ which are about window functions:
 window functions sit AFTER stage:            and BEFORE stage:
 ```
 
-### G · HAVING with nothing to group
+### G · HAVING with nothing to group  `[LATER]`
 
 ```sql
 select count(*) from emp having count(*) > 100;
@@ -193,7 +196,7 @@ why:
 
 ## Program 3 — WHERE versus HAVING, measured
 
-### H · the same predicate, two clauses
+### H · the same predicate, two clauses  `[DO NOW]`
 
 ```sql
 explain analyze select dept, count(*) from emp where dept = 'eng' group by dept;
@@ -210,7 +213,7 @@ are the plans the same?
 what this does to "WHERE is cheaper than HAVING":
 ```
 
-### I · the predicate that cannot move
+### I · the predicate that cannot move  `[LATER]`
 
 ```sql
 explain analyze select dept, count(*) from emp group by dept having count(*) > 25000;
@@ -224,7 +227,7 @@ why the planner could not move it:
 Rows Removed by Filter =            unit being counted:
 ```
 
-### J · not the same question
+### J · not the same question  `[DO NOW]`
 
 ```sql
 select dept, count(*) from emp where salary > 90000 group by dept order by 1;
@@ -243,7 +246,7 @@ what each query actually asks:
 is "which is faster" meaningful for this pair? why:
 ```
 
-### K · the group that vanishes
+### K · the group that vanishes  `[DO NOW]`
 
 ```
 (no query — answer from the question text / an earlier result)
@@ -263,7 +266,7 @@ what I would have to write instead to get a zero:
 
 ## Program 4 — When is the select list actually evaluated?
 
-### L · counting the calls
+### L · counting the calls  `[LATER]`
 
 ```sql
 select counted(salary) from small order by salary desc limit 10;
@@ -285,7 +288,7 @@ select distinct counted(salary)
 the rule, in one sentence — what makes the projection run for every row:
 ```
 
-### M · finding it in the plan
+### M · finding it in the plan  `[LATER]`
 
 ```sql
 explain analyze select counted(salary) from small order by salary desc limit 10;
@@ -302,7 +305,7 @@ Seq Scan cost, deferred version:          forced version:
 a plain scan of small costs 18. account for the difference:
 ```
 
-### N · what else pulls it down
+### N · what else pulls it down  `[LATER]`
 
 ```sql
 select counted(salary), count(*) from small group by counted(salary) limit 10;
@@ -323,7 +326,7 @@ where in the plan did LIMIT save work this time:
 
 ## Program 5 — LIMIT is not "take ten at the end"
 
-### O · the sort changes shape
+### O · the sort changes shape  `[LATER]`
 
 ```sql
 explain analyze select name, salary from emp order by salary desc limit 10;
@@ -342,7 +345,7 @@ why the limit permits the cheaper method:
 show work_mem =            what a larger work_mem would change:
 ```
 
-### P · the one that does not get the discount
+### P · the one that does not get the discount  `[DO NOW]`
 
 ```sql
 explain analyze select name from emp order by salary desc limit 10 offset 100000;
@@ -360,7 +363,7 @@ what this predicts about deep pagination (Ch16):
 
 ---
 
-## True / false — with the mechanism
+## True / false — with the mechanism  `[DO NOW: only 4, 5, 6, 7, 9]`
 
 *A bare true/false scores zero.*
 
@@ -398,7 +401,7 @@ what this predicts about deep pagination (Ch16):
 
 ---
 
-## Build 1 — The visibility table, proven
+## Build 1 — The visibility table, proven  `[LATER]`
 
 ```
 clause        input cols   output alias   aggregates   window fns   evidence query
@@ -416,7 +419,7 @@ the two cells that contradict the naive reading of the logical order:
 standard SQL vs Postgres extension:
 ```
 
-## Build 2 — Make the projection expensive, then stop paying for it
+## Build 2 — Make the projection expensive, then stop paying for it  `[LATER]`
 
 ```
 slow version (1000 calls, 10 rows):
@@ -432,7 +435,7 @@ node that appears:                       change in scan cost:
 when this matters in production — what kind of expression:
 ```
 
-## Build 3 — WHERE and HAVING, honestly
+## Build 3 — WHERE and HAVING, honestly  `[LATER]`
 
 ```
 equivalent pair:
@@ -453,7 +456,7 @@ my rule for choosing, with no mention of speed:
 
 ---
 
-## What to verify
+## What to verify  `[LATER]`
 
 ```
 [ ] every query predicted before running
@@ -475,7 +478,7 @@ my rule for choosing, with no mention of speed:
 
 ---
 
-## Chapter-file disagreements found
+## Chapter-file disagreements found  `[LATER]`
 
 *Programs 2, 3 and 4 contradict claims made in this chapter's `README.md`, `notes.md` and
 `interview.md`. Record them here as you hit them — which file, which claim, what the database
