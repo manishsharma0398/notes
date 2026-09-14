@@ -7,6 +7,9 @@ Rule names to use: "predicate pushdown", "the optimiser rewrote it", "cost-based
 
 Full question text: `../chapter_exercise.md`. Lab: `../../../PRACTICE.md`.
 
+> **Triage (2026-09-14) — interview value first.** `[DO NOW]` is what gets asked. `[LATER]` is real
+> depth but rarely asked; come back after revision is done. `[DONE]` is already answered.
+
 ---
 
 ## Setup — run once
@@ -28,7 +31,7 @@ analyze t;
 
 ## Program 1 — Reading a plan
 
-### A · the shape of a plan
+### A · the shape of a plan `[DONE]`
 
 ```sql
 explain select * from t where grp = 5;
@@ -44,7 +47,7 @@ rows= means:    estimates matching rows count
 width= means:   each output row will occupy approx average byte
 ```
 
-### B · estimate vs reality
+### B · estimate vs reality `[DONE]`
 
 ```sql
 explain analyze select * from t where grp = 5;
@@ -58,7 +61,7 @@ ratio: 1.0535
 what would make that estimate badly wrong: stale statistics, but our ratio is actually good.
 ```
 
-### C · cost units
+### C · cost units `[DONE]`
 
 ```
 (no query — read the cost= from A, e.g. cost=0.00..3854.00)
@@ -77,7 +80,7 @@ why comparing costs BETWEEN two different queries is meaningless: it does not pr
 
 ## Program 2 — Logical order is not execution order
 
-### D · where SELECT actually happens
+### D · where SELECT actually happens `[LATER]`
 
 ```sql
 -- q1: answers everything except the width= row
@@ -107,7 +110,7 @@ can this plan tell me WHEN the select list was evaluated?  (yes/no, and why)
 what I would have to measure instead:
 ```
 
-### E · alias in WHERE
+### E · alias in WHERE `[DONE]`
 
 ```sql
 select val * 2 as doubled from t where doubled > 100 limit 5;
@@ -125,7 +128,7 @@ the version that works: select val * 2 as doubled from t where val * 2 > 100 lim
 why the alias IS legal in ORDER BY: because select runs before order by so the aliases are accessible by ORDER BY
 ```
 
-### F · aggregate in WHERE
+### F · aggregate in WHERE `[DONE]`
 
 ```sql
 select grp, count(*) from t where count(*) > 100 group by grp;
@@ -147,7 +150,7 @@ the ONE rule shared by E and F: WHERE can only resolve what exists when it runs.
 
 ## Program 3 — The optimiser rewrites what you wrote
 
-### G · predicate pushdown
+### G · predicate pushdown `[DONE]`
 
 ```sql
 explain analyze
@@ -162,7 +165,7 @@ did 200,000 rows materialise? n
 name of the transformation: predicate pushdown / flatenned subquery
 ```
 
-### H · where 1 = 0
+### H · where 1 = 0 `[DONE]`
 
 ```sql
 explain select * from t where 1 = 0;
@@ -174,7 +177,7 @@ plan says: One-Time Filter: False
 what the optimiser worked out before touching data: 1=0 is always false so it didn't bother check the rows
 ```
 
-### I · three spellings
+### I · three spellings `[DONE]`
 
 ```sql
 explain analyze select * from t where grp in (5);
@@ -202,7 +205,7 @@ where the optimiser STOPPED being able to prove equivalence: EXISTS (...) is not
 
 ## Program 4 — When the planner is wrong
 
-### J · stale statistics
+### J · stale statistics `[DONE]`
 
 ```sql
 insert into t(grp, val, label)
@@ -227,7 +230,7 @@ what the planner DOES with a wrong estimate (the estimate is not the damage):
 The planner spends the estimate on choices, not on correctness. Row counts decide the join algorithm, the join order, index scan against sequential scan, and how much memory to size a sort or hash for. A wrong count makes each of those a decision for a different query. The rows still come back correct, so the plan is the only thing damaged. Concretely: an estimate of one row picks a nested loop, which is right for one row and ruinous for a hundred thousand where a hash join belongs. My own run never showed that, because with no index on grp a sequential scan was the only plan available and there was no decision to corrupt.
 ```
 
-### K · function on a column
+### K · function on a column `[DONE]`
 
 ```sql
 create index idx_val on t(val);
@@ -259,7 +262,7 @@ That it is invertible. The index stores val, not val + 0, so using it would mean
 
 ---
 
-## True / false — with the mechanism
+## True / false — with the mechanism `[DO NOW: only 4, 5, 8, 9, 10]`
 
 ```
 1.  SQL is procedural — clauses execute in the order written.
@@ -272,10 +275,10 @@ That it is invertible. The index stores val, not val + 0, so using it would mean
     T/F:        mechanism:
 
 4.  explain runs the query.
-    T/F:        mechanism:
+    T/F:   F     mechanism: Explain plans the query without executing it, so, every number is a rough estimate based on the statistics of the table (pg_statistic).
 
 5.  The cost in a plan is measured in milliseconds.
-    T/F:        mechanism:
+    T/F:  F      mechanism: units are arbitrary and anchored to one sequential page fetch, seq_page_cost = 1.0. They are relative weights, not time.
 
 6.  Two queries returning identical results always produce identical plans.
     T/F:        mechanism:
@@ -284,20 +287,20 @@ That it is invertible. The index stores val, not val + 0, so using it would mean
     T/F:        mechanism:
 
 8.  A wrong row estimate still returns the correct result.
-    T/F:        mechanism:
+    T/F:    T    mechanism: the estimate only chooses the plan, and every plan returns the same rows.
 
 9.  Wrapping an indexed column in a function usually prevents index use.
-    T/F:        mechanism:
+    T/F:     T   mechanism: The planner treats f(column) as an opaque black box, which costs two things at once: the index becomes unusable, and with no statistics on the expression the row estimate falls back to a fixed default selectivity rather than a measurement. Building an index on the expression itself restores both.
 
 10. explain analyze is safe to run on any query in production.
-    T/F:        mechanism:
+    T/F:  F      mechanism:  it really executes, so explain analyze delete ... deletes the rows unless you wrap it in begin; ... rollback;. And a slow query takes its full time, holding locks and resources while it runs.
 ```
 
 ---
 
 ## Build these
 
-### 1. Prove the evaluation order in SQL
+### 1. Prove the evaluation order in SQL `[LATER]`
 
 _One query per rule that fails purely because of clause evaluation order, plus the fix._
 
@@ -316,7 +319,7 @@ the full evaluation order, from memory:
 checked against notes.md?  y/n:
 ```
 
-### 2. Make the planner badly wrong
+### 2. Make the planner badly wrong `[LATER]`
 
 _Aim for an estimate off by 100x or more. Program 4's J reaches 100,000x._
 
@@ -332,7 +335,7 @@ the fix, and the corrected plan:
 what a bad estimate causes DOWNSTREAM:
 ```
 
-### 3. Three spellings, one meaning
+### 3. Three spellings, one meaning `[LATER]`
 
 _The same question as a subquery, a join, and an `EXISTS`._
 
@@ -352,19 +355,19 @@ what this means for "is this SQL faster than that SQL":
 
 ---
 
-## The 60-second answer
+## The 60-second answer `[DO NOW]`
 
 ```
 "What actually happens between me pressing enter and rows coming back?"
 
-
+Postgres first parses the query, resolves name and check for any syntax error. It rewrites the query and makes it more optimized. It creates different plans for the query using the statistics from pg_statistic. The optimizer choses the plan according to CPU, Disk usage. It then runs the cheapest estimated plan and query. The order of the run of query is entirely different from how it is written.
 
 
 ```
 
 ---
 
-## What to verify
+## What to verify `[LATER]`
 
 - [ ] Every plan predicted **before** running
 - [ ] Evaluation order stated from memory
