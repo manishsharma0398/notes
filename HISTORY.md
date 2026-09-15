@@ -9,6 +9,26 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-15 — four DSA reinforcers from a "most asked, 0-3 years" list
+
+Manish shared a LinkedIn post on DSA patterns. Its text lists eight patterns, all already in
+`dsa/plan.md`. The images behind it show a question list headed "Most Asked DSA Interview
+Questions (0-3 Years), 5-20 LPA", of which eight were visible logged out: Rotate Array, Merge
+Intervals, Majority Element, Longest Common Prefix, LIS, Product of Array Except Self, Two Sum,
+Subarray Sum Equals K.
+
+Four were already in the plan (Two Sum and 560 in `02`, Merge Intervals in `09`, LIS in `12`).
+The other four were added as reinforcers, the same way 525 and 974 joined `02` — rows in existing
+pattern files, graded hints only, blank rows in `log.md`. No new pattern file, per `dsa/prompt.md`.
+
+- `01` — **Rotate Array (189)**, three reversals in place, and **Longest Common Prefix (14)**,
+  a vertical scan. Week 1 was otherwise complete, so these are two open rows in a closed week.
+- `02` — **Product of Array Except Self (238)**, prefix and suffix passes, and **Majority Element
+  (169)**, frequency map then Boyer–Moore. 238 sits next to 560 on purpose: it is the running-
+  prefix idea with no map, and it tests whether the prefix reframe generalises beyond sums.
+
+---
+
 ## 2026-09-13 — the rule for what WHERE can reference was in three chapters, nowhere whole
 
 Working Ch1's E and F, Manish asked why an aggregate is rejected in `WHERE` but `upper(label)` is

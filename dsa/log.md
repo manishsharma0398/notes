@@ -26,6 +26,8 @@ Log **every** attempt, including the ones you failed — especially those.
 | 2026-09-09 | 6 | [3Sum (15)](https://leetcode.com/problems/3sum/) | py | 8 | y | — clean; dup-skip correct. Missing `if a > 0: break` (2x-28x). `sum` shadows the builtin (2nd time after `ascii`) | |
 | 2026-09-09 | 7 | [Merge Sorted Array (88)](https://leetcode.com/problems/merge-sorted-array/) | py | 20 | n | — fill-from-back was mine; needed hints that the drain must be `r >= 0` not `r == 0`, and that the l-leftover needs no loop at all (mid == l). `mid` is a misleading name for the write head | |
 | 2026-09-10 | 8 | [Sort Colors (75)](https://leetcode.com/problems/sort-colors/) | py | ~15 (not timed) | y | — clean one-pass Dutch National Flag, 0ms. Nothing missed. **Rehearse the follow-up out loud: why `mid` advances on the 0 branch but not the 2 branch** — the value coming back from `low` is known-1, the one from `high` is unexamined. Also be ready to defend `mid <= high`, not `<` | |
+| | 9 | [Rotate Array (189)](https://leetcode.com/problems/rotate-array/) | | | | | |
+| | 10 | [Longest Common Prefix (14)](https://leetcode.com/problems/longest-common-prefix/) | | | | | |
 
 **Sunday question — which pattern would I fail if asked tomorrow?**
 
@@ -48,6 +50,8 @@ Log **every** attempt, including the ones you failed — especially those.
 | 2026-09-13 | 7 | [Subarray Sum Equals K (560)](https://leetcode.com/problems/subarray-sum-equals-k/) | py | ~9 coding, videos first | n | — **the prefix-sum reframe was not mine**: needed videos to see that "subarrays ending at i that sum to k" is "earlier prefixes equal to `prefix_sum - k`". It felt like a cake walk *after* the video, which means the insight is borrowed, not owned — re-derive it cold before week 8. The seed `{0: 1}` is the whole problem: it counts subarrays starting at index 0, and without it `[1,1,1] k=2` returns 1. Lookup-before-insert is load-bearing here too, same rule as Two Sum — insert first and `k=0` counts the empty subarray. **Rehearse the standard follow-up: why a sliding window does not work** — `nums` can be negative, so the running sum is not monotonic and shrinking the window is unsafe. `freq_map.get(x, 0) + 1` is the `defaultdict(int)` case again, 3rd stdlib note | |
 | 2026-09-13 | 8 | [Contiguous Array (525)](https://leetcode.com/problems/contiguous-array/) | py | 8m31s | y | — **unaided, and it is the proof 560's reframe actually landed.** Got all three parts: the 0 -> -1 substitution that turns "equal counts" into "sum is zero", the `{0: -1}` seed, and **storing only the first occurrence** — the `else` is load-bearing, overwriting it would shrink every answer. Say out loud why the seed is `-1` and not `0`: it is the empty prefix, so a prefix sum of 0 at index `i` yields length `i+1`. **The one real miss is the name** — `freq_map` was carried over from 560, where the value was a frequency. Here it is a first-index map and nothing is counted. Same class of miss as `mid` on 88. **The pair is the lesson: against a prefix sum you store either a count (560) or the earliest index (525), and which one is decided by whether the question says "how many" or "how long"** | |
 | | 9 | [Subarray Sums Divisible by K (974)](https://leetcode.com/problems/subarray-sums-divisible-by-k/) | | | | | |
+| | 10 | [Product of Array Except Self (238)](https://leetcode.com/problems/product-of-array-except-self/) | | | | | |
+| | 11 | [Majority Element (169)](https://leetcode.com/problems/majority-element/) | | | | | |
 
 **Sunday question:**
 

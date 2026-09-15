@@ -44,6 +44,8 @@ Three shapes:
 | 6 | [3Sum (15)](https://leetcode.com/problems/3sum/) | sort + fixed one + two pointers |
 | 7 | [Merge Sorted Array (88)](https://leetcode.com/problems/merge-sorted-array/) | two arrays, **fill from the back** |
 | 8 | [Sort Colors (75)](https://leetcode.com/problems/sort-colors/) | three pointers (Dutch national flag) |
+| 9 | [Rotate Array (189)](https://leetcode.com/problems/rotate-array/) | opposite ends, three reversals in place |
+| 10 | [Longest Common Prefix (14)](https://leetcode.com/problems/longest-common-prefix/) | one index walked across every string (vertical scan) |
 
 ## Edge cases to name out loud before coding
 
@@ -58,6 +60,8 @@ Three shapes:
 2. If the array is sorted and the sum is too small, which pointer must move?
 3. For 3Sum: fix one element, and the rest is problem 1.
 4. For Merge Sorted Array: writing forward overwrites unread data. Which end is safe?
+5. Rotate Array: rotating right by `k` moves the last `k` elements to the front. What does reversing the whole array do to that block, and what is still wrong inside each half afterwards? Then: what must happen to `k` before anything else when `k > n`?
+6. Longest Common Prefix: stop comparing whole strings. Walk one column index across all of them at once. What are the two things that can end the scan?
 
 ## Done when
 

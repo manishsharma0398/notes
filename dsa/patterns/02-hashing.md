@@ -48,6 +48,8 @@ is the whole of Valid Anagram.
 | 7 | [Subarray Sum Equals K (560)](https://leetcode.com/problems/subarray-sum-equals-k/) | prefix sum + map — the hard one |
 | 8 | [Contiguous Array (525)](https://leetcode.com/problems/contiguous-array/) | prefix sum + map — same reframe, different thing stored |
 | 9 | [Subarray Sums Divisible by K (974)](https://leetcode.com/problems/subarray-sums-divisible-by-k/) | prefix sum + map — equality replaced by an equivalence class |
+| 10 | [Product of Array Except Self (238)](https://leetcode.com/problems/product-of-array-except-self/) | prefix and suffix passes — the prefix idea with no map at all |
+| 11 | [Majority Element (169)](https://leetcode.com/problems/majority-element/) | frequency map first, then Boyer–Moore voting for O(1) space |
 
 ## Edge cases
 
@@ -63,6 +65,8 @@ is the whole of Valid Anagram.
 4. Subarray Sum: if `prefix[j] - prefix[i] == k`, what do you store and what do you look up?
 5. Contiguous Array: what one substitution turns "equal counts of two values" into "sum is zero"? Then ask what the map's *value* has to be here — 560 stored a count, and this question is not a counting question.
 6. Divisible by K: 560 looked up prefix sums that differ by exactly `k`. What replaces exact equality when the requirement is *divisible* by `k`? Say why Python's `%` makes this cleaner than JS's.
+7. Product of Array Except Self: 560 carried a running sum forward. "Everything except `i`" is "everything left of `i`" times "everything right of `i`". How many passes is that, in which directions, and can the output array itself hold one of them? Say out loud why division is banned: what does a single `0` do to it?
+8. Majority Element: the frequency map is a complete O(n)-space answer — give it first. The follow-up asks for O(1) space: if you paired each occurrence of the majority value with a *different* value and cancelled both, what could be left standing?
 
 ## Done when
 
