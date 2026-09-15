@@ -87,7 +87,7 @@ Two answers reshaped the plan, and one of them reversed a cut:
 | **SQL** | Revision + drilling of the existing 14 chapters. Focus: indexes, joins internals, transactions/isolation, window functions, query plans. | **Written already** — cheapest win in the plan |
 | **DynamoDB** | Data modelling: access-patterns-first design, partition/sort keys, single-table design, GSI/LSI and index overloading, hot partitions and 429s, when *not* to use it. | **Uncovered — needs writing** |
 | **AWS core** | IAM (roles vs users, assume-role), S3, DynamoDB, one compute (Lambda **or** ECS), RDS basics, VPC/subnet basics, CloudWatch. Enough to reason, not a certification. | `aws/storage` + `aws/security` prompts exist, no chapters |
-| **System design** | Caching, rate limiting, idempotency, queues. Backend-heavy at 4 years means this shows up. | No track yet |
+| **System design** | Caching, rate limiting, idempotency, queues. Backend-heavy at 4 years means this shows up. | No track yet — question bank in `system-design/questions.md`; start with its ★ six |
 
 ---
 

@@ -118,7 +118,7 @@ cut and promoted three things:
 
 | Idea | Status |
 |---|---|
-| **System design** — and with it **payments/idempotency**, **caching strategy**, **rate limiting across services**, **WebSocket scaling** | **Agreed as a track. No `prompt.md` exists, so it cannot be resumed yet.** |
+| **System design** — and with it **payments/idempotency**, **caching strategy**, **rate limiting across services**, **WebSocket scaling** | **Agreed as a track. No `prompt.md` exists, so it cannot be resumed yet.** A 36-question bank (SDE-1/2/3, HLD vs LLD, each mapped to what already covers it) is in `system-design/questions.md` since 2026-09-16 — seed material for the prompt, not the track itself. |
 | **Networking proper** — TCP congestion control, routing, subnetting, the wire | **Reserved as its own track, deliberately.** `web-platform/` takes the browser↔server contract; this takes the protocol internals. No `prompt.md` yet. |
 
 **Redis is no longer in this row — it now has its own track**, `redis/`, 14 chapters planned.

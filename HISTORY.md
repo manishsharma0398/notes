@@ -9,6 +9,32 @@ independent work and must not reference the roadmap, the chapters, or this recor
 
 ---
 
+## 2026-09-16 — a system design question bank, ahead of the track
+
+Manish shared a LinkedIn post listing 36 system design questions in three tiers (SDE-1, SDE-2,
+SDE-3). System design is agreed as a track but has no `prompt.md`, and `STUDY-PLAN.md` holds it to
+weeks 9–12, so this landed as **`system-design/questions.md` — a bank, not a track**. No chapters,
+no prompt; BACKLOG still says the track cannot be resumed.
+
+What the file adds over the raw list:
+
+- **HLD vs LLD per question.** Most of the SDE-1 tier (parking lot, library, hotel booking,
+  Splitwise, quiz) is low-level object design, a different round from distributed-systems design.
+  The post mixes them without saying so.
+- **What each question really tests**, in one line, so a question reads as its mechanism
+  (idempotency keys, seat holds with TTL, consistent hashing) rather than as a product name.
+- **Pointers to what already covers it** — `sql/07-transactions-concurrency` for the booking and
+  payment questions, planned `redis/` Ch3–10 and builds 07/09/10 for the rest — marked *planned*
+  where the material is not written, so the table does not overstate coverage.
+- **Six ★ starting questions** chosen because they exercise the plan's four basics: URL shortener,
+  notifications, rate limiter, payment gateway, seat locking, job queue. Three overlap day-job work
+  and double as experience answers.
+- SDE-2 framed as the target and SDE-3 as vocabulary only, at ~3.5 years.
+
+`BACKLOG.md` and `STUDY-PLAN.md` rows now point at the file.
+
+---
+
 ## 2026-09-15 — four DSA reinforcers from a "most asked, 0-3 years" list
 
 Manish shared a LinkedIn post on DSA patterns. Its text lists eight patterns, all already in
